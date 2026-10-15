@@ -1,0 +1,179 @@
+<title>Plan Vertuoza en Rust</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Concept : un cahier de chantier. Fond béton, trait orange de sécurité, tableaux sobres. */
+  :root {
+    --bg: #f1f0ed;
+    --surface: #fbfaf8;
+    --fg: #1f2327;
+    --muted: #5d646b;
+    --line: #d6d4cf;
+    --accent: #c2410c;
+    --accent-soft: #fbe6d9;
+    --ok: #2f6b3f;
+    --ok-soft: #dcefe0;
+    --warn: #8a5a00;
+    --warn-soft: #f6e8c4;
+    --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+    --font-body: "IBM Plex Sans", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16191c; --surface: #1e2226; --fg: #e9e7e3; --muted: #9aa1a8; --line: #343a40;
+      --accent: #f08a4b; --accent-soft: #3a2415; --ok: #7bc48d; --ok-soft: #1d3324;
+      --warn: #e5b94f; --warn-soft: #3a2f12; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16191c; --surface: #1e2226; --fg: #e9e7e3; --muted: #9aa1a8; --line: #343a40;
+    --accent: #f08a4b; --accent-soft: #3a2415; --ok: #7bc48d; --ok-soft: #1d3324;
+    --warn: #e5b94f; --warn-soft: #3a2f12; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-body);
+    font-size: 16px; line-height: 1.55; padding-inline: 16px; padding-block: 32px 64px;
+  }
+  main { max-width: 860px; margin-inline: auto; display: flex; flex-direction: column; gap: 48px; }
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.05; }
+  h1 { font-size: clamp(2.4rem, 7vw, 3.8rem); font-weight: 700; letter-spacing: 0.01em; }
+  h2 { font-size: 1.9rem; font-weight: 700; }
+  h3 { font-size: 1.25rem; font-weight: 600; }
+  p { margin: 0; }
+  .eyebrow { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+  header { display: flex; flex-direction: column; gap: 14px; padding-bottom: 28px; border-bottom: 4px solid var(--accent); }
+  .lead { font-size: 1.15rem; max-width: 62ch; }
+  .meta { color: var(--muted); font-size: 0.9rem; }
+  section { display: flex; flex-direction: column; gap: 16px; }
+  .sub { color: var(--muted); max-width: 65ch; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--bg); }
+  tr:last-child td { border-bottom: 0; }
+  .tag { display: inline-block; font-family: var(--font-mono); font-size: 0.74rem; padding: 2px 8px; border-radius: 3px; white-space: nowrap; }
+  .tag.ok { background: var(--ok-soft); color: var(--ok); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .tag.todo { background: var(--accent-soft); color: var(--accent); }
+  .phases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; border-left: 3px solid var(--line); margin-left: 8px; }
+  .phases li { position: relative; padding: 0 0 28px 28px; display: flex; flex-direction: column; gap: 8px; }
+  .phases li:last-child { padding-bottom: 0; }
+  .phases li::before { content: ""; position: absolute; left: -10px; top: 6px; width: 17px; height: 17px; background: var(--bg); border: 3px solid var(--accent); border-radius: 50%; }
+  .phases ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--line); padding: 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .card h3 { color: var(--accent); }
+  .list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+  code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+  .note { border-left: 4px solid var(--warn); background: var(--warn-soft); color: var(--fg); padding: 14px 16px; }
+  footer { color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); padding-top: 16px; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+  <header>
+    <span class="eyebrow">Projet bâtiment · Rust · 15/10/2026</span>
+    <h1>Remplacer Vertuoza pour le frère de Mahx</h1>
+    <p class="lead">Un outil de devis et de factures pour une entreprise du bâtiment belge, écrit en Rust, pour éviter l'abonnement d'environ 300 € par mois.</p>
+    <p class="meta">Projet séparé de Nodimmo : dossier, base de données et stack propres (Axum, Askama, htmx, PostgreSQL, SQLx).</p>
+  </header>
+
+  <section>
+    <h2>Ce qu'on a vu dans Vertuoza</h2>
+    <p class="sub">Consultation en lecture seule du compte de l'entreprise, sans rien créer ni modifier. Un devis n'a pas été ouvert en détail : les champs exacts d'une ligne restent à confirmer.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Zone</th><th>Ce qu'elle contient</th><th>Reprise</th></tr></thead>
+        <tbody>
+          <tr><td>Devis</td><td>Liste avec numéro, date, client, référence, statut (À envoyer, Envoyé, Accepté) et totaux HT / TTC. Actions : accepter, refuser, historique, e-mail, PDF, Excel, dupliquer, supprimer.</td><td><span class="tag ok">Phase 1</span></td></tr>
+          <tr><td>Factures clients</td><td>Factures, notes de crédit, suivi des retards (15 factures en retard au moment de la visite).</td><td><span class="tag ok">Phase 1</span></td></tr>
+          <tr><td>Export de factures</td><td>Un export par période (de 2 à 3 mois), statut « Terminé », téléchargement. Sert sans doute au comptable.</td><td><span class="tag ok">Phase 1</span></td></tr>
+          <tr><td>Factures fournisseurs</td><td>Arrivent par Peppol, avec une notification « e-facture reçue ».</td><td><span class="tag warn">Phase 2</span></td></tr>
+          <tr><td>Bibliothèque, fiches techniques, commandes</td><td>Lignes de prix réutilisables, commandes matériaux et sous-traitants.</td><td><span class="tag todo">Plus tard</span></td></tr>
+          <tr><td>Chantiers, interventions, plannings, absences</td><td>Gestion de chantier et d'équipe.</td><td><span class="tag todo">Plus tard</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Le plan en trois phases</h2>
+    <p class="sub">L'ordre compte : chaque phase rend l'outil utilisable avant de passer à la suivante.</p>
+    <ol class="phases">
+      <li>
+        <h3>Phase 1 · Devis et factures clients</h3>
+        <p>Tout est dans notre code, sans dépendance externe.</p>
+        <ul>
+          <li>Clients (particuliers et entreprises, numéro de TVA)</li>
+          <li>Devis avec lignes, TVA, total, export PDF</li>
+          <li>Facture créée depuis un devis accepté, numérotation continue, communication structurée (+++)</li>
+          <li>Suivi : envoyé, accepté, payée, en retard</li>
+          <li>Export périodique pour le comptable</li>
+        </ul>
+      </li>
+      <li>
+        <h3>Phase 2 · Peppol</h3>
+        <p>Envoyer et recevoir des e-factures. Il faut un point d'accès Peppol certifié (un prestataire agréé avec une API) : on ne se connecte pas au réseau soi-même.</p>
+        <ul>
+          <li>Comparer les prestataires belges (tarif au volume de factures)</li>
+          <li>Boîte de réception des factures fournisseurs</li>
+          <li>Envoi des factures clients aux entreprises</li>
+        </ul>
+      </li>
+      <li>
+        <h3>Phase 3 · Paiements</h3>
+        <p>Lire les extraits bancaires CODA et rapprocher chaque paiement de sa facture grâce à la communication structurée.</p>
+        <ul>
+          <li>Facture passée à « payée » automatiquement</li>
+          <li>Relances des retards</li>
+        </ul>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Peppol et CodaBox, deux services différents</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3>Peppol</h3>
+        <p>Réseau officiel d'échange de <strong>factures</strong> entre entreprises. Obligatoire en Belgique pour les factures entre entreprises depuis le 1er janvier 2026.</p>
+        <p class="meta">Via un point d'accès certifié.</p>
+      </div>
+      <div class="card">
+        <h3>CodaBox</h3>
+        <p>Service du groupe Isabel qui livre les <strong>extraits de compte</strong> (fichiers CODA) de la banque vers l'entreprise ou son comptable.</p>
+        <p class="meta">Sert au rapprochement des paiements.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pièges belges à prévoir dès le départ</h2>
+    <ul class="list">
+      <li>TVA à 6 % (rénovation de logements de plus de 10 ans) et à 21 %, plus l'<strong>autoliquidation</strong> entre entreprises du bâtiment.</li>
+      <li>Numérotation des factures <strong>sans trou</strong> et conservation légale.</li>
+      <li>Montants en centimes en base, affichage « 1 150,00 € », dates au format 15/10/2026.</li>
+      <li>La comptabilité complète (plan comptable, déclarations TVA) reste dans l'outil du comptable.</li>
+    </ul>
+    <div class="note">À vérifier avec le comptable avant de lancer : les mentions obligatoires d'une facture, le régime de TVA de chaque type de chantier et le format d'export qu'il attend.</div>
+  </section>
+
+  <section>
+    <h2>Décisions en attente</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Question</th><th>Pourquoi elle compte</th></tr></thead>
+        <tbody>
+          <tr><td>Nom du projet</td><td>Sert au dossier, à la base de données et aux documents.</td></tr>
+          <tr><td>Comment le comptable reçoit les factures aujourd'hui</td><td>Détermine le format de l'export de la phase 1.</td></tr>
+          <tr><td>Champs d'une ligne de devis (unité, remise, acompte)</td><td>À lire sur un devis déjà envoyé, avant de dessiner le formulaire.</td></tr>
+          <tr><td>Feu vert pour l'étape 1</td><td>Création du dossier et du squelette Rust, à côté de Nodimmo, sans y toucher.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Dernière lecture de Vertuoza : 15/10/2026, lecture seule. Aucun nom de client ni montant détaillé n'est repris dans cette page.</footer>
+</main>

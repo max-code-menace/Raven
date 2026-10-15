@@ -1,2 +1,5 @@
 /target
 .env
+
+# Captures de Vertuoza : contiennent de vrais noms de clients
+/docs/vertuoza/captures/
