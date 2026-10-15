@@ -1,6 +1,7 @@
 pub mod commun;
 pub mod db;
 pub mod devis;
+pub mod devis_editeur;
 pub mod fiches;
 pub mod societe;
 
@@ -30,6 +31,11 @@ pub struct Erreur {
 impl Erreur {
     pub fn introuvable() -> Self {
         Erreur { code: StatusCode::NOT_FOUND, message: "Page introuvable." }
+    }
+
+    /// L'action demandée n'est plus possible dans l'état actuel (exemple : modifier un devis envoyé).
+    pub fn conflit(message: &'static str) -> Self {
+        Erreur { code: StatusCode::CONFLICT, message }
     }
 }
 
@@ -72,6 +78,7 @@ pub fn app(state: AppState) -> Router {
         .route("/", get(home))
         .route("/sante", get(sante))
         .merge(devis::routes())
+        .merge(devis_editeur::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

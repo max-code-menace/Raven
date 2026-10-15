@@ -31,7 +31,7 @@ const STATUTS: [(&str, &str, &str); 8] = [
     ("refuse", "Refusé", "badge-error badge-outline"),
 ];
 
-fn statut(valeur: &str) -> (&'static str, &'static str) {
+pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
     STATUTS
         .iter()
         .find(|(v, _, _)| *v == valeur)
@@ -57,8 +57,9 @@ async fn creer_brouillon(db: &PgPool) -> Result<i64, sqlx::Error> {
 }
 
 async fn nouveau(State(state): State<AppState>) -> Result<Redirect, Erreur> {
-    creer_brouillon(&state.db).await?;
-    Ok(Redirect::to("/devis"))
+    let id = creer_brouillon(&state.db).await?;
+    // On arrive directement dans l'éditeur du nouveau brouillon.
+    Ok(Redirect::to(&format!("/devis/{id}")))
 }
 
 // ─── Liste ──────────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ pub struct Recherche {
 
 #[derive(FromRow)]
 struct LigneBase {
+    id: i64,
     annee: i32,
     numero: i64,
     date_devis: NaiveDate,
@@ -86,6 +88,7 @@ struct LigneBase {
 }
 
 pub struct Ligne {
+    pub id: i64,
     pub numero: String,
     pub date: String,
     pub client: String,
@@ -100,6 +103,7 @@ impl From<LigneBase> for Ligne {
     fn from(l: LigneBase) -> Self {
         let (libelle, classe) = statut(&l.statut);
         Ligne {
+            id: l.id,
             numero: format!("{}-{}", l.annee, l.numero),
             date: l.date_devis.format("%d/%m/%Y").to_string(),
             client: l.client.unwrap_or_default(),
@@ -182,7 +186,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     let page: i64 = r.page.trim().parse().unwrap_or(1).clamp(1, pages);
 
     let lignes: Vec<LigneBase> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT extract(year FROM d.date_devis)::int AS annee, d.numero, d.date_devis,
+        "SELECT d.id, extract(year FROM d.date_devis)::int AS annee, d.numero, d.date_devis,
                 COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), '')) AS client,
                 d.reference, d.montant_ht_cents, d.statut::text AS statut,
                 to_char(d.statut_date AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY') AS statut_date

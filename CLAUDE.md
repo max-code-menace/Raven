@@ -68,7 +68,11 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés.
 ## État du projet
 - [x] Étapes 1 à 4 : squelette Axum + Askama + htmx + DaisyUI ; PostgreSQL + SQLx (migrations `0001_base.sql`, `0002_societe_fichiers.sql`) ; écrans **Entreprises** et **Contacts** (liste, recherche en direct, filtre par profil, création, modification) ; écran **Société** (identité, adresse, contacts multiples, TVA belge, comptes bancaires, logo, conditions générales). Relevé de Vertuoza dans `docs/`.
 - [x] Étape 5a : migration `0003_devis.sql` (table `devis`, statuts de Vertuoza, compteur de numéros) ; écran `/devis` avec recherche, filtres statut et dates, tri, 20 par page, totaux HT et TTC ; le bouton Nouveau crée un brouillon. 77 tests au dernier commit.
-- [ ] Étape 5b : éditeur de devis (onglets Informations, Encodage, Totaux, Visualisation ; lots et lignes ; TVA par ligne ; totaux calculés par le serveur).
+- [ ] Étape 5b : éditeur de devis (onglets Informations, Encodage, Totaux, Visualisation ; lots et lignes ; TVA par ligne ; totaux calculés par le serveur). Découpée en :
+  - [x] 5b-1 : migration `0004_devis_informations.sql`, page `/devis/{id}` avec l'onglet **Informations** (référence, responsable, date, client, TVA par défaut, conditions de paiement, client de facturation, architecte, gestionnaire, adresse du chantier, remarques). Seul un brouillon se modifie ; « Nouveau » ouvre directement l'éditeur ; le numéro n'est pas modifiable (numérotation continue). 93 tests. Pièces jointes et acomptes : pas encore (acomptes à l'étape 7).
+  - [ ] 5b-2 : onglet Encodage (lots, titres, texte, poste libre ; totaux calculés par le serveur).
+  - [ ] 5b-3 : onglet Totaux (TVA par taux, ajustement) et aperçu.
+  - [ ] 5b-4 : types de ligne avancés et interrupteur marge / prix d'achat.
 - [ ] Étape 5c : aperçu et export PDF du devis, accepter / refuser, dupliquer, historique.
 - [ ] Étape 6 : chantier (créé à l'acceptation), avenants, avancements.
 - [ ] Étape 7 : factures (acompte, avancement, finale, simple), notes de crédit, numérotation, VCS.

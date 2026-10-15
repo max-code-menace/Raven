@@ -106,7 +106,7 @@ fn nombre(s: &str) -> Option<i64> {
 
 // ─── Listes de choix pour les menus déroulants ─────────────────────────────
 
-fn choix_base(liste: &[(i64, String)], actuel: &str) -> Vec<Choix> {
+pub(crate) fn choix_base(liste: &[(i64, String)], actuel: &str) -> Vec<Choix> {
     liste
         .iter()
         .map(|(id, l)| Choix {
@@ -118,14 +118,14 @@ fn choix_base(liste: &[(i64, String)], actuel: &str) -> Vec<Choix> {
 }
 
 /// Les listes qui viennent de la base : conditions de paiement, taux de TVA, entreprises.
-struct Options {
-    conditions: Vec<(i64, String)>,
-    taux_tva: Vec<(i64, String)>,
+pub(crate) struct Options {
+    pub(crate) conditions: Vec<(i64, String)>,
+    pub(crate) taux_tva: Vec<(i64, String)>,
     entreprises: Vec<(i64, String)>,
 }
 
 impl Options {
-    async fn charger(db: &PgPool, genre: Genre) -> Result<Self, sqlx::Error> {
+    pub(crate) async fn charger(db: &PgPool, genre: Genre) -> Result<Self, sqlx::Error> {
         let conditions: Vec<(i64, String, i32)> = sqlx::query_as(
             "SELECT id, \"type\"::text, jours FROM conditions_paiement
              ORDER BY CASE \"type\"::text WHEN 'apres_facturation' THEN 1 WHEN 'fin_de_mois' THEN 2 ELSE 3 END, jours",

@@ -8,6 +8,7 @@
         <th>Référence</th>
         <th class="text-right">Montant HT</th>
         <th>Statut</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -24,10 +25,11 @@
             {% if !l.date_statut.is_empty() %}<span class="text-xs opacity-70">{{ l.date_statut }}</span>{% endif %}
           </div>
         </td>
+        <td class="text-right"><a class="btn btn-ghost btn-xs" href="/devis/{{ l.id }}">Modifier</a></td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="6" class="text-center opacity-70 py-8">Aucun devis trouvé.</td>
+        <td colspan="7" class="text-center opacity-70 py-8">Aucun devis trouvé.</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -100,15 +100,16 @@ async fn nouveau_cree_un_brouillon_numero_un(pool: PgPool) {
     let s = site(&pool);
     let (statut, lieu) = nouveau(&s).await;
     assert_eq!(statut, StatusCode::SEE_OTHER);
-    assert_eq!(lieu.as_deref(), Some("/devis"));
 
-    let (numero, statut_devis, annee, reference): (i64, String, i32, String) = sqlx::query_as(
-        "SELECT numero, statut::text, extract(year FROM date_devis)::int, reference FROM devis",
+    let (id, numero, statut_devis, annee, reference): (i64, i64, String, i32, String) = sqlx::query_as(
+        "SELECT id, numero, statut::text, extract(year FROM date_devis)::int, reference FROM devis",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!((numero, statut_devis.as_str(), reference.as_str()), (1, "brouillon", ""));
+    // On arrive directement dans l'éditeur du nouveau brouillon.
+    assert_eq!(lieu, Some(format!("/devis/{id}")));
 
     let page = lire(&s, "/devis").await;
     assert!(page.contains(&format!("whitespace-nowrap\">{annee}-1</td>")));

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Devis N° {{ numero }} · Ubifacture{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+  <div class="flex items-center gap-3">
+    <h1 class="text-2xl font-bold">Devis N° {{ numero }}</h1>
+    <span class="badge {{ classe_statut }} whitespace-nowrap">{{ statut }}</span>
+  </div>
+  <a class="btn btn-ghost" href="/devis">Retour à la liste</a>
+</div>
+
+{# Les autres onglets arrivent aux étapes suivantes. #}
+<div role="tablist" class="tabs tabs-bordered mb-4">
+  <span role="tab" class="tab tab-active">Informations</span>
+  <span role="tab" class="tab tab-disabled" title="Bientôt">Encodage</span>
+  <span role="tab" class="tab tab-disabled" title="Bientôt">Totaux</span>
+  <span role="tab" class="tab tab-disabled" title="Bientôt">Visualisation</span>
+</div>
+
+{% if enregistre %}
+<div role="alert" class="alert alert-success mb-4"><span>Les informations sont enregistrées.</span></div>
+{% endif %}
+
+{% if !modifiable %}
+<div role="alert" class="alert alert-info mb-4">
+  <span>Ce devis n'est plus un brouillon : il n'est plus modifiable.</span>
+</div>
+{% endif %}
+
+{% if !erreurs.is_empty() %}
+<div role="alert" class="alert alert-error mb-4">
+  <ul class="list-disc pl-5">
+    {% for e in erreurs %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<form method="post" action="/devis/{{ id }}">
+  <fieldset class="flex flex-col gap-6"{% if !modifiable %} disabled{% endif %}>
+
+    <section class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title">Détails du devis</h2>
+        <div class="grid gap-4 md:grid-cols-2">
+          {% call m::champ("Référence *", "reference", form.reference, "text") %}{% endcall %}
+          {% call m::champ("Responsable *", "responsable", form.responsable, "text") %}{% endcall %}
+          {% call m::champ("Date *", "date_devis", form.date_devis, "date") %}{% endcall %}
+          <label class="form-control w-full">
+            <span class="label-text mb-1">Numéro</span>
+            {# Le numéro est donné par le serveur (numérotation continue) : on ne le modifie pas. #}
+            <input class="input input-bordered w-full" type="text" value="{{ numero }}" disabled>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title">Client</h2>
+        <label class="form-control w-full">
+          <span class="label-text mb-1">Client *</span>
+          <select class="select select-bordered w-full" name="client">
+            <option value="">—</option>
+            {% for c in clients %}
+            <option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title">Facturation</h2>
+        <div class="grid gap-4 md:grid-cols-2">
+          {% call m::liste_deroulante("Taux de TVA par défaut *", "taux_tva_id", taux_tva) %}{% endcall %}
+          {% call m::liste_deroulante("Conditions de paiement *", "conditions_paiement_id", conditions) %}{% endcall %}
+        </div>
+
+        {# Quand la case est cochée, le choix d'un autre client est masqué (sans JavaScript). #}
+        <div class="group flex flex-col gap-4 mt-4">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" class="checkbox checkbox-sm" name="facturation_identique" value="on"{% if form.facturation_identique.is_some() %} checked{% endif %}>
+            <span>Coordonnées de facturation identiques à celles du client</span>
+          </label>
+          <div class="group-has-[input:checked]:hidden">
+            <label class="form-control w-full">
+              <span class="label-text mb-1">Client de facturation</span>
+              <select class="select select-bordered w-full" name="facturation_client">
+                <option value="">—</option>
+                {% for c in clients_facturation %}
+                <option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title">Chantier</h2>
+        <div class="grid gap-4 md:grid-cols-2">
+          {% call m::liste_deroulante("Architecte", "architecte_id", architectes) %}{% endcall %}
+          {% call m::liste_deroulante("Gestionnaire", "gestionnaire_id", gestionnaires) %}{% endcall %}
+        </div>
+
+        <div class="group flex flex-col gap-4 mt-4">
+          <label class="flex items-center gap-2">
+            <input type="checkbox" class="checkbox checkbox-sm" name="chantier_identique" value="on"{% if form.chantier_identique.is_some() %} checked{% endif %}>
+            <span>Adresse du chantier identique à celle du client</span>
+          </label>
+          <div class="grid gap-4 md:grid-cols-2 group-has-[input:checked]:hidden">
+            {% call m::champ("Rue", "chantier_rue", form.chantier_rue, "text") %}{% endcall %}
+            {% call m::champ("Numéro", "chantier_numero", form.chantier_numero, "text") %}{% endcall %}
+            {% call m::champ("Code postal", "chantier_code_postal", form.chantier_code_postal, "text") %}{% endcall %}
+            {% call m::champ("Ville", "chantier_ville", form.chantier_ville, "text") %}{% endcall %}
+            {% call m::pays("Pays", "chantier_pays", pays) %}{% endcall %}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title">Remarques</h2>
+        <label class="form-control w-full">
+          <span class="label-text mb-1">Remarque 1 (conditions particulières)</span>
+          <textarea class="textarea textarea-bordered w-full" rows="3" name="remarque_1">{{ form.remarque_1 }}</textarea>
+        </label>
+        <label class="form-control w-full">
+          <span class="label-text mb-1">Remarque 2</span>
+          <textarea class="textarea textarea-bordered w-full" rows="3" name="remarque_2">{{ form.remarque_2 }}</textarea>
+        </label>
+      </div>
+    </section>
+
+    {% if modifiable %}
+    <div class="flex justify-end gap-2">
+      <a class="btn btn-ghost" href="/devis">Annuler</a>
+      <button class="btn btn-primary" type="submit">Enregistrer</button>
+    </div>
+    {% endif %}
+  </fieldset>
+</form>
+{% endblock %}
