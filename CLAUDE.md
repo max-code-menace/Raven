@@ -78,7 +78,10 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés.
   - **Statuts (5c-2)** : `src/devis_statut.rs`. Marquer comme envoyé (à la main en attendant les e-mails de l'étape 8), accepter, refuser (date de la décision comprise entre la date du devis et aujourd'hui, motif facultatif), remettre en brouillon (depuis envoyé / refusé). Un devis accepté est final ; pour le corriger on le duplique.
   - **Dupliquer et historique (5c-3)** : `src/devis_copie.rs` (copie en brouillon, date du jour, prochain numéro dans la même transaction), `src/journal.rs` + `src/devis_historique.rs` (table `devis_evenements`, migration `0009`) : création, changements de statut, téléchargement du PDF, duplication ; dates au format belge (15/10/2026 · 11:30).
   - `.cargo/config.toml` limite à 4 tâches de compilation (sans cela, la compilation complète avec Typst a échoué une fois sous Windows).
-- [ ] Étape 6 : chantier (créé à l'acceptation), avenants, avancements.
+- [ ] Étape 6 : chantier (créé à l'acceptation), avenants, avancements. Découpée en :
+  - [x] 6-1 : migration `0010_chantiers.sql` (table `chantiers`, statuts en cours / terminé, compteur `chantier` : numéros 1, 2, 3…, chantiers créés pour les devis déjà acceptés). `src/chantiers.rs` : accepter un devis crée son chantier dans la même transaction (noté dans l'historique du devis, lien « Chantier n° X » sur le devis). Écran `/chantiers` (recherche, filtre « En cours » par défaut, Terminé, Tous ; total HT) ; fiche `/chantiers/{id}` avec onglets **Tableau de bord** (infos reprises du devis, statut et date de début modifiables) et **Devis/avenants** (récapitulatif devis de base + avenants). 224 tests.
+  - [ ] 6-2 : avenants (devis rattaché au chantier, jours ouvrables supplémentaires).
+  - [ ] 6-3 : avancements (par ligne en quantité, % ou € ; reste à avancer ; onglet Finances).
 - [ ] Étape 7 : factures (acompte, avancement, finale, simple), notes de crédit, numérotation, VCS.
 - [ ] Étape 8 : paiements et retards, export pour le comptable, e-mails.
 - [ ] Étape 9 : page client en ligne, suivi de chantier complet, bibliothèque de prix, statistiques.

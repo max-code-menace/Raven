@@ -430,7 +430,7 @@ impl Retour {
         match self.ok.as_str() {
             "1" => "Les informations sont enregistrées.",
             "envoye" => "Le devis est marqué comme envoyé.",
-            "accepte" => "Le devis est accepté.",
+            "accepte" => "Le devis est accepté et son chantier est créé.",
             "refuse" => "Le devis est refusé.",
             "brouillon" => "Le devis est remis en brouillon.",
             _ => "",

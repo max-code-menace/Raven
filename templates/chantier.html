@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Chantier N° {{ numero }} · Ubifacture{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+  <div class="flex items-center gap-3">
+    <h1 class="text-2xl font-bold">Chantier N° {{ numero }}</h1>
+    <span class="badge {{ classe_statut }} whitespace-nowrap">{{ statut }}</span>
+  </div>
+  <a class="btn btn-ghost" href="/chantiers">Retour à la liste</a>
+</div>
+<p class="mb-4 text-sm">
+  {% if !reference.is_empty() %}{{ reference }} · {% endif %}{{ client }}
+  · Début le {{ date_debut }}
+</p>
+
+{% if !message_ok.is_empty() %}
+<div role="alert" class="alert alert-success mb-4"><span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ message_erreur }}</span></div>
+{% endif %}
+
+<div role="tablist" class="tabs tabs-bordered mb-4">
+  <a role="tab" class="tab{% if onglet == "tableau" %} tab-active{% endif %}" href="/chantiers/{{ id }}">Tableau de bord</a>
+  <a role="tab" class="tab{% if onglet == "devis" %} tab-active{% endif %}" href="/chantiers/{{ id }}/devis">Devis/avenants</a>
+</div>
+
+{% if onglet == "tableau" %}
+<div class="grid gap-4 md:grid-cols-3">
+  <div class="card bg-base-100 shadow md:col-span-2">
+    <div class="card-body">
+      <h2 class="card-title">Informations</h2>
+      <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+        <dt class="opacity-70">Client</dt><dd>{{ client }}</dd>
+        <dt class="opacity-70">Adresse du chantier</dt><dd>{{ adresse }}</dd>
+        <dt class="opacity-70">Référence</dt><dd>{{ reference }}</dd>
+        <dt class="opacity-70">Devis</dt><dd><a class="link link-primary" href="/devis/{{ devis_id }}">N° {{ devis_numero }}</a>{% if !date_acceptation.is_empty() %}, accepté le {{ date_acceptation }}{% endif %}</dd>
+        <dt class="opacity-70">Responsable</dt><dd>{{ responsable }}</dd>
+        <dt class="opacity-70">Gestionnaire</dt><dd>{{ gestionnaire }}</dd>
+        <dt class="opacity-70">Architecte</dt><dd>{{ architecte }}</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="flex flex-col gap-4">
+    <div class="stats stats-vertical bg-base-100 shadow">
+      <div class="stat">
+        <div class="stat-title">Total devis/avenants HT</div>
+        <div class="stat-value text-2xl">{{ total_ht }}</div>
+      </div>
+    </div>
+
+    <form class="card bg-base-100 shadow" method="post" action="/chantiers/{{ id }}">
+      <div class="card-body gap-3">
+        <h2 class="card-title">Suivi</h2>
+        <label class="form-control">
+          <span class="label-text mb-1">Statut</span>
+          <select class="select select-bordered select-sm" name="statut">
+            {% for s in statuts %}
+            <option value="{{ s.valeur }}"{% if s.choisi %} selected{% endif %}>{{ s.libelle }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="label-text mb-1">Début de chantier</span>
+          <input class="input input-bordered input-sm" type="date" name="date_debut" value="{{ date_debut_champ }}" required>
+        </label>
+        <button class="btn btn-primary btn-sm" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="card bg-base-100 shadow mb-4">
+  <div class="card-body">
+    <h2 class="card-title">Devis</h2>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr><th>N°</th><th>Référence</th><th>Date d'acceptation</th><th class="text-right">Montant HT</th><th class="text-right">Montant TTC</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a class="link link-primary" href="/devis/{{ devis_id }}">{{ devis_numero }}</a></td>
+            <td>{{ reference }}</td>
+            <td>{{ date_acceptation }}</td>
+            <td class="text-right whitespace-nowrap">{{ devis_ht }}</td>
+            <td class="text-right whitespace-nowrap">{{ devis_ttc }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card bg-base-100 shadow mb-4">
+  <div class="card-body">
+    <h2 class="card-title">Avenants</h2>
+    <p class="text-sm opacity-70">Aucun avenant.</p>
+  </div>
+</div>
+
+<div class="card bg-base-100 shadow">
+  <div class="card-body">
+    <h2 class="card-title">Récapitulatif</h2>
+    <table class="table max-w-md">
+      <tbody>
+        <tr><td>Devis de base</td><td class="text-right whitespace-nowrap">{{ devis_ht }}</td></tr>
+        <tr><td>Avenants</td><td class="text-right whitespace-nowrap">0,00&nbsp;€</td></tr>
+        <tr class="font-bold"><td>Total devis/avenants HT</td><td class="text-right whitespace-nowrap">{{ total_ht }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

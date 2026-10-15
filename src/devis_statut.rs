@@ -38,7 +38,7 @@ impl Action {
     }
 
     /// Ce que le devis peut faire selon son statut actuel.
-    /// - un devis accepté est final (il donnera un chantier à l'étape 6) ;
+    /// - un devis accepté est final (son chantier est créé à l'acceptation) ;
     /// - un devis signé par le client ne peut qu'être accepté ;
     /// - un devis envoyé ou refusé peut être remis en brouillon (c'est noté dans l'historique) ;
     ///   pour changer un devis accepté, on le duplique.
@@ -68,6 +68,8 @@ pub struct Barre {
     pub date_devis: String,
     /// « Accepté le 15/10/2026 », « Refusé le 15/10/2026 : trop cher »…
     pub resume: String,
+    /// Le chantier né de ce devis : (id, numéro).
+    pub chantier: Option<(i64, i64)>,
 }
 
 fn date_belge(d: NaiveDate) -> String {
@@ -89,6 +91,8 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
         ("refuse", _, Some(d)) => format!("Refusé le {} : {motif}", date_belge(d)),
         _ => String::new(),
     };
+    let chantier: Option<(i64, i64)> =
+        sqlx::query_as("SELECT id, numero FROM chantiers WHERE devis_id = $1").bind(id).fetch_optional(db).await?;
     Ok(Barre {
         peut_marquer_envoye: Action::MarquerEnvoye.permise_depuis(&statut_devis),
         peut_accepter: Action::Accepter.permise_depuis(&statut_devis),
@@ -97,6 +101,7 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
         aujourdhui: aujourdhui.to_string(),
         date_devis: date_devis.to_string(),
         resume,
+        chantier,
     })
 }
 
@@ -162,6 +167,12 @@ async fn changer(state: AppState, id: i64, action: Action, decision: Decision) -
         detail.push_str(&format!(" : {motif_refus}"));
     }
     journal::noter(&mut tx, id, Genre::Statut, &detail).await?;
+
+    // Accepter crée le chantier dans la même transaction : jamais l'un sans l'autre.
+    if let (Action::Accepter, Some(d)) = (action, date) {
+        let numero = crate::chantiers::creer(&mut tx, id, d).await?;
+        journal::noter(&mut tx, id, Genre::Chantier, &format!("Chantier n° {numero} créé")).await?;
+    }
     tx.commit().await?;
     retour(&format!("ok={vers}"))
 }

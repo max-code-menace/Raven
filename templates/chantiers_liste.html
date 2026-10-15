@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Chantiers · Ubifacture{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+  <h1 class="text-2xl font-bold">Chantiers</h1>
+  <span class="text-sm opacity-70">Un chantier est créé quand on accepte un devis.</span>
+</div>
+
+<form class="flex flex-wrap items-end gap-2 mb-4"
+      hx-get="/chantiers"
+      hx-target="#liste"
+      hx-push-url="true"
+      hx-trigger="input from:find input[type=search] delay:300ms, change, submit">
+  <input class="input input-bordered w-72" type="search" name="q" value="{{ liste.q }}"
+         placeholder="Rechercher (n°, référence, client, adresse)" autocomplete="off">
+
+  <select class="select select-bordered" name="statut" aria-label="Statut">
+    {% for s in liste.statuts %}
+    <option value="{{ s.valeur }}"{% if s.choisi %} selected{% endif %}>{{ s.libelle }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<div id="liste" class="card bg-base-100 shadow">
+  {% include "_chantiers_tableau.html" %}
+</div>
+{% endblock %}

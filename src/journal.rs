@@ -1,5 +1,5 @@
 //! Le journal d'un devis : une ligne par événement important (création, changement de statut,
-//! téléchargement du PDF, duplication). On écrit dans la même transaction que le changement lui-même :
+//! téléchargement du PDF, duplication, création du chantier). On écrit dans la même transaction que le changement lui-même :
 //! pas d'événement sans changement, pas de changement sans événement.
 
 use sqlx::{Postgres, Transaction};
@@ -11,6 +11,7 @@ pub enum Genre {
     Statut,
     Pdf,
     Duplication,
+    Chantier,
 }
 
 impl Genre {
@@ -20,6 +21,7 @@ impl Genre {
             Genre::Statut => "statut",
             Genre::Pdf => "pdf",
             Genre::Duplication => "duplication",
+            Genre::Chantier => "chantier",
         }
     }
 
@@ -30,6 +32,7 @@ impl Genre {
             "statut" => "Statut",
             "pdf" => "PDF",
             "duplication" => "Duplication",
+            "chantier" => "Chantier",
             _ => "Événement",
         }
     }
@@ -51,7 +54,7 @@ mod tests {
 
     #[test]
     fn les_genres_ont_un_code_et_un_libelle() {
-        for g in [Genre::Creation, Genre::Statut, Genre::Pdf, Genre::Duplication] {
+        for g in [Genre::Creation, Genre::Statut, Genre::Pdf, Genre::Duplication, Genre::Chantier] {
             assert_ne!(Genre::libelle(g.code()), "Événement", "{g:?}");
         }
         assert_eq!(Genre::libelle("inconnu"), "Événement");

@@ -6,8 +6,13 @@
   <a class="btn btn-ghost" href="/devis">Retour à la liste</a>
 </div>
 
-{% if !barre.resume.is_empty() %}
-<p class="mb-2 text-sm">{{ barre.resume }}</p>
+{% if !barre.resume.is_empty() || barre.chantier.is_some() %}
+<p class="mb-2 text-sm">
+  {{ barre.resume }}
+  {% if let Some((chantier_id, chantier_numero)) = barre.chantier %}
+  · <a class="link link-primary" href="/chantiers/{{ chantier_id }}">Chantier n° {{ chantier_numero }}</a>
+  {% endif %}
+</p>
 {% endif %}
 
 {# Les décisions : chacune est enregistrée dans l'historique du devis. #}

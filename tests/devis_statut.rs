@@ -101,7 +101,8 @@ async fn accepter_enregistre_la_date_et_verrouille(pool: PgPool) {
     assert_eq!((st.as_str(), date.as_deref(), refus), ("accepte", Some("2026-10-05"), None));
 
     let (_, page) = lire(&s, &format!("/devis/{d}?ok=accepte")).await;
-    assert!(page.contains("Le devis est accepté.") && page.contains("Accepté le 05/10/2026"));
+    assert!(page.contains("Le devis est accepté et son chantier est créé.") && page.contains("Accepté le 05/10/2026"));
+    assert!(page.contains("Chantier n° 1"));
     // Plus aucune décision possible ; seulement dupliquer.
     for absent in ["Marquer comme envoyé</button>", "Accepter…", "Refuser…", "Remettre en brouillon"] {
         assert!(!page.contains(absent), "{absent}");
@@ -113,7 +114,13 @@ async fn accepter_enregistre_la_date_et_verrouille(pool: PgPool) {
         assert_eq!(statut, StatusCode::CONFLICT, "{action}");
     }
     assert_eq!(statut_de(&pool, d).await, "accepte");
-    assert_eq!(evenements(&pool, d).await, vec![("statut".to_string(), "Envoyé → Accepté (décision du 05/10/2026)".to_string())]);
+    assert_eq!(
+        evenements(&pool, d).await,
+        vec![
+            ("statut".to_string(), "Envoyé → Accepté (décision du 05/10/2026)".to_string()),
+            ("chantier".to_string(), "Chantier n° 1 créé".to_string()),
+        ]
+    );
 }
 
 #[sqlx::test]
@@ -140,7 +147,8 @@ async fn la_date_de_decision_est_verifiee(pool: PgPool) {
     // Le jour même est permis.
     let (statut, _) = poster(&s, &format!("/devis/{d}/statut/accepter"), &format!("date={}", aujourdhui(&pool).await)).await;
     assert_eq!(statut, StatusCode::SEE_OTHER);
-    assert_eq!(evenements(&pool, d).await.len(), 1);
+    // Le changement de statut, puis la création du chantier.
+    assert_eq!(evenements(&pool, d).await.len(), 2);
 }
 
 // ─── Refuser ────────────────────────────────────────────────────────────────
