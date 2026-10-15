@@ -45,6 +45,69 @@
     </div>
   </section>
 
+  {% if let Some(r) = rentabilite %}
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Rentabilité</h2>
+      <p class="text-sm opacity-70">Pour toi seulement : ces montants ne figurent pas sur le devis du client. Marge = ventes − achats − frais généraux ; le taux est calculé sur achats + frais généraux.</p>
+      <div class="overflow-x-auto">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Type de poste</th>
+              <th class="text-right">Achats HT</th>
+              <th class="text-right">Frais généraux</th>
+              <th class="text-right">Marge</th>
+              <th class="text-right">Taux</th>
+              <th class="text-right">Ventes HT</th>
+              <th class="text-right">Temps</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in r.categories %}
+            <tr>
+              <td>{{ c.libelle }}</td>
+              <td class="text-right whitespace-nowrap">{{ c.achats }}</td>
+              <td class="text-right whitespace-nowrap">{{ c.frais }}</td>
+              <td class="text-right whitespace-nowrap">{{ c.marge }}</td>
+              <td class="text-right whitespace-nowrap">{{ c.taux_marge }}</td>
+              <td class="text-right whitespace-nowrap">{{ c.ventes }}</td>
+              <td class="text-right whitespace-nowrap">{{ c.heures }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center opacity-70">Aucune ligne chiffrée pour l'instant.</td></tr>
+            {% endfor %}
+            {% if r.a_ajustement %}
+            <tr>
+              <td>{{ totaux.libelle_ajustement }}</td>
+              <td></td><td></td>
+              <td class="text-right whitespace-nowrap">{{ r.ajustement }}</td>
+              <td></td>
+              <td class="text-right whitespace-nowrap">{{ r.ajustement }}</td>
+              <td></td>
+            </tr>
+            {% endif %}
+            <tr class="font-semibold">
+              <td>{{ r.total.libelle }}</td>
+              <td class="text-right whitespace-nowrap">{{ r.total.achats }}</td>
+              <td class="text-right whitespace-nowrap">{{ r.total.frais }}</td>
+              <td class="text-right whitespace-nowrap">{{ r.total.marge }}</td>
+              <td class="text-right whitespace-nowrap">{{ r.total.taux_marge }}</td>
+              <td class="text-right whitespace-nowrap">{{ r.total.ventes }}</td>
+              <td class="text-right whitespace-nowrap">{{ r.total.heures }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {% if r.lignes_sans_achat > 0 %}
+      <div role="alert" class="alert alert-warning">
+        <span>{{ r.lignes_sans_achat }} ligne(s) chiffrée(s) sans prix d'achat : leur marge est comptée en entier.</span>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
   <section class="card bg-base-100 shadow">
     <div class="card-body">
       <h2 class="card-title">Ajustement</h2>

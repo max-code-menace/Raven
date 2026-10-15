@@ -75,13 +75,16 @@
         {% if l.est_titre %}
         <tr class="bg-gray-100 font-bold">
           <td class="py-1 pr-2 align-top whitespace-nowrap">{{ l.numero }}</td>
-          <td class="py-1 pr-2 whitespace-pre-line" colspan="5">{{ l.description }}</td>
+          <td class="py-1 pr-2 whitespace-pre-line" colspan="5">{{ l.description }}{% if !l.remarque.is_empty() %}<div class="text-xs font-normal opacity-70">{{ l.remarque }}</div>{% endif %}</td>
           <td class="py-1 text-right whitespace-nowrap">{{ l.sous_total }}</td>
         </tr>
-        {% else if l.est_poste %}
+        {% else if l.est_saut %}
+        {# Visible seulement dans l'aperçu : le PDF passera à la page suivante à cet endroit. #}
+        <tr><td colspan="7" class="py-2 text-center text-xs italic opacity-50 border-y border-dashed border-gray-300">— Saut de page —</td></tr>
+        {% else if l.est_chiffre %}
         <tr class="border-b border-gray-200">
           <td class="py-1 pr-2 align-top whitespace-nowrap">{{ l.numero }}</td>
-          <td class="py-1 pr-2 align-top whitespace-pre-line">{{ l.description }}</td>
+          <td class="py-1 pr-2 align-top whitespace-pre-line">{{ l.description }}{% if !l.remarque.is_empty() %}<div class="text-xs opacity-70">{{ l.remarque }}</div>{% endif %}</td>
           <td class="py-1 pr-2 align-top text-right whitespace-nowrap">{{ l.quantite }}</td>
           <td class="py-1 pr-2 align-top">{{ l.unite }}</td>
           <td class="py-1 pr-2 align-top text-right whitespace-nowrap">{{ l.prix_affiche }}</td>
@@ -91,7 +94,7 @@
         {% else %}
         <tr>
           <td class="py-1 pr-2 align-top whitespace-nowrap">{{ l.numero }}</td>
-          <td class="py-1 pr-2 whitespace-pre-line{% if l.genre == "sous_titre" %} font-semibold{% else %} italic{% endif %}" colspan="6">{{ l.description }}</td>
+          <td class="py-1 pr-2 whitespace-pre-line{% if l.genre == "sous_titre" %} font-semibold{% else %} italic{% endif %}" colspan="6">{{ l.description }}{% if !l.remarque.is_empty() %}<div class="text-xs not-italic font-normal opacity-70">{{ l.remarque }}</div>{% endif %}</td>
         </tr>
         {% endif %}
         {% else %}

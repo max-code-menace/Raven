@@ -113,7 +113,7 @@ async fn un_poste_libre_demande_une_tva_par_defaut(pool: PgPool) {
 #[sqlx::test]
 async fn un_type_inconnu_n_ajoute_rien(pool: PgPool) {
     let d = brouillon(&pool).await;
-    let (statut, page) = poster(&site(&pool), &format!("/devis/{d}/lignes"), "genre=ouvrage").await;
+    let (statut, page) = poster(&site(&pool), &format!("/devis/{d}/lignes"), "genre=inconnu").await;
     assert_eq!(statut, StatusCode::OK);
     assert!(page.contains("Ce type de ligne n&#39;existe pas."));
     assert!(ids(&pool, d).await.is_empty());

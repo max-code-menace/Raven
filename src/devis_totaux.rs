@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 use crate::calcul::{self, Ajustement};
 use crate::commun::format_euros;
-use crate::devis_lignes::{Entete, TotauxVue, charger_encodage, charger_entete, recalculer};
+use crate::devis_lignes::{Entete, RentabiliteVue, TotauxVue, charger_encodage, charger_entete, recalculer};
 use crate::{AppState, Erreur};
 
 const MESSAGE_NON_MODIFIABLE: &str = "Ce devis n'est plus un brouillon : il ne peut plus être modifié.";
@@ -104,6 +104,8 @@ struct Page {
     erreur: String,
     form: AjustementForm,
     totaux: TotauxVue,
+    /// Présent seulement quand l'option « prix d'achat, marge et frais généraux » est allumée.
+    rentabilite: Option<RentabiliteVue>,
 }
 
 async fn construire(state: &AppState, id: i64, entete: Entete, form: Option<AjustementForm>, erreur: String) -> Result<Page, Erreur> {
@@ -120,6 +122,7 @@ async fn construire(state: &AppState, id: i64, entete: Entete, form: Option<Ajus
         erreur,
         form,
         totaux: enc.totaux,
+        rentabilite: enc.rentabilite,
     })
 }
 

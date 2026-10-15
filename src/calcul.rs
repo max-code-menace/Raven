@@ -127,6 +127,136 @@ pub fn totaux(lignes: &[(i64, i32)], ajustement: Ajustement) -> Totaux {
     Totaux { sous_total_cents, ajustement_cents, ht_cents, tva, ttc_cents }
 }
 
+// ─── Rentabilité (option « marge et prix d'achat ») ─────────────────────────
+
+/// Les catégories de la rentabilité (« type de poste » dans Vertuoza).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Categorie {
+    PostesLibres,
+    Fournitures,
+    Equipements,
+    SousTraitants,
+    MainOeuvre,
+}
+
+impl Categorie {
+    pub const TOUTES: [Categorie; 5] =
+        [Categorie::PostesLibres, Categorie::Fournitures, Categorie::Equipements, Categorie::SousTraitants, Categorie::MainOeuvre];
+
+    pub fn libelle(self) -> &'static str {
+        match self {
+            Categorie::PostesLibres => "Postes libres / Ouvrages",
+            Categorie::Fournitures => "Fournitures",
+            Categorie::Equipements => "Équipements",
+            Categorie::SousTraitants => "Sous-traitants",
+            Categorie::MainOeuvre => "Main d'œuvre",
+        }
+    }
+
+    /// La catégorie d'un type de ligne chiffré ; `None` pour un titre, un texte, un saut de page…
+    pub fn depuis_genre(genre: &str) -> Option<Self> {
+        match genre {
+            "poste_libre" | "ouvrage" => Some(Categorie::PostesLibres),
+            "fourniture" => Some(Categorie::Fournitures),
+            "equipement" => Some(Categorie::Equipements),
+            "sous_traitant" => Some(Categorie::SousTraitants),
+            "main_oeuvre" => Some(Categorie::MainOeuvre),
+            _ => None,
+        }
+    }
+}
+
+/// Une ligne chiffrée vue sous l'angle de la rentabilité.
+pub struct LigneRentable {
+    pub categorie: Categorie,
+    pub ventes_cents: i64,
+    /// Quantité × prix d'achat ; 0 si le prix d'achat n'est pas encodé.
+    pub achats_cents: i64,
+    /// Heures de main d'œuvre (en 1/100 000), 0 pour les autres lignes.
+    pub heures_e5: i64,
+    pub a_un_prix_d_achat: bool,
+}
+
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+pub struct Rentable {
+    pub achats_cents: i64,
+    pub frais_generaux_cents: i64,
+    /// Ventes − achats − frais généraux.
+    pub marge_cents: i64,
+    pub ventes_cents: i64,
+    pub heures_e5: i64,
+}
+
+impl Rentable {
+    /// Le coût de revient : achats + frais généraux.
+    pub fn cout_cents(&self) -> i64 {
+        self.achats_cents + self.frais_generaux_cents
+    }
+
+    /// Marge en pour cent du coût de revient, en centièmes (5152 = 51,52 %). `None` sans coût.
+    pub fn taux_marge_centiemes(&self) -> Option<i64> {
+        taux_de_marge(self.marge_cents, self.cout_cents())
+    }
+}
+
+/// Marge ÷ coût, en centièmes de pour cent ; `None` si le coût n'est pas positif.
+pub fn taux_de_marge(marge_cents: i64, cout_cents: i64) -> Option<i64> {
+    (cout_cents > 0).then(|| diviser_arrondi(i128::from(marge_cents) * 10_000, i128::from(cout_cents)))
+}
+
+#[derive(Debug, PartialEq, Eq, Default)]
+pub struct Rentabilite {
+    /// Seulement les catégories qui ont au moins une ligne.
+    pub categories: Vec<(Categorie, Rentable)>,
+    pub ajustement_cents: i64,
+    /// Toutes les catégories et l'ajustement ensemble : les ventes valent le total HT du devis.
+    pub total: Rentable,
+    /// Lignes chiffrées sans prix d'achat : leur marge est comptée en entier.
+    pub lignes_sans_achat: usize,
+}
+
+/// `frais_generaux_centiemes` : pourcentage des achats (1000 = 10 %). L'ajustement du devis réduit
+/// (ou augmente) les ventes et la marge du total, pas celles d'une catégorie.
+pub fn rentabilite(lignes: &[LigneRentable], frais_generaux_centiemes: i64, ajustement_cents: i64) -> Rentabilite {
+    let mut categories: Vec<(Categorie, Rentable)> = Vec::new();
+    let mut lignes_sans_achat = 0;
+    for categorie in Categorie::TOUTES {
+        let siennes: Vec<&LigneRentable> = lignes.iter().filter(|l| l.categorie == categorie).collect();
+        if siennes.is_empty() {
+            continue;
+        }
+        let achats: i64 = siennes.iter().map(|l| l.achats_cents).sum();
+        let ventes: i64 = siennes.iter().map(|l| l.ventes_cents).sum();
+        let frais = diviser_arrondi(i128::from(achats) * i128::from(frais_generaux_centiemes), 10_000);
+        lignes_sans_achat += siennes.iter().filter(|l| !l.a_un_prix_d_achat).count();
+        categories.push((
+            categorie,
+            Rentable {
+                achats_cents: achats,
+                frais_generaux_cents: frais,
+                marge_cents: ventes - achats - frais,
+                ventes_cents: ventes,
+                heures_e5: siennes.iter().map(|l| l.heures_e5).sum(),
+            },
+        ));
+    }
+    let somme = |f: fn(&Rentable) -> i64| categories.iter().map(|(_, r)| f(r)).sum::<i64>();
+    let total = Rentable {
+        achats_cents: somme(|r| r.achats_cents),
+        frais_generaux_cents: somme(|r| r.frais_generaux_cents),
+        marge_cents: somme(|r| r.marge_cents) + ajustement_cents,
+        ventes_cents: somme(|r| r.ventes_cents) + ajustement_cents,
+        heures_e5: somme(|r| r.heures_e5),
+    };
+    Rentabilite { categories, ajustement_cents, total, lignes_sans_achat }
+}
+
+/// Une unité de temps en heures : « h », « heure », « heures », « heure(s) », « hr » (sans tenir
+/// compte des majuscules). Les jours ne sont pas convertis : la longueur d'une journée varie.
+pub fn est_une_heure(unite: &str) -> bool {
+    matches!(unite.trim().to_lowercase().as_str(), "h" | "hr" | "heure" | "heures" | "heure(s)")
+}
+
 /// « 2,5 », « 1 150.50 », « -3780,36 » → entier en 1/100 000. `None` si ce n'est pas un nombre
 /// (ou plus de 5 décimales, ou un nombre démesuré).
 pub fn lire_decimal_e5(texte: &str) -> Option<i64> {
@@ -326,6 +456,73 @@ mod tests {
         assert_eq!(ecrire_decimal_e5(1_999_000), "19,99");
         for v in [0, 1, 250_000, -378_036_000, 1_999_000, 12_345_678] {
             assert_eq!(lire_decimal_e5(&ecrire_decimal_e5(v)), Some(v));
+        }
+    }
+
+    fn ligne(categorie: Categorie, ventes: i64, achats: i64, heures: i64) -> LigneRentable {
+        LigneRentable { categorie, ventes_cents: ventes, achats_cents: achats, heures_e5: heures, a_un_prix_d_achat: achats != 0 }
+    }
+
+    #[test]
+    fn rentabilite_par_categorie() {
+        // Fournitures : 200 € vendus, 120 € achetés ; main d'œuvre : 800 € vendus, 480 € achetés, 16 h.
+        let lignes = [ligne(Categorie::Fournitures, 20_000, 12_000, 0), ligne(Categorie::MainOeuvre, 80_000, 48_000, 1_600_000)];
+        let r = rentabilite(&lignes, 1_000, 0);
+        assert_eq!(r.categories.len(), 2);
+        let (cat, f) = &r.categories[0];
+        assert_eq!(*cat, Categorie::Fournitures);
+        // frais généraux 10 % des achats = 12 € ; marge = 200 − 120 − 12 = 68 €
+        assert_eq!((f.achats_cents, f.frais_generaux_cents, f.marge_cents, f.ventes_cents), (12_000, 1_200, 6_800, 20_000));
+        // 68 ÷ 132 = 51,52 %
+        assert_eq!(f.taux_marge_centiemes(), Some(5_152));
+        let (_, m) = &r.categories[1];
+        assert_eq!((m.achats_cents, m.frais_generaux_cents, m.marge_cents, m.heures_e5), (48_000, 4_800, 27_200, 1_600_000));
+        // Le total additionne tout ; les ventes valent la somme des lignes.
+        assert_eq!(r.total.ventes_cents, 100_000);
+        assert_eq!(r.total.marge_cents, 6_800 + 27_200);
+        assert_eq!(r.total.cout_cents(), 12_000 + 1_200 + 48_000 + 4_800);
+        assert_eq!(r.lignes_sans_achat, 0);
+    }
+
+    #[test]
+    fn l_ajustement_change_les_ventes_et_la_marge_du_total_seulement() {
+        let lignes = [ligne(Categorie::Fournitures, 100_000, 60_000, 0)];
+        let r = rentabilite(&lignes, 0, -5_000);
+        assert_eq!(r.categories[0].1.ventes_cents, 100_000);
+        assert_eq!(r.categories[0].1.marge_cents, 40_000);
+        assert_eq!((r.total.ventes_cents, r.total.marge_cents), (95_000, 35_000));
+        // Les ventes du total valent le total HT du devis (même ajustement, même sous-total).
+        let t = totaux(&[(100_000, 600)], Ajustement::Montant(-5_000));
+        assert_eq!(r.total.ventes_cents, t.ht_cents);
+    }
+
+    #[test]
+    fn lignes_sans_prix_d_achat_et_taux_sans_cout() {
+        let r = rentabilite(&[ligne(Categorie::PostesLibres, 10_000, 0, 0)], 1_000, 0);
+        assert_eq!(r.lignes_sans_achat, 1);
+        assert_eq!(r.categories[0].1.marge_cents, 10_000);
+        assert_eq!(r.categories[0].1.taux_marge_centiemes(), None);
+        assert_eq!(rentabilite(&[], 1_000, 0), Rentabilite::default());
+        assert_eq!(taux_de_marge(500, 0), None);
+        assert_eq!(taux_de_marge(-500, 2_000), Some(-2_500));
+    }
+
+    #[test]
+    fn categories_des_types_de_ligne() {
+        assert_eq!(Categorie::depuis_genre("ouvrage"), Some(Categorie::PostesLibres));
+        assert_eq!(Categorie::depuis_genre("poste_libre"), Some(Categorie::PostesLibres));
+        assert_eq!(Categorie::depuis_genre("main_oeuvre"), Some(Categorie::MainOeuvre));
+        assert_eq!(Categorie::depuis_genre("titre"), None);
+        assert_eq!(Categorie::depuis_genre("saut_de_page"), None);
+    }
+
+    #[test]
+    fn unites_d_heures() {
+        for u in ["h", "H", " heures ", "Heure(s)", "hr"] {
+            assert!(est_une_heure(u), "{u}");
+        }
+        for u in ["jour(s)", "j", "pce", ""] {
+            assert!(!est_une_heure(u), "{u}");
         }
     }
 
