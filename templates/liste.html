@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}{{ liste.titre }} · Ubifacture{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+  <h1 class="text-2xl font-bold">{{ liste.titre }}</h1>
+  <a class="btn btn-primary" href="{{ liste.base }}/nouveau">{{ liste.bouton_nouveau }}</a>
+</div>
+
+<form class="flex flex-wrap gap-2 mb-4"
+      hx-get="{{ liste.base }}"
+      hx-target="#liste"
+      hx-push-url="true"
+      hx-trigger="input from:find input delay:300ms, change from:find select, submit">
+  <input class="input input-bordered w-72" type="search" name="q" value="{{ liste.q }}"
+         placeholder="Rechercher" autocomplete="off">
+  <select class="select select-bordered" name="profil">
+    <option value="">Tous les profils</option>
+    {% for c in liste.profils %}
+    <option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<div id="liste" class="card bg-base-100 shadow">
+  {% include "_tableau.html" %}
+</div>
+{% endblock %}

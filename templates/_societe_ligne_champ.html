@@ -1,0 +1,5 @@
+<div class="flex items-center gap-2">
+  <input class="input input-bordered w-full" type="{{ type_champ }}" name="{{ nom }}" value="{{ valeur }}">
+  <button type="button" class="btn btn-ghost btn-sm"
+          hx-get="/parametres/societe/ligne/vide" hx-target="closest div" hx-swap="outerHTML">Retirer</button>
+</div>

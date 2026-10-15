@@ -1,0 +1,18 @@
+[package]
+name = "ubifacture"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+askama = "0.16.1"
+axum = { version = "0.8.9", features = ["multipart"] }
+axum-extra = { version = "0.12.6", features = ["form"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
+dotenvy = "0.15.7"
+serde = { version = "1.0.229", features = ["derive"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "macros", "chrono"] }
+tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "net"] }
+
+[dev-dependencies]
+http-body-util = "0.1.5"
+tower = { version = "0.5.3", features = ["util"] }

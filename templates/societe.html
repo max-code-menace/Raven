@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+
+{% block title %}Société · Paramètres · Ubifacture{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h1 class="text-2xl font-bold">Société</h1>
+  <p class="opacity-70">Les informations de ton entreprise, utilisées sur les devis et les factures.</p>
+</div>
+
+{% if enregistre %}
+<div role="status" class="alert alert-success mb-4">Paramètres enregistrés.</div>
+{% endif %}
+
+{% if !erreurs.is_empty() %}
+<div role="alert" class="alert alert-error mb-4">
+  <ul class="list-disc pl-5">
+    {% for e in erreurs %}<li>{{ e }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{# Les deux fichiers ont leur propre formulaire : ils ne peuvent pas être dans le formulaire principal. #}
+<div class="grid gap-6 md:grid-cols-2 mb-6">
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Logo</h2>
+      <p class="text-sm opacity-70">Image PNG ou JPEG, 1 Mo maximum.</p>
+      {% if a_un_logo %}
+      <img src="/parametres/societe/logo?v={{ version_logo }}" alt="Logo de la société" class="max-h-24 w-auto self-start rounded border border-base-300 bg-white p-2">
+      {% else %}
+      <p class="opacity-70">Aucun logo.</p>
+      {% endif %}
+      <form method="post" action="/parametres/societe/logo/envoyer" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
+        <input type="file" name="fichier" accept="image/png,image/jpeg" class="file-input file-input-bordered file-input-sm w-full max-w-xs">
+        <button type="submit" class="btn btn-sm btn-primary">Envoyer</button>
+      </form>
+      {% if a_un_logo %}
+      <form method="post" action="/parametres/societe/logo/retirer">
+        <button type="submit" class="btn btn-sm btn-ghost">Retirer le logo</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Conditions générales</h2>
+      <p class="text-sm opacity-70">PDF joint automatiquement aux devis et aux factures, 2 Mo maximum.</p>
+      {% if let Some(nom) = conditions_generales %}
+      <p><a class="link link-primary" href="/parametres/societe/conditions-generales" target="_blank" rel="noopener">{{ nom }}</a></p>
+      {% else %}
+      <p class="opacity-70">Aucun fichier.</p>
+      {% endif %}
+      <form method="post" action="/parametres/societe/conditions-generales/envoyer" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
+        <input type="file" name="fichier" accept="application/pdf" class="file-input file-input-bordered file-input-sm w-full max-w-xs">
+        <button type="submit" class="btn btn-sm btn-primary">Envoyer</button>
+      </form>
+      {% if conditions_generales.is_some() %}
+      <form method="post" action="/parametres/societe/conditions-generales/retirer">
+        <button type="submit" class="btn btn-sm btn-ghost">Retirer le fichier</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<form method="post" action="/parametres/societe" class="flex flex-col gap-6">
+
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Informations générales</h2>
+      <div class="grid gap-4 md:grid-cols-2">
+        {% call m::champ("Société *", "nom", form.nom, "text") %}{% endcall %}
+        {% call m::champ("Nom abrégé *", "nom_abrege", form.nom_abrege, "text") %}{% endcall %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Adresse du siège social</h2>
+      <div class="grid gap-4 md:grid-cols-2">
+        {% call m::champ("Rue", "rue", form.rue, "text") %}{% endcall %}
+        {% call m::champ("Numéro", "numero", form.numero, "text") %}{% endcall %}
+        {% call m::champ("Code postal", "code_postal", form.code_postal, "text") %}{% endcall %}
+        {% call m::champ("Ville", "ville", form.ville, "text") %}{% endcall %}
+        {% call m::pays("Pays *", "pays", pays) %}{% endcall %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Coordonnées de contact</h2>
+      <div class="grid gap-6 md:grid-cols-2">
+        <div class="flex flex-col gap-2">
+          {% call m::champ("Adresse e-mail *", "email", form.email, "email") %}{% endcall %}
+          <div id="emails" class="flex flex-col gap-2">
+            {% for valeur in form.emails_supplementaires %}
+            {% let nom = "emails_supplementaires" %}{% let type_champ = "email" %}
+            {% include "_societe_ligne_champ.html" %}
+            {% endfor %}
+          </div>
+          <button type="button" class="btn btn-outline btn-sm self-start"
+                  hx-get="/parametres/societe/ligne/email" hx-target="#emails" hx-swap="beforeend">Ajouter un e-mail</button>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          {% call m::champ("Numéro de téléphone *", "telephone", form.telephone, "tel") %}{% endcall %}
+          <div id="telephones" class="flex flex-col gap-2">
+            {% for valeur in form.telephones_supplementaires %}
+            {% let nom = "telephones_supplementaires" %}{% let type_champ = "tel" %}
+            {% include "_societe_ligne_champ.html" %}
+            {% endfor %}
+          </div>
+          <button type="button" class="btn btn-outline btn-sm self-start"
+                  hx-get="/parametres/societe/ligne/telephone" hx-target="#telephones" hx-swap="beforeend">Ajouter un téléphone</button>
+        </div>
+      </div>
+      <div class="mt-2">
+        {% call m::champ("Site web", "site_web", form.site_web, "text") %}{% endcall %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Identifiants légaux</h2>
+      <div class="grid gap-4 md:grid-cols-2">
+        {% call m::champ("TVA", "numero_tva", form.numero_tva, "text") %}{% endcall %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Coordonnées bancaires</h2>
+      <p class="text-sm opacity-70">Le premier compte est celui utilisé par défaut sur les devis et les factures.</p>
+      <div id="comptes" class="flex flex-col gap-3">
+        {% for compte in comptes %}
+        {% include "_societe_ligne_compte.html" %}
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-outline btn-sm self-start"
+              hx-get="/parametres/societe/ligne/compte" hx-target="#comptes" hx-swap="beforeend">Ajouter un compte bancaire</button>
+    </div>
+  </section>
+
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Informations de paiement</h2>
+      <label class="form-control w-full max-w-xs">
+        <span class="label-text mb-1">Devise</span>
+        <input class="input input-bordered w-full" type="text" value="€ - EUR" disabled>
+      </label>
+    </div>
+  </section>
+
+  <div class="flex justify-end">
+    <button class="btn btn-primary" type="submit">Enregistrer</button>
+  </div>
+</form>
+{% endblock %}

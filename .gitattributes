@@ -1,0 +1,3 @@
+# Les migrations SQL gardent toujours des fins de ligne LF : sqlx v?rifie leur contenu exact.
+*.sql text eol=lf
+

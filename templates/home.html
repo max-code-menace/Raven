@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card bg-base-100 shadow">
+  <div class="card-body">
+    <h1 class="card-title">Ubifacture</h1>
+    <p>Devis et factures pour une entreprise du bâtiment belge.</p>
+    <div class="card-actions">
+      <button class="btn btn-primary"
+              hx-get="/sante"
+              hx-target="#etat"
+              hx-swap="innerHTML">Tester le serveur</button>
+    </div>
+    <p id="etat" class="text-sm opacity-70"></p>
+  </div>
+</div>
+{% endblock %}
