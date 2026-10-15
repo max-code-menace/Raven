@@ -25,7 +25,10 @@
             {% if !l.date_statut.is_empty() %}<span class="text-xs opacity-70">{{ l.date_statut }}</span>{% endif %}
           </div>
         </td>
-        <td class="text-right"><a class="btn btn-ghost btn-xs" href="/devis/{{ l.id }}">Modifier</a></td>
+        <td class="text-right whitespace-nowrap">
+          <a class="btn btn-ghost btn-xs" href="/devis/{{ l.id }}">Modifier</a>
+          <form class="inline" method="post" action="/devis/{{ l.id }}/dupliquer"><button class="btn btn-ghost btn-xs" type="submit" title="Crée une copie en brouillon">Dupliquer</button></form>
+        </td>
       </tr>
       {% else %}
       <tr>

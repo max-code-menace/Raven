@@ -16,6 +16,7 @@ use sqlx::{FromRow, PgPool};
 
 use crate::commun::{Choix, PAYS, choix_fixes, vide_en_none};
 use crate::devis::statut;
+use crate::devis_statut::{Barre, charger_barre};
 use crate::fiches::{Genre, Options, choix_base};
 use crate::{AppState, Erreur};
 
@@ -374,7 +375,11 @@ struct Page {
     onglet: &'static str,
     /// Seul un brouillon se modifie : un devis envoyé ou accepté est en lecture seule.
     modifiable: bool,
-    enregistre: bool,
+    /// Message de confirmation (après un enregistrement ou un changement de statut).
+    message_ok: String,
+    /// Message d'erreur d'un changement de statut refusé (date invalide…).
+    message_erreur: String,
+    barre: Barre,
     erreurs: Vec<String>,
     clients: Vec<Choix>,
     clients_facturation: Vec<Choix>,
@@ -386,7 +391,7 @@ struct Page {
     form: DevisForm,
 }
 
-fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, enregistre: bool, r: &Referentiel) -> Page {
+fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, retour: &Retour, barre: Barre, r: &Referentiel) -> Page {
     let (libelle, classe) = statut(&d.statut);
     let contacts: Vec<(i64, String)> = r.contacts.clone();
     let pays = if form.chantier_pays.is_empty() { "BE".to_string() } else { form.chantier_pays.clone() };
@@ -397,7 +402,9 @@ fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, en
         classe_statut: classe,
         onglet: "informations",
         modifiable: d.statut == "brouillon",
-        enregistre,
+        message_ok: retour.message_ok().to_string(),
+        message_erreur: retour.message_erreur().to_string(),
+        barre,
         erreurs,
         clients: r.choix_personnes(&form.client),
         clients_facturation: r.choix_personnes(&form.facturation_client),
@@ -414,13 +421,37 @@ fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, en
 #[serde(default)]
 struct Retour {
     ok: String,
+    erreur: String,
+}
+
+impl Retour {
+    /// Les messages sont fixes : rien de ce qui est dans l'adresse n'est affiché tel quel.
+    fn message_ok(&self) -> &'static str {
+        match self.ok.as_str() {
+            "1" => "Les informations sont enregistrées.",
+            "envoye" => "Le devis est marqué comme envoyé.",
+            "accepte" => "Le devis est accepté.",
+            "refuse" => "Le devis est refusé.",
+            "brouillon" => "Le devis est remis en brouillon.",
+            _ => "",
+        }
+    }
+
+    fn message_erreur(&self) -> &'static str {
+        match self.erreur.as_str() {
+            "date" => "La date de la décision doit être comprise entre la date du devis et aujourd'hui.",
+            "motif" => "Le motif est trop long (500 caractères au maximum).",
+            _ => "",
+        }
+    }
 }
 
 async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
     let devis = charger_devis(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
     let referentiel = Referentiel::charger(&state.db).await?;
     let form = DevisForm::from(&devis);
-    let page = construire_page(id, &devis, form, Vec::new(), !retour.ok.is_empty(), &referentiel);
+    let barre = charger_barre(&state.db, id).await?;
+    let page = construire_page(id, &devis, form, Vec::new(), &retour, barre, &referentiel);
     Ok(Html(page.render()?))
 }
 
@@ -439,7 +470,8 @@ async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(fo
             }
         }
         Err(erreurs) => {
-            let page = construire_page(id, &devis, form, erreurs, false, &referentiel);
+            let barre = charger_barre(&state.db, id).await?;
+            let page = construire_page(id, &devis, form, erreurs, &Retour::default(), barre, &referentiel);
             Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
         }
     }

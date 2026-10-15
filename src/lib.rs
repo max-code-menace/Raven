@@ -3,11 +3,15 @@ pub mod db;
 pub mod calcul;
 pub mod devis;
 pub mod devis_apercu;
+pub mod devis_copie;
 pub mod devis_editeur;
+pub mod devis_historique;
 pub mod devis_lignes;
 pub mod devis_pdf;
+pub mod devis_statut;
 pub mod devis_totaux;
 pub mod fiches;
+pub mod journal;
 pub mod pdf;
 pub mod societe;
 
@@ -95,6 +99,9 @@ pub fn app(state: AppState) -> Router {
         .merge(devis_totaux::routes())
         .merge(devis_apercu::routes())
         .merge(devis_pdf::routes())
+        .merge(devis_statut::routes())
+        .merge(devis_copie::routes())
+        .merge(devis_historique::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

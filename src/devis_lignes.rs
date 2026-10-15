@@ -15,6 +15,7 @@ use sqlx::{FromRow, PgPool, Postgres, Transaction};
 use crate::calcul::{self, Ajustement, Totaux};
 use crate::commun::{Choix, format_euros};
 use crate::devis::statut;
+use crate::devis_statut::{Barre, charger_barre};
 use crate::fiches::{Genre, Options};
 use crate::{AppState, Erreur};
 
@@ -405,6 +406,7 @@ struct Page {
     statut: &'static str,
     classe_statut: &'static str,
     onglet: &'static str,
+    barre: Barre,
     enc: Encodage,
 }
 
@@ -449,7 +451,8 @@ pub(crate) async fn recalculer(tx: &mut Transaction<'_, Postgres>, devis_id: i64
 async fn page(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
     let entete = charger_entete(&state.db, id).await?;
     let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
-    let page = Page { id, numero: entete.numero, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", enc };
+    let barre = charger_barre(&state.db, id).await?;
+    let page = Page { id, numero: entete.numero, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", barre, enc };
     Ok(Html(page.render()?))
 }
 

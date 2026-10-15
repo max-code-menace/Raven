@@ -13,6 +13,7 @@ use serde::Deserialize;
 
 use crate::calcul::{self, Ajustement};
 use crate::commun::format_euros;
+use crate::devis_statut::{Barre, charger_barre};
 use crate::devis_lignes::{Entete, RentabiliteVue, TotauxVue, charger_encodage, charger_entete, recalculer};
 use crate::{AppState, Erreur};
 
@@ -99,6 +100,7 @@ struct Page {
     statut: &'static str,
     classe_statut: &'static str,
     onglet: &'static str,
+    barre: Barre,
     modifiable: bool,
     a_un_ajustement: bool,
     erreur: String,
@@ -117,6 +119,7 @@ async fn construire(state: &AppState, id: i64, entete: Entete, form: Option<Ajus
         statut: entete.statut,
         classe_statut: entete.classe_statut,
         onglet: "totaux",
+        barre: charger_barre(&state.db, id).await?,
         modifiable: entete.brouillon,
         a_un_ajustement: entete.ajustement != Ajustement::Aucun,
         erreur,

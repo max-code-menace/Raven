@@ -10,6 +10,7 @@ use axum::{
 };
 
 use crate::devis_pdf::charger_donnees;
+use crate::devis_statut::{Barre, charger_barre};
 use crate::{AppState, Erreur};
 
 #[derive(Template)]
@@ -20,6 +21,7 @@ struct Page {
     statut: &'static str,
     classe_statut: &'static str,
     onglet: &'static str,
+    barre: Barre,
     a_completer: Vec<String>,
 }
 
@@ -32,6 +34,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<
         statut: entete.statut,
         classe_statut: entete.classe_statut,
         onglet: "visualisation",
+        barre: charger_barre(&state.db, id).await?,
         a_completer: donnees.a_completer(),
     };
     Ok(Html(page.render()?))

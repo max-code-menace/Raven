@@ -434,7 +434,14 @@ struct ParametresPdf {
 
 async fn servir(State(state): State<AppState>, Path(id): Path<i64>, axum::extract::Query(o): axum::extract::Query<ParametresPdf>) -> Result<Response, Erreur> {
     let (nom, octets) = pdf_du_devis(&state.db, id).await?;
-    let disposition = if o.telecharger.is_empty() { "inline" } else { "attachment" };
+    let telechargement = !o.telecharger.is_empty();
+    if telechargement {
+        // Seul le téléchargement est noté ; le simple affichage dans l'onglet Visualisation ne l'est pas.
+        let mut tx = state.db.begin().await?;
+        crate::journal::noter(&mut tx, id, crate::journal::Genre::Pdf, "PDF téléchargé").await?;
+        tx.commit().await?;
+    }
+    let disposition = if telechargement { "attachment" } else { "inline" };
     let mut reponse = octets.into_response();
     let entetes = reponse.headers_mut();
     entetes.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/pdf"));

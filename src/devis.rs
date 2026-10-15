@@ -52,6 +52,7 @@ async fn creer_brouillon(db: &PgPool) -> Result<i64, sqlx::Error> {
         .bind(numero)
         .fetch_one(&mut *tx)
         .await?;
+    crate::journal::noter(&mut tx, id, crate::journal::Genre::Creation, "Devis créé").await?;
     tx.commit().await?;
     Ok(id)
 }

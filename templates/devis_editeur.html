@@ -6,8 +6,12 @@
 {% block content %}
 {% include "_devis_entete.html" %}
 
-{% if enregistre %}
-<div role="alert" class="alert alert-success mb-4"><span>Les informations sont enregistrées.</span></div>
+{% if !message_ok.is_empty() %}
+<div role="alert" class="alert alert-success mb-4"><span>{{ message_ok }}</span></div>
+{% endif %}
+
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ message_erreur }}</span></div>
 {% endif %}
 
 {% if !modifiable %}

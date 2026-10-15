@@ -1,4 +1,4 @@
-<div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
   <div class="flex items-center gap-3">
     <h1 class="text-2xl font-bold">Devis N° {{ numero }}</h1>
     <span class="badge {{ classe_statut }} whitespace-nowrap">{{ statut }}</span>
@@ -6,9 +6,64 @@
   <a class="btn btn-ghost" href="/devis">Retour à la liste</a>
 </div>
 
+{% if !barre.resume.is_empty() %}
+<p class="mb-2 text-sm">{{ barre.resume }}</p>
+{% endif %}
+
+{# Les décisions : chacune est enregistrée dans l'historique du devis. #}
+<div class="flex flex-wrap items-start gap-2 mb-4">
+  {% if barre.peut_marquer_envoye %}
+  <form method="post" action="/devis/{{ id }}/statut/envoye">
+    <button class="btn btn-sm btn-outline" type="submit">Marquer comme envoyé</button>
+  </form>
+  {% endif %}
+
+  {% if barre.peut_accepter %}
+  <details class="dropdown">
+    <summary class="btn btn-sm btn-success">Accepter…</summary>
+    <form method="post" action="/devis/{{ id }}/statut/accepter" class="dropdown-content z-10 mt-1 flex w-72 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
+      <label class="form-control">
+        <span class="label-text mb-1">Date d'acceptation</span>
+        <input class="input input-bordered input-sm" type="date" name="date" value="{{ barre.aujourdhui }}" min="{{ barre.date_devis }}" max="{{ barre.aujourdhui }}" required>
+      </label>
+      <button class="btn btn-sm btn-success" type="submit">Confirmer l'acceptation</button>
+    </form>
+  </details>
+  {% endif %}
+
+  {% if barre.peut_refuser %}
+  <details class="dropdown">
+    <summary class="btn btn-sm btn-error btn-outline">Refuser…</summary>
+    <form method="post" action="/devis/{{ id }}/statut/refuser" class="dropdown-content z-10 mt-1 flex w-72 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
+      <label class="form-control">
+        <span class="label-text mb-1">Date du refus</span>
+        <input class="input input-bordered input-sm" type="date" name="date" value="{{ barre.aujourdhui }}" min="{{ barre.date_devis }}" max="{{ barre.aujourdhui }}" required>
+      </label>
+      <label class="form-control">
+        <span class="label-text mb-1">Motif (facultatif)</span>
+        <textarea class="textarea textarea-bordered textarea-sm" rows="2" name="motif" maxlength="500"></textarea>
+      </label>
+      <button class="btn btn-sm btn-error" type="submit">Confirmer le refus</button>
+    </form>
+  </details>
+  {% endif %}
+
+  {% if barre.peut_remettre_en_brouillon %}
+  <form method="post" action="/devis/{{ id }}/statut/brouillon">
+    <button class="btn btn-sm btn-ghost" type="submit">Remettre en brouillon</button>
+  </form>
+  {% endif %}
+
+  {# Pour corriger un devis déjà envoyé ou accepté : on en fait une copie, on ne le modifie pas. #}
+  <form method="post" action="/devis/{{ id }}/dupliquer">
+    <button class="btn btn-sm btn-ghost" type="submit" title="Crée une copie en brouillon avec le prochain numéro">Dupliquer</button>
+  </form>
+</div>
+
 <div role="tablist" class="tabs tabs-bordered mb-4">
   <a role="tab" class="tab{% if onglet == "informations" %} tab-active{% endif %}" href="/devis/{{ id }}">Informations</a>
   <a role="tab" class="tab{% if onglet == "encodage" %} tab-active{% endif %}" href="/devis/{{ id }}/encodage">Encodage</a>
   <a role="tab" class="tab{% if onglet == "totaux" %} tab-active{% endif %}" href="/devis/{{ id }}/totaux">Totaux</a>
   <a role="tab" class="tab{% if onglet == "visualisation" %} tab-active{% endif %}" href="/devis/{{ id }}/apercu">Visualisation</a>
+  <a role="tab" class="tab{% if onglet == "historique" %} tab-active{% endif %}" href="/devis/{{ id }}/historique">Historique</a>
 </div>
