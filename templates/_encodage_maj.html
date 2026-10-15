@@ -1,0 +1,9 @@
+{# Réponse à htmx après la modification d'une ligne : on ne remplace que les totaux et le message. #}
+<div id="encodage-erreur" hx-swap-oob="true">{% if !enc.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ enc.message }}</span></div>{% endif %}</div>
+{% for l in enc.lignes %}
+{% if l.est_poste %}<span id="total-{{ l.id }}" hx-swap-oob="true">{{ l.total }}</span>{% endif %}
+{% if l.est_titre %}<span id="soustotal-{{ l.id }}" hx-swap-oob="true">{{ l.sous_total }}</span>{% endif %}
+{% endfor %}
+<div id="totaux" class="card bg-base-100 shadow" hx-swap-oob="true">
+  <div class="card-body">{% include "_encodage_totaux.html" %}</div>
+</div>

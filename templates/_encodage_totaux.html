@@ -1,0 +1,10 @@
+<div class="flex flex-col items-end gap-1">
+  <div class="flex gap-8"><span>Total HT</span><strong class="w-32 text-right whitespace-nowrap">{{ enc.ht }}</strong></div>
+  {% for t in enc.tva %}
+  <div class="flex gap-8 text-sm opacity-80">
+    <span>TVA {{ t.taux }} (sur {{ t.base }})</span>
+    <span class="w-32 text-right whitespace-nowrap">{{ t.montant }}</span>
+  </div>
+  {% endfor %}
+  <div class="flex gap-8 text-lg"><span>Total TTC</span><strong class="w-32 text-right whitespace-nowrap">{{ enc.ttc }}</strong></div>
+</div>

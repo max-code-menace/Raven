@@ -371,6 +371,7 @@ struct Page {
     numero: String,
     statut: &'static str,
     classe_statut: &'static str,
+    onglet: &'static str,
     /// Seul un brouillon se modifie : un devis envoyé ou accepté est en lecture seule.
     modifiable: bool,
     enregistre: bool,
@@ -394,6 +395,7 @@ fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, en
         numero: format!("{}-{}", d.annee, d.numero),
         statut: libelle,
         classe_statut: classe,
+        onglet: "informations",
         modifiable: d.statut == "brouillon",
         enregistre,
         erreurs,

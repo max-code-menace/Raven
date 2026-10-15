@@ -1,0 +1,75 @@
+<div id="encodage" class="flex flex-col gap-4">
+  <div id="encodage-erreur">{% if !enc.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ enc.message }}</span></div>{% endif %}</div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>Type</th>
+            <th class="w-full">Description</th>
+            <th>Qté</th>
+            <th>Unité</th>
+            <th>Prix U. (€)</th>
+            <th>TVA</th>
+            <th class="text-right">Total</th>
+            {% if enc.modifiable %}<th></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in enc.lignes %}
+          <tr class="align-top{% if l.est_titre %} bg-base-200 font-semibold{% endif %}"
+              {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}" hx-trigger="change" hx-include="this" hx-swap="none"{% endif %}>
+            <td class="whitespace-nowrap">{{ l.numero }}</td>
+            <td class="whitespace-nowrap text-sm opacity-70">{{ l.libelle_genre }}</td>
+            {% if l.est_poste %}
+            <td><textarea class="textarea textarea-bordered textarea-sm w-full min-w-48" rows="1" name="description"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea></td>
+            <td><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"{% if !enc.modifiable %} disabled{% endif %}></td>
+            <td><input class="input input-bordered input-sm w-20" type="text" name="unite" value="{{ l.unite }}"{% if !enc.modifiable %} disabled{% endif %}></td>
+            <td><input class="input input-bordered input-sm w-28 text-right" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"{% if !enc.modifiable %} disabled{% endif %}></td>
+            <td>
+              <select class="select select-bordered select-sm" name="taux_tva_id"{% if !enc.modifiable %} disabled{% endif %}>
+                {% for t in l.taux %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
+              </select>
+            </td>
+            <td class="text-right whitespace-nowrap"><span id="total-{{ l.id }}">{{ l.total }}</span></td>
+            {% else %}
+            <td colspan="5"><textarea class="textarea textarea-bordered textarea-sm w-full" rows="1" name="description"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea></td>
+            <td class="text-right whitespace-nowrap">{% if l.est_titre %}<span id="soustotal-{{ l.id }}">{{ l.sous_total }}</span>{% endif %}</td>
+            {% endif %}
+            {% if enc.modifiable %}
+            <td class="whitespace-nowrap">
+              <button type="button" class="btn btn-ghost btn-xs" title="Monter"{% if l.premiere %} disabled{% endif %}
+                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/monter" hx-target="#encodage" hx-swap="outerHTML">↑</button>
+              <button type="button" class="btn btn-ghost btn-xs" title="Descendre"{% if l.derniere %} disabled{% endif %}
+                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/descendre" hx-target="#encodage" hx-swap="outerHTML">↓</button>
+              <button type="button" class="btn btn-ghost btn-xs text-error" title="Supprimer"
+                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/supprimer" hx-target="#encodage" hx-swap="outerHTML"
+                      hx-confirm="Supprimer cette ligne ?">✕</button>
+            </td>
+            {% endif %}
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="9" class="text-center opacity-70 py-8">Aucune ligne. Ajoute un titre, puis des postes libres.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if enc.modifiable %}
+  <div class="flex flex-wrap gap-2">
+    <button type="button" class="btn btn-outline btn-sm" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "titre"}' hx-target="#encodage" hx-swap="outerHTML">+ Titre</button>
+    <button type="button" class="btn btn-outline btn-sm" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "sous_titre"}' hx-target="#encodage" hx-swap="outerHTML">+ Sous-titre</button>
+    <button type="button" class="btn btn-outline btn-sm" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "texte"}' hx-target="#encodage" hx-swap="outerHTML">+ Texte</button>
+    <button type="button" class="btn btn-primary btn-sm" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "poste_libre"}' hx-target="#encodage" hx-swap="outerHTML">+ Poste libre</button>
+  </div>
+  {% endif %}
+
+  <div id="totaux" class="card bg-base-100 shadow">
+    <div class="card-body">{% include "_encodage_totaux.html" %}</div>
+  </div>
+</div>

@@ -1,7 +1,9 @@
 pub mod commun;
 pub mod db;
+pub mod calcul;
 pub mod devis;
 pub mod devis_editeur;
+pub mod devis_lignes;
 pub mod fiches;
 pub mod societe;
 
@@ -79,6 +81,7 @@ pub fn app(state: AppState) -> Router {
         .route("/sante", get(sante))
         .merge(devis::routes())
         .merge(devis_editeur::routes())
+        .merge(devis_lignes::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)
