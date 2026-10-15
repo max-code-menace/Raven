@@ -1,0 +1,4 @@
+# Typst est une grosse dépendance : compiler tout en même temps sur Windows a déjà échoué
+# (« can't find crate »). Quatre tâches à la fois suffisent et restent fiables.
+[build]
+jobs = 4

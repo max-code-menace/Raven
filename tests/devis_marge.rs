@@ -156,7 +156,7 @@ async fn la_base_n_autorise_un_prix_que_sur_les_types_chiffres(pool: PgPool) {
 // ─── Remarque par ligne ─────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_remarque_s_enregistre_sur_tous_les_types_et_apparait_dans_l_apercu(pool: PgPool) {
+async fn la_remarque_s_enregistre_sur_tous_les_types_et_apparait_dans_le_pdf(pool: PgPool) {
     let d = brouillon(&pool).await;
     let s = site(&pool);
     let titre = ajouter_ligne(&pool, &s, d, "titre").await;
@@ -166,8 +166,8 @@ async fn la_remarque_s_enregistre_sur_tous_les_types_et_apparait_dans_l_apercu(p
 
     let (_, enc) = lire(&s, &format!("/devis/{d}/encodage")).await;
     assert!(enc.contains("value=\"Selon plan A\"") && enc.contains("value=\"Couleur à confirmer\""));
-    let (_, apercu) = lire(&s, &format!("/devis/{d}/apercu")).await;
-    assert!(apercu.contains("Selon plan A") && apercu.contains("Couleur à confirmer"));
+    let pdf = typst(&pool, d).await;
+    assert!(pdf.contains("Selon plan A") && pdf.contains("Couleur à confirmer"));
 
     let (statut, _) = poster(&s, &format!("/devis/{d}/lignes/{titre}"), &format!("remarque={}", "x".repeat(2001))).await;
     assert_eq!(statut, StatusCode::OK);
@@ -335,16 +335,22 @@ async fn les_heures_ne_comptent_que_pour_la_main_d_oeuvre_en_heures(pool: PgPool
 // ─── Aperçu, lecture seule ──────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn l_apercu_du_client_ne_montre_jamais_les_prix_d_achat_ni_la_marge(pool: PgPool) {
+async fn le_pdf_du_client_ne_montre_jamais_les_prix_d_achat_ni_la_marge(pool: PgPool) {
     let d = brouillon(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
     let l = ajouter_ligne(&pool, &s, d, "fourniture").await;
     remplir(&s, d, l, "description=Tuiles&quantite=1&prix_unitaire=100&prix_achat=73,21").await;
     ajouter_ligne(&pool, &s, d, "saut_de_page").await;
-    let (_, apercu) = lire(&s, &format!("/devis/{d}/apercu")).await;
-    assert!(apercu.contains("Tuiles") && apercu.contains("— Saut de page —"));
-    assert!(!apercu.contains("73,21") && !apercu.contains("Marge") && !apercu.contains("Achat"));
+    let pdf = typst(&pool, d).await;
+    assert!(pdf.contains("Tuiles"));
+    // Le saut de page coupe le tableau en deux segments.
+    assert!(pdf.contains("segments: ((") && pdf.matches("(type: ").count() == 1);
+    assert!(!pdf.contains("73,21") && !pdf.contains("marge") && !pdf.contains("achat"));
+    // Et le PDF lui-même se génère.
+    let (statut, octets) = lire_octets(&s, &format!("/devis/{d}/pdf")).await;
+    assert_eq!(statut, StatusCode::OK);
+    assert!(octets.starts_with(b"%PDF-"));
 }
 
 #[sqlx::test]
@@ -365,4 +371,20 @@ async fn la_base_refuse_des_frais_generaux_hors_limites(pool: PgPool) {
         let res = sqlx::query("UPDATE devis SET frais_generaux_centiemes = $1 WHERE id = $2").bind(valeur).bind(d).execute(&pool).await;
         assert!(res.is_err(), "{valeur}");
     }
+}
+
+// ─── Outils pour lire le PDF ────────────────────────────────────────────────
+
+/// Le texte Typst qui sert à fabriquer le PDF du devis : tout ce que le client verra y figure.
+async fn typst(pool: &PgPool, devis: i64) -> String {
+    match ubifacture::devis_pdf::charger_donnees(pool, devis).await {
+        Ok(donnees) => ubifacture::devis_pdf::source_typst(&donnees).0,
+        Err(_) => panic!("devis introuvable"),
+    }
+}
+
+async fn lire_octets(site: &Router, uri: &str) -> (StatusCode, Vec<u8>) {
+    let r = site.clone().oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
+    let statut = r.status();
+    (statut, r.into_body().collect().await.unwrap().to_bytes().to_vec())
 }

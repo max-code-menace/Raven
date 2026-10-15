@@ -5,8 +5,10 @@ pub mod devis;
 pub mod devis_apercu;
 pub mod devis_editeur;
 pub mod devis_lignes;
+pub mod devis_pdf;
 pub mod devis_totaux;
 pub mod fiches;
+pub mod pdf;
 pub mod societe;
 
 use askama::Template;
@@ -35,6 +37,12 @@ pub struct Erreur {
 impl Erreur {
     pub fn introuvable() -> Self {
         Erreur { code: StatusCode::NOT_FOUND, message: "Page introuvable." }
+    }
+
+    /// Le PDF n'a pas pu être fabriqué. Le détail technique reste dans la console du serveur.
+    pub fn pdf(detail: &str) -> Self {
+        eprintln!("Erreur PDF : {detail}");
+        Erreur { code: StatusCode::INTERNAL_SERVER_ERROR, message: "Le PDF n'a pas pu être généré." }
     }
 
     /// L'action demandée n'est plus possible dans l'état actuel (exemple : modifier un devis envoyé).
@@ -86,6 +94,7 @@ pub fn app(state: AppState) -> Router {
         .merge(devis_lignes::routes())
         .merge(devis_totaux::routes())
         .merge(devis_apercu::routes())
+        .merge(devis_pdf::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

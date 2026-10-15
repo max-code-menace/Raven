@@ -5,133 +5,24 @@
 {% block content %}
 {% include "_devis_entete.html" %}
 
-<p class="text-sm opacity-70 mb-2">Aperçu du devis. L'export PDF arrive à l'étape suivante.</p>
-
-{% if societe.is_none() %}
-<div role="alert" class="alert alert-warning mb-4">
-  <span>Les coordonnées de ta société ne sont pas encore renseignées : elles apparaîtront ici quand tu les auras remplies (menu Société).</span>
+{% if !a_completer.is_empty() %}
+<div role="alert" class="alert alert-warning mb-4 items-start">
+  <div>
+    <div class="font-semibold">À compléter avant d'envoyer le devis :</div>
+    <ul class="list-disc pl-5">
+      {% for m in a_completer %}<li>{{ m }}</li>{% endfor %}
+    </ul>
+  </div>
 </div>
 {% endif %}
 
-<article class="mx-auto max-w-4xl bg-white text-black shadow p-8 flex flex-col gap-6">
+<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+  <p class="text-sm opacity-70">C'est le PDF exact que le client recevra, conditions générales comprises.</p>
+  <div class="flex gap-2">
+    <a class="btn btn-outline btn-sm" href="/devis/{{ id }}/pdf" target="_blank" rel="noopener">Ouvrir dans un onglet</a>
+    <a class="btn btn-primary btn-sm" href="/devis/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
+  </div>
+</div>
 
-  <header class="flex flex-wrap justify-between gap-6">
-    <div>
-      {% if let Some(s) = societe %}
-        {% if let Some(version) = s.logo %}
-        <img class="max-h-20 mb-2" src="/parametres/societe/logo?v={{ version }}" alt="Logo">
-        {% endif %}
-        <div class="font-bold">{{ s.bloc.nom }}</div>
-        {% for l in s.bloc.adresse %}<div>{{ l }}</div>{% endfor %}
-        {% if !s.telephone.is_empty() %}<div>{{ s.telephone }}</div>{% endif %}
-        {% if !s.email.is_empty() %}<div>{{ s.email }}</div>{% endif %}
-        {% if !s.bloc.tva.is_empty() %}<div>TVA {{ s.bloc.tva }}</div>{% endif %}
-      {% endif %}
-    </div>
-    <div class="min-w-56">
-      {% if let Some(c) = client %}
-        <div class="font-bold">{{ c.nom }}</div>
-        {% for l in c.adresse %}<div>{{ l }}</div>{% endfor %}
-        {% if !c.tva.is_empty() %}<div>TVA {{ c.tva }}</div>{% endif %}
-      {% else %}
-        <div class="opacity-50 italic">Client à choisir (onglet Informations)</div>
-      {% endif %}
-      {% if let Some(f) = facturation %}
-        <div class="mt-3 text-sm opacity-70">Facturé à</div>
-        <div class="font-bold">{{ f.nom }}</div>
-        {% for l in f.adresse %}<div>{{ l }}</div>{% endfor %}
-        {% if !f.tva.is_empty() %}<div>TVA {{ f.tva }}</div>{% endif %}
-      {% endif %}
-    </div>
-  </header>
-
-  <section>
-    <h2 class="text-2xl font-bold">DEVIS N° {{ numero }}</h2>
-    <dl class="mt-2 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-      <dt class="opacity-70">Référence</dt><dd>{{ reference }}</dd>
-      <dt class="opacity-70">Date</dt><dd>{{ date }}</dd>
-      <dt class="opacity-70">Responsable</dt><dd>{{ responsable }}</dd>
-      {% if !chantier.is_empty() %}
-      <dt class="opacity-70">Adresse du chantier</dt><dd>{% for l in chantier %}{% if !loop.first %}, {% endif %}{{ l }}{% endfor %}</dd>
-      {% endif %}
-    </dl>
-  </section>
-
-  <section class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="border-b-2 border-black text-left">
-          <th class="py-1 pr-2">N°</th>
-          <th class="py-1 pr-2 w-full">Description</th>
-          <th class="py-1 pr-2 text-right">Qté</th>
-          <th class="py-1 pr-2">Unité</th>
-          <th class="py-1 pr-2 text-right">P.U.</th>
-          <th class="py-1 pr-2 text-right">TVA</th>
-          <th class="py-1 text-right">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for l in enc.lignes %}
-        {% if l.est_titre %}
-        <tr class="bg-gray-100 font-bold">
-          <td class="py-1 pr-2 align-top whitespace-nowrap">{{ l.numero }}</td>
-          <td class="py-1 pr-2 whitespace-pre-line" colspan="5">{{ l.description }}{% if !l.remarque.is_empty() %}<div class="text-xs font-normal opacity-70">{{ l.remarque }}</div>{% endif %}</td>
-          <td class="py-1 text-right whitespace-nowrap">{{ l.sous_total }}</td>
-        </tr>
-        {% else if l.est_saut %}
-        {# Visible seulement dans l'aperçu : le PDF passera à la page suivante à cet endroit. #}
-        <tr><td colspan="7" class="py-2 text-center text-xs italic opacity-50 border-y border-dashed border-gray-300">— Saut de page —</td></tr>
-        {% else if l.est_chiffre %}
-        <tr class="border-b border-gray-200">
-          <td class="py-1 pr-2 align-top whitespace-nowrap">{{ l.numero }}</td>
-          <td class="py-1 pr-2 align-top whitespace-pre-line">{{ l.description }}{% if !l.remarque.is_empty() %}<div class="text-xs opacity-70">{{ l.remarque }}</div>{% endif %}</td>
-          <td class="py-1 pr-2 align-top text-right whitespace-nowrap">{{ l.quantite }}</td>
-          <td class="py-1 pr-2 align-top">{{ l.unite }}</td>
-          <td class="py-1 pr-2 align-top text-right whitespace-nowrap">{{ l.prix_affiche }}</td>
-          <td class="py-1 pr-2 align-top text-right whitespace-nowrap">{{ l.taux_texte }}</td>
-          <td class="py-1 align-top text-right whitespace-nowrap">{{ l.total }}</td>
-        </tr>
-        {% else %}
-        <tr>
-          <td class="py-1 pr-2 align-top whitespace-nowrap">{{ l.numero }}</td>
-          <td class="py-1 pr-2 whitespace-pre-line{% if l.genre == "sous_titre" %} font-semibold{% else %} italic{% endif %}" colspan="6">{{ l.description }}{% if !l.remarque.is_empty() %}<div class="text-xs not-italic font-normal opacity-70">{{ l.remarque }}</div>{% endif %}</td>
-        </tr>
-        {% endif %}
-        {% else %}
-        <tr><td colspan="7" class="py-6 text-center opacity-50 italic">Aucune ligne pour l'instant (onglet Encodage).</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
-
-  <section class="flex flex-wrap justify-between gap-6">
-    <div class="text-sm">
-      {% if !conditions.is_empty() %}<p><span class="opacity-70">Conditions de paiement :</span> {{ conditions }}</p>{% endif %}
-    </div>
-    <div class="flex flex-col items-end gap-1 text-sm">
-      {% if enc.totaux.a_ajustement %}
-      <div class="flex gap-8"><span>Sous-total HT</span><span class="w-28 text-right whitespace-nowrap">{{ enc.totaux.sous_total }}</span></div>
-      <div class="flex gap-8"><span>{{ enc.totaux.libelle_ajustement }}</span><span class="w-28 text-right whitespace-nowrap">{{ enc.totaux.ajustement }}</span></div>
-      {% endif %}
-      <div class="flex gap-8"><span>Total HT</span><span class="w-28 text-right whitespace-nowrap">{{ enc.totaux.ht }}</span></div>
-      {% for t in enc.totaux.tva %}
-      <div class="flex gap-8"><span>TVA {{ t.taux }} (sur {{ t.base }})</span><span class="w-28 text-right whitespace-nowrap">{{ t.montant }}</span></div>
-      {% endfor %}
-      <div class="flex gap-8 border-t-2 border-black pt-1 text-lg font-bold"><span>Total TTC à payer</span><span class="w-28 text-right whitespace-nowrap">{{ enc.totaux.ttc }}</span></div>
-    </div>
-  </section>
-
-  {% if !remarque_1.is_empty() || !remarque_2.is_empty() %}
-  <section class="text-sm flex flex-col gap-2">
-    {% if !remarque_1.is_empty() %}<p class="whitespace-pre-line">{{ remarque_1 }}</p>{% endif %}
-    {% if !remarque_2.is_empty() %}<p class="whitespace-pre-line">{{ remarque_2 }}</p>{% endif %}
-  </section>
-  {% endif %}
-
-  {% if let Some(s) = societe %}
-  <footer class="border-t border-gray-300 pt-2 text-xs opacity-70">
-    {{ s.bloc.nom }}{% if !s.bloc.tva.is_empty() %} · TVA {{ s.bloc.tva }}{% endif %}{% if !s.iban.is_empty() %} · IBAN {{ s.iban }}{% endif %}
-  </footer>
-  {% endif %}
-</article>
+<iframe class="w-full rounded-box bg-white shadow" style="height: 80vh" src="/devis/{{ id }}/pdf" title="PDF du devis"></iframe>
 {% endblock %}
