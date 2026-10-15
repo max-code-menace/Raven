@@ -1,10 +1,14 @@
 <div class="flex flex-col items-end gap-1">
-  <div class="flex gap-8"><span>Total HT</span><strong class="w-32 text-right whitespace-nowrap">{{ enc.ht }}</strong></div>
-  {% for t in enc.tva %}
+  {% if enc.totaux.a_ajustement %}
+  <div class="flex gap-8"><span>Sous-total HT</span><span class="w-32 text-right whitespace-nowrap">{{ enc.totaux.sous_total }}</span></div>
+  <div class="flex gap-8"><span>{{ enc.totaux.libelle_ajustement }}</span><span class="w-32 text-right whitespace-nowrap">{{ enc.totaux.ajustement }}</span></div>
+  {% endif %}
+  <div class="flex gap-8"><span>Total HT</span><strong class="w-32 text-right whitespace-nowrap">{{ enc.totaux.ht }}</strong></div>
+  {% for t in enc.totaux.tva %}
   <div class="flex gap-8 text-sm opacity-80">
     <span>TVA {{ t.taux }} (sur {{ t.base }})</span>
     <span class="w-32 text-right whitespace-nowrap">{{ t.montant }}</span>
   </div>
   {% endfor %}
-  <div class="flex gap-8 text-lg"><span>Total TTC</span><strong class="w-32 text-right whitespace-nowrap">{{ enc.ttc }}</strong></div>
+  <div class="flex gap-8 text-lg"><span>Total TTC</span><strong class="w-32 text-right whitespace-nowrap">{{ enc.totaux.ttc }}</strong></div>
 </div>

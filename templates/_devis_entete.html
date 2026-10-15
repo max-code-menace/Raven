@@ -6,10 +6,9 @@
   <a class="btn btn-ghost" href="/devis">Retour à la liste</a>
 </div>
 
-{# Totaux et Visualisation arrivent aux étapes suivantes. #}
 <div role="tablist" class="tabs tabs-bordered mb-4">
   <a role="tab" class="tab{% if onglet == "informations" %} tab-active{% endif %}" href="/devis/{{ id }}">Informations</a>
   <a role="tab" class="tab{% if onglet == "encodage" %} tab-active{% endif %}" href="/devis/{{ id }}/encodage">Encodage</a>
-  <span role="tab" class="tab tab-disabled" title="Bientôt">Totaux</span>
-  <span role="tab" class="tab tab-disabled" title="Bientôt">Visualisation</span>
+  <a role="tab" class="tab{% if onglet == "totaux" %} tab-active{% endif %}" href="/devis/{{ id }}/totaux">Totaux</a>
+  <a role="tab" class="tab{% if onglet == "visualisation" %} tab-active{% endif %}" href="/devis/{{ id }}/apercu">Visualisation</a>
 </div>

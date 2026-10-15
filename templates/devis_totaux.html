@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Devis N° {{ numero }} · Totaux · Ubifacture{% endblock %}
+
+{% block content %}
+{% include "_devis_entete.html" %}
+
+{% if !modifiable %}
+<div role="alert" class="alert alert-info mb-4">
+  <span>Ce devis n'est plus un brouillon : il n'est plus modifiable.</span>
+</div>
+{% endif %}
+
+<div class="flex flex-col gap-6">
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Totaux</h2>
+      <table class="table">
+        <tbody>
+          <tr><td>Sous-total HT</td><td class="text-right whitespace-nowrap">{{ totaux.sous_total }}</td></tr>
+          {% if totaux.a_ajustement %}
+          <tr><td>{{ totaux.libelle_ajustement }}</td><td class="text-right whitespace-nowrap">{{ totaux.ajustement }}</td></tr>
+          {% endif %}
+          <tr class="font-semibold"><td>Total HT</td><td class="text-right whitespace-nowrap">{{ totaux.ht }}</td></tr>
+        </tbody>
+      </table>
+
+      <table class="table">
+        <thead>
+          <tr><th>TVA</th><th class="text-right">Base HT</th><th class="text-right">Montant TVA</th></tr>
+        </thead>
+        <tbody>
+          {% for t in totaux.tva %}
+          <tr><td>{{ t.taux }}</td><td class="text-right whitespace-nowrap">{{ t.base }}</td><td class="text-right whitespace-nowrap">{{ t.montant }}</td></tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center opacity-70">Aucune ligne chiffrée pour l'instant.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="flex justify-between text-xl font-bold mt-2">
+        <span>Total TTC à payer</span>
+        <span class="whitespace-nowrap">{{ totaux.ttc }}</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">Ajustement</h2>
+      <p class="text-sm opacity-70">Une remise ou une majoration sur le total HT. Elle est répartie entre les taux de TVA au prorata de leurs bases.</p>
+
+      {% if !erreur.is_empty() %}
+      <div role="alert" class="alert alert-error"><span>{{ erreur }}</span></div>
+      {% endif %}
+
+      <form method="post" action="/devis/{{ id }}/ajustement">
+        <fieldset class="flex flex-col gap-4"{% if !modifiable %} disabled{% endif %}>
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="form-control w-full md:col-span-2">
+              <span class="label-text mb-1">Libellé (affiché sur le devis)</span>
+              <input class="input input-bordered w-full" type="text" name="libelle" value="{{ form.libelle }}" placeholder="Remise commerciale">
+            </label>
+            <label class="form-control w-full">
+              <span class="label-text mb-1">Sens</span>
+              <select class="select select-bordered w-full" name="sens">
+                <option value="remise"{% if form.sens == "remise" %} selected{% endif %}>Remise (en moins)</option>
+                <option value="majoration"{% if form.sens == "majoration" %} selected{% endif %}>Majoration (en plus)</option>
+              </select>
+            </label>
+            <label class="form-control w-full">
+              <span class="label-text mb-1">Type</span>
+              <select class="select select-bordered w-full" name="mode">
+                <option value="pourcentage"{% if form.mode == "pourcentage" %} selected{% endif %}>Pourcentage (%)</option>
+                <option value="montant"{% if form.mode == "montant" %} selected{% endif %}>Montant HT (€)</option>
+              </select>
+            </label>
+            <label class="form-control w-full">
+              <span class="label-text mb-1">Valeur</span>
+              <input class="input input-bordered w-full" type="text" inputmode="decimal" name="valeur" value="{{ form.valeur }}">
+            </label>
+          </div>
+          {% if modifiable %}
+          <div class="flex justify-end gap-2">
+            {% if a_un_ajustement %}
+            <button class="btn btn-ghost" type="submit" formaction="/devis/{{ id }}/ajustement/retirer" formnovalidate>Retirer l'ajustement</button>
+            {% endif %}
+            <button class="btn btn-primary" type="submit">Enregistrer l'ajustement</button>
+          </div>
+          {% endif %}
+        </fieldset>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

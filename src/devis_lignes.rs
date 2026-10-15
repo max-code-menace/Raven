@@ -12,7 +12,7 @@ use axum_extra::extract::Form;
 use serde::Deserialize;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 
-use crate::calcul::{self, Totaux};
+use crate::calcul::{self, Ajustement, Totaux};
 use crate::commun::{Choix, format_euros};
 use crate::devis::statut;
 use crate::fiches::{Genre, Options};
@@ -26,22 +26,27 @@ const MESSAGE_NON_MODIFIABLE: &str = "Ce devis n'est plus un brouillon : il ne p
 
 // ─── Ce que l'écran affiche ─────────────────────────────────────────────────
 
-struct Entete {
-    numero: String,
-    statut: &'static str,
-    classe_statut: &'static str,
-    brouillon: bool,
-    taux_par_defaut: Option<i64>,
+/// Ce que les onglets du devis ont en commun : numéro, statut, TVA par défaut et ajustement.
+pub(crate) struct Entete {
+    pub(crate) numero: String,
+    pub(crate) statut: &'static str,
+    pub(crate) classe_statut: &'static str,
+    pub(crate) brouillon: bool,
+    pub(crate) taux_par_defaut: Option<i64>,
+    pub(crate) ajustement: Ajustement,
+    pub(crate) ajustement_libelle: String,
 }
 
-async fn charger_entete(db: &PgPool, id: i64) -> Result<Entete, Erreur> {
-    let ligne: Option<(i64, i32, String, Option<i64>)> = sqlx::query_as(
-        "SELECT numero, extract(year FROM date_devis)::int, statut::text, taux_tva_id FROM devis WHERE id = $1",
+pub(crate) async fn charger_entete(db: &PgPool, id: i64) -> Result<Entete, Erreur> {
+    let ligne: Option<(i64, i32, String, Option<i64>, String, String, i64)> = sqlx::query_as(
+        "SELECT numero, extract(year FROM date_devis)::int, statut::text, taux_tva_id,
+                ajustement_libelle, ajustement_mode, ajustement_valeur
+         FROM devis WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(db)
     .await?;
-    let (numero, annee, statut_devis, taux_par_defaut) = ligne.ok_or_else(Erreur::introuvable)?;
+    let (numero, annee, statut_devis, taux_par_defaut, ajustement_libelle, mode, valeur) = ligne.ok_or_else(Erreur::introuvable)?;
     let (libelle, classe) = statut(&statut_devis);
     Ok(Entete {
         numero: format!("{annee}-{numero}"),
@@ -49,6 +54,8 @@ async fn charger_entete(db: &PgPool, id: i64) -> Result<Entete, Erreur> {
         classe_statut: classe,
         brouillon: statut_devis == "brouillon",
         taux_par_defaut,
+        ajustement: Ajustement::depuis_base(&mode, valeur),
+        ajustement_libelle,
     })
 }
 
@@ -92,10 +99,10 @@ async fn charger_lignes<'e>(db: impl sqlx::PgExecutor<'e>, devis_id: i64) -> Res
 
 /// Totaux du devis à partir de ses lignes. Une ligne sans taux de TVA n'est pas comptée
 /// (le serveur ne laisse pas créer de poste libre sans taux).
-fn totaux_des_lignes(lignes: &[LigneBase]) -> Totaux {
+fn totaux_des_lignes(lignes: &[LigneBase], ajustement: Ajustement) -> Totaux {
     let comptees: Vec<(i64, i32)> =
         lignes.iter().filter(|l| l.est_poste()).filter_map(|l| Some((l.total_cents(), l.taux_centiemes?))).collect();
-    calcul::totaux(&comptees)
+    calcul::totaux(&comptees, ajustement)
 }
 
 pub struct LigneVue {
@@ -110,6 +117,10 @@ pub struct LigneVue {
     pub unite: String,
     pub prix_unitaire: String,
     pub taux: Vec<Choix>,
+    /// Taux de TVA de la ligne, pour l'affichage en lecture (« 6 % »).
+    pub taux_texte: String,
+    /// Prix unitaire pour l'affichage en lecture (« 50,00 € »).
+    pub prix_affiche: String,
     pub total: String,
     pub sous_total: String,
     pub premiere: bool,
@@ -122,13 +133,44 @@ pub struct TvaVue {
     pub montant: String,
 }
 
+/// Les totaux du devis, prêts à afficher.
+pub struct TotauxVue {
+    pub sous_total_cents: i64,
+    pub sous_total: String,
+    pub a_ajustement: bool,
+    pub libelle_ajustement: String,
+    pub ajustement: String,
+    pub ht: String,
+    pub tva: Vec<TvaVue>,
+    pub ttc: String,
+}
+
+pub(crate) fn vue_totaux(t: &Totaux, libelle_ajustement: &str) -> TotauxVue {
+    TotauxVue {
+        sous_total_cents: t.sous_total_cents,
+        sous_total: format_euros(t.sous_total_cents),
+        a_ajustement: t.ajustement_cents != 0,
+        libelle_ajustement: if libelle_ajustement.is_empty() { "Ajustement".to_string() } else { libelle_ajustement.to_string() },
+        ajustement: format_euros(t.ajustement_cents),
+        ht: format_euros(t.ht_cents),
+        tva: t
+            .tva
+            .iter()
+            .map(|v| TvaVue {
+                taux: calcul::taux_en_texte(v.taux_centiemes),
+                base: format_euros(v.base_cents),
+                montant: format_euros(v.tva_cents),
+            })
+            .collect(),
+        ttc: format_euros(t.ttc_cents),
+    }
+}
+
 pub struct Encodage {
     pub id: i64,
     pub modifiable: bool,
     pub lignes: Vec<LigneVue>,
-    pub ht: String,
-    pub tva: Vec<TvaVue>,
-    pub ttc: String,
+    pub totaux: TotauxVue,
     /// Message affiché au-dessus du tableau (erreur de saisie, par exemple).
     pub message: String,
 }
@@ -137,7 +179,14 @@ fn genre_connu(genre: &str) -> Option<(&'static str, &'static str)> {
     GENRES.iter().find(|(v, _)| *v == genre).copied()
 }
 
-fn construire_encodage(id: i64, modifiable: bool, lignes: &[LigneBase], taux: &[(i64, String)], message: String) -> Encodage {
+fn construire_encodage(
+    id: i64,
+    modifiable: bool,
+    lignes: &[LigneBase],
+    taux: &[(i64, String)],
+    entete: &Entete,
+    message: String,
+) -> Encodage {
     // Numérotation : un titre ouvre un lot (1.0, 2.0…), les lignes suivantes en font partie (1.1, 1.2…).
     // Le sous-total d'un titre est la somme des postes jusqu'au titre suivant.
     let mut vues = Vec::with_capacity(lignes.len());
@@ -180,6 +229,8 @@ fn construire_encodage(id: i64, modifiable: bool, lignes: &[LigneBase], taux: &[
                     choisi: Some(*tid) == l.taux_tva_id,
                 })
                 .collect(),
+            taux_texte: l.taux_centiemes.map(calcul::taux_en_texte).unwrap_or_default(),
+            prix_affiche: l.prix_unitaire_e5.map(calcul::prix_pour_affichage).unwrap_or_default(),
             total: if l.est_poste() { format_euros(l.total_cents()) } else { String::new() },
             sous_total: String::new(),
             premiere: i == 0,
@@ -190,30 +241,14 @@ fn construire_encodage(id: i64, modifiable: bool, lignes: &[LigneBase], taux: &[
         vues[i].sous_total = format_euros(somme);
     }
 
-    let t = totaux_des_lignes(lignes);
-    Encodage {
-        id,
-        modifiable,
-        lignes: vues,
-        ht: format_euros(t.ht_cents),
-        tva: t
-            .tva
-            .iter()
-            .map(|v| TvaVue {
-                taux: calcul::taux_en_texte(v.taux_centiemes),
-                base: format_euros(v.base_cents),
-                montant: format_euros(v.tva_cents),
-            })
-            .collect(),
-        ttc: format_euros(t.ttc_cents),
-        message,
-    }
+    let t = totaux_des_lignes(lignes, entete.ajustement);
+    Encodage { id, modifiable, lignes: vues, totaux: vue_totaux(&t, &entete.ajustement_libelle), message }
 }
 
-async fn charger_encodage(db: &PgPool, id: i64, entete: &Entete, message: String) -> Result<Encodage, Erreur> {
+pub(crate) async fn charger_encodage(db: &PgPool, id: i64, entete: &Entete, message: String) -> Result<Encodage, Erreur> {
     let lignes = charger_lignes(db, id).await?;
     let options = Options::charger(db, Genre::Entreprise).await?;
-    Ok(construire_encodage(id, entete.brouillon, &lignes, &options.taux_tva, message))
+    Ok(construire_encodage(id, entete.brouillon, &lignes, &options.taux_tva, entete, message))
 }
 
 // ─── Templates ──────────────────────────────────────────────────────────────
@@ -251,9 +286,13 @@ fn exiger_brouillon(entete: &Entete) -> Result<(), Erreur> {
 }
 
 /// Recalcule et enregistre les totaux du devis dans la même transaction que le changement.
-async fn recalculer(tx: &mut Transaction<'_, Postgres>, devis_id: i64) -> Result<(), sqlx::Error> {
+pub(crate) async fn recalculer(tx: &mut Transaction<'_, Postgres>, devis_id: i64) -> Result<(), sqlx::Error> {
     let lignes = charger_lignes(&mut **tx, devis_id).await?;
-    let t = totaux_des_lignes(&lignes);
+    let (mode, valeur): (String, i64) = sqlx::query_as("SELECT ajustement_mode, ajustement_valeur FROM devis WHERE id = $1")
+        .bind(devis_id)
+        .fetch_one(&mut **tx)
+        .await?;
+    let t = totaux_des_lignes(&lignes, Ajustement::depuis_base(&mode, valeur));
     sqlx::query("UPDATE devis SET montant_ht_cents = $1, montant_ttc_cents = $2, updated_at = now() WHERE id = $3")
         .bind(t.ht_cents)
         .bind(t.ttc_cents)
