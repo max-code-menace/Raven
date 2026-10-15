@@ -14,7 +14,7 @@ use serde::Deserialize;
 use sqlx::{FromRow, PgPool, Postgres, postgres::PgArguments, query::Query as SqlQuery};
 
 use crate::{AppState, Erreur};
-use crate::commun::{Choix, PAYS, choix_fixes, email_valide, libelle, vide_en_none};
+use crate::commun::{Choix, PAYS, choix_fixes, echapper_like, email_valide, libelle, vide_en_none};
 
 const PAR_PAGE: i64 = 20;
 
@@ -98,11 +98,6 @@ pub fn euros_vers_centimes(texte: &str) -> Option<i64> {
 
 fn centimes_vers_texte(centimes: i64) -> String {
     format!("{},{:02}", centimes / 100, centimes % 100)
-}
-
-/// Les caractères % et _ sont des jokers dans une recherche SQL : on les neutralise.
-fn echapper_like(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
 fn nombre(s: &str) -> Option<i64> {

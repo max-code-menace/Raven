@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Devis · Ubifacture{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+  <h1 class="text-2xl font-bold">Devis</h1>
+  <form method="post" action="/devis">
+    <button class="btn btn-primary" type="submit">Nouveau</button>
+  </form>
+</div>
+
+<form class="flex flex-wrap items-end gap-2 mb-4"
+      hx-get="/devis"
+      hx-target="#liste"
+      hx-push-url="true"
+      hx-trigger="input from:find input[type=search] delay:300ms, change, submit">
+  <input class="input input-bordered w-72" type="search" name="q" value="{{ liste.q }}"
+         placeholder="Rechercher (n°, référence, client)" autocomplete="off">
+
+  <details class="dropdown">
+    <summary class="btn btn-outline">Statut</summary>
+    <div class="dropdown-content z-10 mt-1 w-56 rounded-box bg-base-100 p-3 shadow flex flex-col gap-2">
+      {% for s in liste.statuts %}
+      <label class="flex items-center gap-2">
+        <input type="checkbox" class="checkbox checkbox-sm" name="statut" value="{{ s.valeur }}"{% if s.choisi %} checked{% endif %}>
+        <span>{{ s.libelle }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </details>
+
+  <label class="flex items-center gap-2">
+    <span class="text-sm">Du</span>
+    <input class="input input-bordered" type="date" name="du" value="{{ liste.du }}">
+  </label>
+  <label class="flex items-center gap-2">
+    <span class="text-sm">au</span>
+    <input class="input input-bordered" type="date" name="au" value="{{ liste.au }}">
+  </label>
+</form>
+
+<div id="liste" class="card bg-base-100 shadow">
+  {% include "_devis_tableau.html" %}
+</div>
+{% endblock %}

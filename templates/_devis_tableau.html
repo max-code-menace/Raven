@@ -1,0 +1,62 @@
+<div class="overflow-x-auto">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>N°</th>
+        <th>Date</th>
+        <th>Client</th>
+        <th>Référence</th>
+        <th class="text-right">Montant HT</th>
+        <th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in liste.lignes %}
+      <tr class="hover">
+        <td class="font-medium whitespace-nowrap">{{ l.numero }}</td>
+        <td class="whitespace-nowrap">{{ l.date }}</td>
+        <td>{{ l.client }}</td>
+        <td>{{ l.reference }}</td>
+        <td class="text-right whitespace-nowrap">{{ l.montant_ht }}</td>
+        <td>
+          <div class="flex flex-col items-start">
+            <span class="badge {{ l.classe_statut }} whitespace-nowrap">{{ l.statut }}</span>
+            {% if !l.date_statut.is_empty() %}<span class="text-xs opacity-70">{{ l.date_statut }}</span>{% endif %}
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" class="text-center opacity-70 py-8">Aucun devis trouvé.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="flex flex-wrap items-center justify-between gap-4 p-4 text-sm">
+  <span>{{ liste.total }} devis</span>
+
+  {% if liste.pages > 1 %}
+  <div class="join">
+    {% if liste.page > 1 %}
+    <a class="btn btn-sm join-item"
+       href="/devis?{{ liste.requete }}&page={{ liste.page - 1 }}"
+       hx-get="/devis?{{ liste.requete }}&page={{ liste.page - 1 }}"
+       hx-target="#liste" hx-push-url="true">«</a>
+    {% endif %}
+    <span class="btn btn-sm join-item no-animation">Page {{ liste.page }} / {{ liste.pages }}</span>
+    {% if liste.page < liste.pages %}
+    <a class="btn btn-sm join-item"
+       href="/devis?{{ liste.requete }}&page={{ liste.page + 1 }}"
+       hx-get="/devis?{{ liste.requete }}&page={{ liste.page + 1 }}"
+       hx-target="#liste" hx-push-url="true">»</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="flex gap-6">
+    <span>Total HT <strong>{{ liste.total_ht }}</strong></span>
+    <span>Total TTC <strong>{{ liste.total_ttc }}</strong></span>
+  </div>
+</div>
