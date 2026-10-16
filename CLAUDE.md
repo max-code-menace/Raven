@@ -104,7 +104,15 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés.
   - Écarts planches / application signalés à Mahx et laissés comme l'application : pas de statut « à envoyer » manuel ; accepter ne demande que la date ; Informations du devis enregistrées par un bouton (pas en direct) ; responsable en texte libre, gestionnaire = contact ; acompte créé depuis le chantier ; numéros de ligne automatiques et unité libre ; facture sur une page ; « Factures clients » montre aussi les notes de crédit ; montants HT (pas TVAC) sur le chantier ; avancement sans responsable / conditions / période ; fenêtres remplacées par des panneaux `<details>` ; titre « Chantier » au lieu de « Gestion de chantier ».
   - Petits changements d'affichage côté serveur : statuts aux couleurs des planches (`s-…`), titre et référence dans l'en-tête du devis (`Barre`), pastilles de filtre de la liste des devis, champs d'affichage de la liste des factures, libellé court du taux de TVA dans les menus des lignes (« 6 % », « 0 % autoliq. »).
   - Vérification à l'œil sans toucher à la vraie base : `cargo test --test vitrine -- --ignored --nocapture` remplit une base temporaire avec les données fictives des planches et sert l'application sur http://127.0.0.1:3002 (vérifié en 1366 px et en 1920 px). 276 tests.
-- [ ] Étape 8 : paiements et retards, export pour le comptable, e-mails.
+- [ ] Étape 8 : paiements et retards, e-mails, rappels de paiement, export pour le comptable. Découpée en :
+  - [x] 8-1 : migration `0014_paiements.sql` (tables `methodes_paiement` (Virement, Bancontact, Carte de crédit, Chèque, Espèces, Bancaire, comme dans Vertuoza), `paiements`, `facture_evenements` ; vue `factures_etats`). `src/paiements.rs`. Sur la fiche d'une facture validée : bouton **Ajouter le paiement** (panneau : complet ou partiel, date, montant TTC, méthode, remarque), blocs **Montants** (TTC, crédité, payé, **reste à recevoir**) et **Paiements** (liste, retirer un paiement saisi par erreur), **Historique** (validation, envoi, paiements). Un paiement ne dépasse jamais le reste à recevoir ; pas de paiement dans le futur, ni sur un brouillon ou une note de crédit (refusé aussi par la base). Le statut affiché est **calculé** à chaque lecture par la vue `factures_etats` : Brouillon, À envoyer, Envoyée, **Partiellement payée**, **En retard** (échue et pas soldée, avec le nombre de jours), **Payée**, Créditée (soldée par notes de crédit). Liste des factures : statut avec détail dessous (date du paiement, reste, retard), filtre par ces statuts, pied « Montant à recevoir TTC ». 286 tests.
+
+### Choix faits par Claude à l'étape 8 (à valider par Mahx et le comptable)
+- **Statut de paiement calculé, jamais enregistré** : il dépend de la date du jour (retard). Une facture « En retard » le reste tant qu'elle n'est pas soldée, même payée en partie (le détail montre le reste).
+- **Reste à recevoir** = TTC − paiements − notes de crédit validées. Une facture soldée uniquement par des notes de crédit est « Créditée ».
+- Un paiement saisi par erreur se **retire** (noté dans l'historique) ; il ne se modifie pas.
+- Méthode proposée par défaut : Virement.
+
 - [ ] Étape 9 : page client en ligne, suivi de chantier complet, bibliothèque de prix, statistiques.
 - [ ] Phases 2 et 3.
 

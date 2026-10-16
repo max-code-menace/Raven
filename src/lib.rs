@@ -20,6 +20,7 @@ pub mod factures_chantier;
 pub mod facture_pdf;
 pub mod fiches;
 pub mod journal;
+pub mod paiements;
 pub mod pdf;
 pub mod societe;
 
@@ -116,6 +117,7 @@ pub fn app(state: AppState) -> Router {
         .merge(factures::routes())
         .merge(factures_chantier::routes())
         .merge(facture_pdf::routes())
+        .merge(paiements::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

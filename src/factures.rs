@@ -24,6 +24,7 @@ use crate::commun::{Choix, echapper_like, encoder_url, format_euros};
 use crate::devis_editeur::{Personne, Referentiel};
 use crate::facture_calcul;
 use crate::fiches::choix_base;
+use crate::paiements::{self, Solde};
 use crate::{AppState, Erreur};
 
 const PAR_PAGE: i64 = 20;
@@ -41,16 +42,16 @@ pub(crate) const GENRES: [(&str, &str); 5] = [
     ("note_credit", "Note de crédit"),
 ];
 
-/// Valeur en base, libellé, couleur du badge.
-pub(crate) const STATUTS: [(&str, &str, &str); 3] =
-    [("brouillon", "Brouillon", "s-brouillon"), ("a_envoyer", "À envoyer", "s-a-envoyer"), ("envoyee", "Envoyée", "s-envoye")];
+/// Valeur, libellé, couleur du badge : les statuts d'envoi (en base) et ceux du paiement (calculés, étape 8-1).
+pub(crate) const STATUTS: [(&str, &str, &str); 7] = paiements::ETATS;
 
 pub(crate) fn libelle_genre(genre: &str) -> &'static str {
     GENRES.iter().find(|(v, _)| *v == genre).map(|(_, l)| *l).unwrap_or("Facture")
 }
 
+/// Le libellé et la couleur d'un état (« envoyee », « payee », « en_retard »…).
 pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
-    STATUTS.iter().find(|(v, _, _)| *v == valeur).map(|(_, l, c)| (*l, *c)).unwrap_or(("Inconnu", "s-brouillon"))
+    paiements::etat(valeur)
 }
 
 fn date_belge(d: NaiveDate) -> String {
@@ -360,7 +361,8 @@ struct LigneListeBase {
     reference: String,
     montant_ht_cents: i64,
     montant_ttc_cents: i64,
-    statut: String,
+    #[sqlx(flatten)]
+    solde: Solde,
 }
 
 pub struct LigneListe {
@@ -379,6 +381,10 @@ pub struct LigneListe {
     pub montant_ttc: String,
     pub statut: &'static str,
     pub classe_statut: &'static str,
+    /// Sous la pastille : date du paiement, reste, retard ou échéance.
+    pub detail_statut: String,
+    /// Il reste quelque chose à encaisser : le menu propose « Ajouter le paiement ».
+    pub a_recevoir: bool,
 }
 
 pub struct Liste {
@@ -397,6 +403,8 @@ pub struct Liste {
     pub total_ht: String,
     pub total_tva: String,
     pub total_ttc: String,
+    /// Reste à recevoir TTC des factures de la liste.
+    pub total_a_recevoir: String,
 }
 
 #[derive(Template)]
@@ -412,6 +420,7 @@ struct TableauListe {
 }
 
 const DEPUIS: &str = "FROM factures f
+    JOIN factures_etats et ON et.facture_id = f.id
     LEFT JOIN entreprises e ON e.id = f.client_entreprise_id
     LEFT JOIN contacts c ON c.id = f.client_contact_id
     WHERE ($1 = ''
@@ -419,7 +428,7 @@ const DEPUIS: &str = "FROM factures f
            OR f.reference ILIKE $2
            OR COALESCE(e.nom, concat_ws(' ', c.prenom, c.nom)) ILIKE $2)
       AND ($3 = '' OR f.genre::text = $3)
-      AND ($4 = '' OR f.statut::text = $4)";
+      AND ($4 = '' OR et.etat = $4)";
 
 /// Une note de crédit diminue les totaux : elle compte en négatif.
 const SIGNE: &str = "CASE WHEN f.genre = 'note_credit' THEN -1 ELSE 1 END";
@@ -430,9 +439,10 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     let genre = GENRES.iter().map(|(v, _)| *v).find(|v| *v == r.genre.trim()).unwrap_or("");
     let statut_choisi = STATUTS.iter().map(|(v, _, _)| *v).find(|v| *v == r.statut.trim()).unwrap_or("");
 
-    let (total, ht, tva, ttc): (i64, i64, i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+    let (total, ht, tva, ttc, a_recevoir): (i64, i64, i64, i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT count(*), COALESCE(sum({SIGNE} * f.montant_ht_cents), 0)::bigint,
-                COALESCE(sum({SIGNE} * f.montant_tva_cents), 0)::bigint, COALESCE(sum({SIGNE} * f.montant_ttc_cents), 0)::bigint
+                COALESCE(sum({SIGNE} * f.montant_tva_cents), 0)::bigint, COALESCE(sum({SIGNE} * f.montant_ttc_cents), 0)::bigint,
+                COALESCE(sum(GREATEST(et.reste_cents, 0)), 0)::bigint
          {DEPUIS}"
     )))
     .bind(&q)
@@ -448,7 +458,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
         "SELECT f.id, f.genre::text AS genre, f.numero, f.date_facture, f.date_echeance,
                 COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), ''), '') AS client,
                 f.reference, {SIGNE} * f.montant_ht_cents AS montant_ht_cents, {SIGNE} * f.montant_ttc_cents AS montant_ttc_cents,
-                f.statut::text AS statut
+                et.paye_cents, et.credite_cents, et.reste_cents, et.dernier_paiement, et.etat, et.jours_retard
          {DEPUIS} ORDER BY f.numero IS NOT NULL, f.date_facture DESC, f.numero DESC NULLS FIRST, f.id DESC LIMIT $5 OFFSET $6"
     )))
     .bind(&q)
@@ -464,8 +474,10 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
         lignes: lignes
             .into_iter()
             .map(|l| {
-                let (libelle, classe) = statut(&l.statut);
+                let (libelle, classe) = statut(&l.solde.etat);
                 LigneListe {
+                    detail_statut: l.solde.detail(l.date_echeance),
+                    a_recevoir: l.solde.a_recevoir(),
                     id: l.id,
                     brouillon: l.numero.is_none(),
                     peut_crediter: l.numero.is_some() && l.genre != "note_credit",
@@ -502,6 +514,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
         total_ht: format_euros(ht),
         total_tva: format_euros(tva),
         total_ttc: format_euros(ttc),
+        total_a_recevoir: format_euros(a_recevoir),
     };
     let partiel = entetes.contains_key("hx-request") && !entetes.contains_key("hx-history-restore-request");
     let html = if partiel { TableauListe { liste }.render()? } else { PageListe { liste }.render()? };
@@ -553,6 +566,8 @@ impl InfosForm {
 struct Retour {
     ok: String,
     erreur: String,
+    /// « 1 » : ouvre le panneau « Ajouter le paiement » (depuis la liste ou après une erreur de saisie).
+    payer: String,
 }
 
 impl Retour {
@@ -564,6 +579,9 @@ impl Retour {
             "validee" => "La facture est validée : elle a reçu son numéro et ne se modifie plus.",
             "envoyee" => "La facture est marquée comme envoyée.",
             "credit" => "La note de crédit est créée en brouillon : ajuste ses lignes puis valide-la.",
+            "paiement" => "Le paiement partiel est enregistré.",
+            "payee" => "Le paiement est enregistré : la facture est payée.",
+            "paiement_retire" => "Le paiement est retiré.",
             _ => "",
         }
     }
@@ -571,9 +589,56 @@ impl Retour {
     fn message_erreur(&self) -> &'static str {
         match self.erreur.as_str() {
             "infos" => "Les informations n'ont pas été enregistrées : vérifie la date, le client, la référence (200 caractères) et la remarque (2 000 caractères).",
+            "paiement_date" => "Le paiement n'est pas enregistré : la date est vide ou dans le futur.",
+            "paiement_montant" => "Le paiement n'est pas enregistré : le montant doit être positif et ne pas dépasser le reste à recevoir.",
+            "paiement_methode" => "Le paiement n'est pas enregistré : choisis une méthode de paiement.",
+            "paiement_remarque" => "Le paiement n'est pas enregistré : la remarque est trop longue (500 caractères au maximum).",
             _ => "",
         }
     }
+}
+
+/// Le bloc « Montants » de la fiche : payé, crédité et reste à recevoir.
+pub struct Montants {
+    pub ttc: String,
+    pub paye: String,
+    pub credite: String,
+    pub a_des_credits: bool,
+    pub reste: String,
+    /// La valeur proposée dans le champ « Montant » (« 1852,54 »).
+    pub reste_saisie: String,
+    pub a_recevoir: bool,
+}
+
+/// Une ligne de l'historique de la facture.
+pub struct Evenement {
+    pub quand: String,
+    pub genre: &'static str,
+    pub detail: String,
+}
+
+pub(crate) fn libelle_evenement(genre: &str) -> &'static str {
+    match genre {
+        "validation" => "Validation",
+        "envoi" => "Envoi",
+        "paiement" => "Paiement",
+        "paiement_supprime" => "Paiement retiré",
+        "email" => "E-mail",
+        "rappel" => "Rappel",
+        "client" => "Client",
+        _ => "Événement",
+    }
+}
+
+async fn historique(db: &PgPool, id: i64) -> Result<Vec<Evenement>, sqlx::Error> {
+    let lignes: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT genre, detail, to_char(created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI')
+         FROM facture_evenements WHERE facture_id = $1 ORDER BY created_at DESC, id DESC",
+    )
+    .bind(id)
+    .fetch_all(db)
+    .await?;
+    Ok(lignes.into_iter().map(|(genre, detail, quand)| Evenement { quand, genre: libelle_evenement(&genre), detail }).collect())
 }
 
 /// Ce que l'écran montre du chantier, de l'avancement ou de la facture corrigée.
@@ -610,6 +675,17 @@ struct Page {
     message_ok: &'static str,
     message_erreur: &'static str,
     lignes: Lignes,
+    /// État de paiement (étape 8-1).
+    etat: String,
+    detail_statut: String,
+    jours_retard: i32,
+    montants: Montants,
+    paiements: Vec<paiements::LignePaiement>,
+    methodes: Vec<Choix>,
+    /// Le panneau « Ajouter le paiement » est ouvert.
+    payer_ouvert: bool,
+    aujourdhui: String,
+    historique: Vec<Evenement>,
 }
 
 #[derive(Template)]
@@ -673,7 +749,20 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
     let r = Referentiel::charger(&state.db).await?;
     let lignes = charger_lignes(&state.db, id).await?;
     let a_completer = if f.brouillon() { verifier(&state.db, &f, &lignes).await? } else { Vec::new() };
-    let (libelle, classe) = statut(&f.statut);
+    let solde = paiements::solde(&state.db, id).await?;
+    let (libelle, classe) = statut(&solde.etat);
+    let ttc: i64 = sqlx::query_scalar("SELECT montant_ttc_cents FROM factures WHERE id = $1").bind(id).fetch_one(&state.db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&state.db).await?;
+    let montants = Montants {
+        ttc: format_euros(ttc),
+        paye: format_euros(solde.paye_cents),
+        credite: format_euros(solde.credite_cents),
+        a_des_credits: solde.credite_cents != 0,
+        reste: format_euros(solde.reste_cents.max(0)),
+        reste_saisie: crate::avancement_calcul::euros_a_saisir(solde.reste_cents.max(0)),
+        a_recevoir: solde.a_recevoir(),
+    };
+    let methodes = paiements::methodes(&state.db).await?;
     let form = InfosForm::depuis(&f);
     let conditions_texte = f
         .conditions_paiement_id
@@ -703,6 +792,15 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         message_erreur: retour.message_erreur(),
         lignes: construire_lignes(id, f.brouillon() && f.lignes_libres(), &lignes, &crate::fiches::taux_courts(&r.options.taux_tva), String::new()),
         form,
+        detail_statut: solde.detail(f.date_echeance),
+        jours_retard: solde.jours_retard,
+        etat: solde.etat.clone(),
+        montants,
+        paiements: paiements::lignes(&state.db, id).await?,
+        methodes: methodes.iter().enumerate().map(|(i, (v, l))| Choix { valeur: v.to_string(), libelle: l.clone(), choisi: i == 0 }).collect(),
+        payer_ouvert: retour.payer == "1" && solde.a_recevoir(),
+        aujourdhui: aujourdhui.to_string(),
+        historique: historique(&state.db, id).await?,
     };
     Ok(Html(page.render()?))
 }
@@ -1026,21 +1124,33 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>) -> Result<R
     .bind(id)
     .execute(&mut *tx)
     .await?;
+    paiements::noter(&mut tx, id, "validation", &format!("Validée : {}", titre(&f.genre, Some(numero)))).await?;
     tx.commit().await?;
     Ok(Redirect::to(&format!("/factures/{id}?ok=validee")))
 }
 
 /// En attendant l'envoi par e-mail (étape 8), on marque la facture comme envoyée à la main.
 async fn marquer_envoyee(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let fait = sqlx::query("UPDATE factures SET statut = 'envoyee', envoyee_le = now(), updated_at = now() WHERE id = $1 AND statut = 'a_envoyer'")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
-    if fait.rows_affected() == 0 {
+    let mut tx = state.db.begin().await?;
+    if !marquer_envoyee_dans(&mut tx, id, "Marquée comme envoyée (à la main)").await? {
         charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
         return Err(Erreur::conflit("Seule une facture validée « À envoyer » peut être marquée comme envoyée."));
     }
+    tx.commit().await?;
     Ok(Redirect::to(&format!("/factures/{id}?ok=envoyee")))
+}
+
+/// Passe une facture « À envoyer » à « Envoyée » et le note dans l'historique. Faux si elle n'était pas « À envoyer ».
+pub(crate) async fn marquer_envoyee_dans(tx: &mut Transaction<'_, Postgres>, id: i64, detail: &str) -> Result<bool, sqlx::Error> {
+    let fait = sqlx::query("UPDATE factures SET statut = 'envoyee', envoyee_le = now(), updated_at = now() WHERE id = $1 AND statut = 'a_envoyer'")
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+    if fait.rows_affected() == 0 {
+        return Ok(false);
+    }
+    paiements::noter(tx, id, "envoi", detail).await?;
+    Ok(true)
 }
 
 /// Seul un brouillon (sans numéro) se supprime. La facture finale emporte l'avancement de solde créé pour elle.

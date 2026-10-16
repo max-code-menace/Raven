@@ -14,21 +14,27 @@
         <h1>{% if brouillon %}Modifier{% else %}Consulter{% endif %} - {{ titre }}</h1>
         <div class="u-sous-titre">
           <span class="u-pastille {{ classe_statut }}">{{ statut }}</span>
+          {% if !detail_statut.is_empty() %}<span>{{ detail_statut }}</span>{% endif %}
           <span>{{ genre }}</span>
         </div>
       </div>
     </div>
     <div class="u-actions">
+      {% if montants.a_recevoir %}
+      <a class="btn btn-primary" href="/factures/{{ id }}?payer=1#paiement">Ajouter le paiement</a>
+      {% endif %}
       <details class="u-menu">
         <summary class="btn">Actions{% call ui::icone("bas", 14) %}{% endcall %}</summary>
         <div class="u-menu-liste">
-          {% call ui::bientot("Ajouter le paiement", "étape 8") %}{% endcall %}
+          {% if montants.a_recevoir %}
+          <a class="u-mi" href="/factures/{{ id }}?payer=1#paiement">Ajouter le paiement</a>
+          {% endif %}
           {% if peut_crediter %}
           <form method="post" action="/factures/{{ id }}/crediter">
             <button class="u-mi" type="submit">Créditer (note de crédit)</button>
           </form>
           {% endif %}
-          {% call ui::bientot("Afficher l'historique", "bientôt") %}{% endcall %}
+          <a class="u-mi" href="#historique">Afficher l'historique</a>
           <div class="u-sep"></div>
           {% call ui::bientot("Envoyer par e-mail", "étape 8") %}{% endcall %}
           {% call ui::bientot("Envoyer électroniquement", "phase 2") %}{% endcall %}
@@ -50,10 +56,22 @@
 <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
 {% endif %}
 {% if !brouillon %}
+{% if etat == "en_retard" %}
+<div role="status" class="u-bandeau alerte">
+  {% call ui::icone("cadenas", 18) %}{% endcall %}
+  <span><strong>En retard de {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %}.</strong> Reste à recevoir : {{ montants.reste }}. On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
+</div>
+{% else if etat == "payee" %}
+<div role="status" class="u-bandeau ok">
+  {% call ui::icone("cadenas", 18) %}{% endcall %}
+  <span><strong>Payée.</strong> On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
+</div>
+{% else %}
 <div role="status" class="u-bandeau">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
   <span><strong>Pièce verrouillée.</strong> On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
 </div>
+{% endif %}
 {% endif %}
 
 <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
@@ -166,14 +184,87 @@
         {% endif %}
       </div>
     </section>
+    {% else if genre == "Note de crédit" %}
+    <section class="u-card">
+      <div class="u-card-h"><h2>Montants</h2></div>
+      <div class="u-ligne-montant" style="font-weight:600"><span>Total TTC crédité</span><span>{{ montants.ttc }}</span></div>
+    </section>
     {% else %}
     <section class="u-card">
-      <div class="u-card-h"><h2>Paiement</h2></div>
-      <div class="u-card-b">
-        {% if !echeance.is_empty() %}<div><span class="u-cle">Échéance</span>{{ echeance }}</div>{% endif %}
-        {% if !vcs.is_empty() %}<div><span class="u-cle">Communication structurée</span><span class="mono">{{ vcs }}</span></div>{% endif %}
-        <div class="u-petit u-muet">Paiements, payé et reste à recevoir : étape 8.</div>
+      <div class="u-card-h"><h2>Montants</h2></div>
+      <div class="u-ligne-montant" style="font-weight:600"><span>Total TTC</span><span>{{ montants.ttc }}</span></div>
+      {% if montants.a_des_credits %}<div class="u-ligne-montant"><span>Crédité (notes de crédit)</span><span>-{{ montants.credite }}</span></div>{% endif %}
+      <div class="u-ligne-montant"><span>Payé</span><span style="color:#1C6B3C">{{ montants.paye }}</span></div>
+      <div class="u-ligne-montant" style="font-weight:600;background:#F2F8F8;border-radius:0 0 12px 12px"><span>Reste à recevoir</span><span>{{ montants.reste }}</span></div>
+    </section>
+    <section class="u-card" id="paiement">
+      <div class="u-card-h"><h2>Paiements</h2></div>
+      {% for p in paiements %}
+      <div class="u-ligne-montant items-center">
+        <span>{{ p.date }} · {{ p.methode }}{% if !p.remarque.is_empty() %}<small class="block u-muet">{{ p.remarque }}</small>{% endif %}</span>
+        <span class="flex items-center gap-1"><b style="font-weight:500">{{ p.montant }}</b>
+          <details class="u-menu">
+            <summary class="btn u-ib" aria-label="Retirer ce paiement" title="Retirer ce paiement">{% call ui::icone("corbeille", 15) %}{% endcall %}</summary>
+            <form method="post" action="/factures/{{ id }}/paiements/{{ p.id }}/supprimer" class="u-menu-liste u-menu-form">
+              <span class="u-petit">Retirer ce paiement de {{ p.montant }} ? C'est noté dans l'historique.</span>
+              <button class="btn btn-danger btn-sm" type="submit">Retirer le paiement</button>
+            </form>
+          </details>
+        </span>
       </div>
+      {% else %}
+      <div class="u-ligne-montant u-muet">Aucun paiement enregistré.</div>
+      {% endfor %}
+      <div class="u-card-b" style="border-top:1px solid #E9EBE7">
+        {% if !echeance.is_empty() %}<div><span class="u-cle">Échéance</span><span{% if etat == "en_retard" %} style="color:#953A0A;font-weight:600"{% endif %}>{{ echeance }}</span></div>{% endif %}
+        {% if !vcs.is_empty() %}<div><span class="u-cle">Communication structurée</span><span class="mono">{{ vcs }}</span></div>{% endif %}
+        {% if montants.a_recevoir %}
+        <details class="u-card" style="box-shadow:none"{% if payer_ouvert %} open{% endif %}>
+          <summary class="u-card-h" style="padding:9px 12px"><span class="u-chevron flex">{% call ui::icone("bas", 14) %}{% endcall %}</span><h2 style="font-size:13.5px">Ajouter le paiement</h2></summary>
+          <form method="post" action="/factures/{{ id }}/paiements" class="u-card-b">
+            <div class="u-segment" role="radiogroup" aria-label="Type de paiement">
+              <label class="flex items-center gap-1 px-2 text-[13px] whitespace-nowrap"><input class="radio radio-xs" type="radio" name="genre" value="complet" checked> Complet</label>
+              <label class="flex items-center gap-1 px-2 text-[13px] whitespace-nowrap"><input class="radio radio-xs" type="radio" name="genre" value="partiel"> Partiel</label>
+            </div>
+            <div class="grid gap-3 grid-cols-2">
+              <label class="form-control">
+                <span class="u-lbl">Date du paiement</span>
+                <input class="input input-bordered input-sm" type="date" name="date" value="{{ aujourdhui }}" max="{{ aujourdhui }}" required>
+              </label>
+              <label class="form-control">
+                <span class="u-lbl">Montant TTC (partiel)</span>
+                <input class="input input-bordered input-sm text-right" type="text" inputmode="decimal" name="montant" value="{{ montants.reste_saisie }}">
+              </label>
+            </div>
+            <label class="form-control">
+              <span class="u-lbl">Méthode de paiement</span>
+              <select class="select select-bordered select-sm" name="methode_id">
+                {% for m in methodes %}<option value="{{ m.valeur }}"{% if m.choisi %} selected{% endif %}>{{ m.libelle }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="form-control">
+              <span class="u-lbl">Remarque</span>
+              <input class="input input-bordered input-sm" type="text" name="remarque" maxlength="500">
+            </label>
+            <span class="u-petit u-muet">« Paiement complet » enregistre le reste à recevoir ({{ montants.reste }}).</span>
+            <button class="btn btn-primary btn-sm self-end" type="submit">Enregistrer le paiement</button>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+    {% if !brouillon %}
+    <section class="u-card" id="historique">
+      <div class="u-card-h"><h2>Historique</h2></div>
+      {% for e in historique %}
+      <div class="u-ligne-montant" style="flex-direction:column;gap:2px">
+        <span><span class="u-profil">{{ e.genre }}</span> {{ e.detail }}</span>
+        <small class="u-muet">{{ e.quand }}</small>
+      </div>
+      {% else %}
+      <div class="u-ligne-montant u-muet">Rien à signaler.</div>
+      {% endfor %}
     </section>
     {% endif %}
     <section class="u-card">

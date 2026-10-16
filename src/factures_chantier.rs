@@ -49,12 +49,12 @@ pub struct Recap {
 
 pub async fn recap(db: &PgPool, chantier_id: i64, total_cents: i64) -> Result<Recap, sqlx::Error> {
     let lignes: Vec<(i64, String, Option<i64>, NaiveDate, i64, i64, String)> = sqlx::query_as(
-        "SELECT id, genre::text, numero, date_facture,
-                CASE WHEN genre = 'note_credit' THEN -montant_ht_cents ELSE montant_ht_cents END,
-                CASE WHEN genre = 'note_credit' THEN -montant_ttc_cents ELSE montant_ttc_cents END,
-                statut::text
-         FROM factures WHERE chantier_id = $1
-         ORDER BY numero IS NULL, date_facture, id",
+        "SELECT f.id, f.genre::text, f.numero, f.date_facture,
+                CASE WHEN f.genre = 'note_credit' THEN -f.montant_ht_cents ELSE f.montant_ht_cents END,
+                CASE WHEN f.genre = 'note_credit' THEN -f.montant_ttc_cents ELSE f.montant_ttc_cents END,
+                et.etat
+         FROM factures f JOIN factures_etats et ON et.facture_id = f.id WHERE f.chantier_id = $1
+         ORDER BY f.numero IS NULL, f.date_facture, f.id",
     )
     .bind(chantier_id)
     .fetch_all(db)

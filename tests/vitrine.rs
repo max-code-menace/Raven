@@ -210,6 +210,29 @@ async fn vitrine(pool: PgPool) {
     let lieu = poster(&s, "/factures", "").await.unwrap();
     let _brouillon = lieu;
 
+    // Étape 8 : paiements. La facture d'avancement est payée en partie ; deux factures simples de plus :
+    // l'une en retard (échéance forcée dans le passé), l'autre payée.
+    let virement = un(&pool, "SELECT id FROM methodes_paiement WHERE libelle = 'Virement'").await;
+    poster(&s, &format!("/factures/{facture}/paiements"), &format!("genre=partiel&date={aujourdhui}&montant=1000&methode_id={virement}")).await;
+    let dubois = un(&pool, "SELECT id FROM contacts WHERE nom = 'Dubois'").await;
+    let hotel = un(&pool, "SELECT id FROM entreprises WHERE nom = 'Hôtel du Parc SA'").await;
+    let mut simples = Vec::new();
+    for (client, reference, description, quantite, prix) in
+        [(format!("e{hotel}"), "HP1 Dépannage chauffe-eau", "Remplacement du chauffe-eau", "1", "3224,30"), (format!("c{dubois}"), "PD37 Dégâts des eaux", "Réparation du plafond", "12", "45")]
+    {
+        let lieu = poster(&s, "/factures", "").await.unwrap();
+        let id: i64 = lieu.strip_prefix("/factures/").unwrap().split('?').next().unwrap().parse().unwrap();
+        poster(&s, &format!("/factures/{id}"), &format!("date={aujourdhui}&reference={reference}&responsable=Max&client={client}&conditions_paiement_id={conditions}")).await;
+        poster(&s, &format!("/factures/{id}/lignes"), "genre=poste").await;
+        let l: i64 = un(&pool, &format!("SELECT max(id) FROM facture_lignes WHERE facture_id = {id}")).await;
+        poster(&s, &format!("/factures/{id}/lignes/{l}"), &format!("description={description}&quantite={quantite}&unite=forfait&prix_unitaire={prix}&taux_tva_id={tva6}")).await;
+        poster(&s, &format!("/factures/{id}/valider"), "").await;
+        poster(&s, &format!("/factures/{id}/envoyee"), "").await;
+        simples.push(id);
+    }
+    sqlx::query("UPDATE factures SET date_echeance = date_echeance - 31 WHERE id = $1").bind(simples[0]).execute(&pool).await.unwrap();
+    poster(&s, &format!("/factures/{}/paiements", simples[1]), &format!("genre=complet&date={aujourdhui}&methode_id={virement}")).await;
+
     let ecoute = tokio::net::TcpListener::bind("127.0.0.1:3002").await.expect("port 3002 occupé");
     println!("Vitrine prête sur http://127.0.0.1:3002 (chantier {chantier}, facture {facture}, avancement {av2})");
     let serveur = axum::serve(ecoute, s);

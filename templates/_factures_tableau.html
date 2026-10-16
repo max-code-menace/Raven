@@ -20,7 +20,7 @@
         <td>
           <span class="u-statut">
             <span class="u-pastille {{ l.classe_statut }}">{{ l.statut }}</span>
-            {% if !l.echeance.is_empty() %}<small>échéance {{ l.echeance }}</small>{% endif %}
+            {% if !l.detail_statut.is_empty() %}<small>{{ l.detail_statut }}</small>{% endif %}
           </span>
         </td>
         <td class="n">
@@ -29,13 +29,15 @@
             <details class="u-menu">
               <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
               <div class="u-menu-liste">
-                {% call ui::bientot("Ajouter le paiement", "étape 8") %}{% endcall %}
+                {% if l.a_recevoir %}
+                <a class="u-mi" href="/factures/{{ l.id }}?payer=1#paiement">Ajouter le paiement</a>
+                {% endif %}
                 {% if l.peut_crediter %}
                 <form method="post" action="/factures/{{ l.id }}/crediter">
                   <button class="u-mi" type="submit">Créditer (note de crédit)</button>
                 </form>
                 {% endif %}
-                {% call ui::bientot("Afficher l'historique", "bientôt") %}{% endcall %}
+                {% if !l.brouillon %}<a class="u-mi" href="/factures/{{ l.id }}#historique">Afficher l'historique</a>{% endif %}
                 <div class="u-sep"></div>
                 {% call ui::bientot("Envoyer par e-mail", "étape 8") %}{% endcall %}
                 <a class="u-mi" href="/factures/{{ l.id }}/pdf?telecharger=1">Exporter en PDF</a>
@@ -66,6 +68,7 @@
     <span>Total HT <strong>{{ liste.total_ht }}</strong></span>
     <span>Total TVA <strong>{{ liste.total_tva }}</strong></span>
     <span>Total TTC <strong>{{ liste.total_ttc }}</strong></span>
+    <span>Montant à recevoir TTC <strong style="color:#0B6371">{{ liste.total_a_recevoir }}</strong></span>
   </div>
   <div class="u-pages">
     {% if liste.page > 1 %}
