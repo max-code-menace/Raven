@@ -1,6 +1,6 @@
 //! Le statut d'un devis (étape 5c-2) : marquer comme envoyé, accepter, refuser, remettre en brouillon.
 //! Chaque changement est écrit dans le journal du devis, dans la même transaction.
-//! Tant que l'envoi par e-mail n'existe pas (étape 8), « Marquer comme envoyé » se fait à la main.
+//! « Envoyer par e-mail » (étape 8-2, `envoi.rs`) passe aussi le devis à « Envoyé » ; « Marquer comme envoyé » reste pour un envoi fait autrement.
 
 use axum::{
     Router,

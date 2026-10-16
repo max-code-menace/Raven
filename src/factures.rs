@@ -582,6 +582,8 @@ impl Retour {
             "paiement" => "Le paiement partiel est enregistré.",
             "payee" => "Le paiement est enregistré : la facture est payée.",
             "paiement_retire" => "Le paiement est retiré.",
+            "email_envoye" => "La pièce est envoyée par e-mail.",
+            "email_enregistre" => "Mode test : l'e-mail est enregistré (Réglages › E-mails) mais n'est pas parti, car aucune clé Brevo n'est configurée. Marque la pièce comme envoyée à la main si tu l'as envoyée autrement.",
             _ => "",
         }
     }
@@ -593,6 +595,7 @@ impl Retour {
             "paiement_montant" => "Le paiement n'est pas enregistré : le montant doit être positif et ne pas dépasser le reste à recevoir.",
             "paiement_methode" => "Le paiement n'est pas enregistré : choisis une méthode de paiement.",
             "paiement_remarque" => "Le paiement n'est pas enregistré : la remarque est trop longue (500 caractères au maximum).",
+            "email_echec" => "L'e-mail n'a pas pu partir : le détail est dans Réglages › E-mails.",
             _ => "",
         }
     }
@@ -1129,7 +1132,7 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>) -> Result<R
     Ok(Redirect::to(&format!("/factures/{id}?ok=validee")))
 }
 
-/// En attendant l'envoi par e-mail (étape 8), on marque la facture comme envoyée à la main.
+/// Marquer la facture comme envoyée à la main (envoyée autrement que par l'application).
 async fn marquer_envoyee(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
     let mut tx = state.db.begin().await?;
     if !marquer_envoyee_dans(&mut tx, id, "Marquée comme envoyée (à la main)").await? {

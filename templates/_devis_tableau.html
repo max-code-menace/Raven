@@ -39,7 +39,7 @@
                 {% endif %}
                 <a class="u-mi" href="/devis/{{ l.id }}/historique">Afficher l'historique</a>
                 <div class="u-sep"></div>
-                {% call ui::bientot("Envoyer par e-mail", "étape 8") %}{% endcall %}
+                <a class="u-mi" href="/devis/{{ l.id }}/email">Envoyer par e-mail</a>
                 <a class="u-mi" href="/devis/{{ l.id }}/pdf?telecharger=1">Exporter en PDF</a>
                 {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
                 <form method="post" action="/devis/{{ l.id }}/dupliquer">

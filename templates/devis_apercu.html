@@ -40,7 +40,7 @@
 {% block barre %}
 <div class="u-barre">
   <a class="btn" href="{{ barre.retour }}">Fermer</a>
-  <button class="btn" type="button" disabled title="L'envoi par e-mail arrive à l'étape 8">Envoyer par e-mail · étape 8</button>
+  <a class="btn" href="/devis/{{ id }}/email">Envoyer par e-mail</a>
   <a class="btn{% if !barre.peut_marquer_envoye %} btn-primary{% endif %}" href="/devis/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
   {% if barre.peut_marquer_envoye %}
   <form method="post" action="/devis/{{ id }}/statut/envoye">

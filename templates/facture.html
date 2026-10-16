@@ -36,7 +36,7 @@
           {% endif %}
           <a class="u-mi" href="#historique">Afficher l'historique</a>
           <div class="u-sep"></div>
-          {% call ui::bientot("Envoyer par e-mail", "étape 8") %}{% endcall %}
+          {% if !brouillon %}<a class="u-mi" href="/factures/{{ id }}/email">Envoyer par e-mail</a>{% endif %}
           {% call ui::bientot("Envoyer électroniquement", "phase 2") %}{% endcall %}
           <a class="u-mi" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
           <a class="u-mi" href="/factures/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
@@ -296,6 +296,7 @@
     </form>
   </details>
   {% endif %}
+  {% if !brouillon %}<a class="btn" href="/factures/{{ id }}/email">Envoyer par e-mail</a>{% endif %}
   {% if peut_marquer_envoyee %}
   <form method="post" action="/factures/{{ id }}/envoyee">
     <button class="btn btn-primary" type="submit">Marquer comme envoyée</button>

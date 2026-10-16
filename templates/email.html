@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}{{ titre }} · Ubifacture{% endblock %}
+{% block nav_devis %}{% if nav == "devis" %}actif{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if nav == "chantiers" %}actif{% endif %}{% endblock %}
+{% block nav_factures %}{% if nav == "factures" %}actif{% endif %}{% endblock %}
+{% block nav_notes %}{% if nav == "notes" %}actif{% endif %}{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="{{ retour }}" aria-label="Retour" title="Retour">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>{{ titre }}</h1>
+        <div class="u-sous-titre">Le message est prérempli depuis le modèle (Réglages › E-mails) : tu peux tout changer avant d'envoyer.</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !envoi_actif %}
+<div role="status" class="u-bandeau alerte">
+  {% call ui::icone("info", 18) %}{% endcall %}
+  <span><strong>Mode test.</strong> Aucune clé Brevo n'est configurée : l'e-mail sera enregistré dans Réglages › E-mails, mais rien ne partira.</span>
+</div>
+{% endif %}
+{% if !erreurs.is_empty() %}
+<div role="alert" class="u-bandeau erreur">
+  {% call ui::icone("attention", 18) %}{% endcall %}
+  <ul class="list-disc pl-5">{% for e in erreurs %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+  <form id="email" class="u-card" method="post" action="{{ action }}">
+    <div class="u-card-h"><h2>{% call ui::icone("devis", 17) %}{% endcall %}Message</h2></div>
+    <div class="u-card-b">
+      <label class="form-control">
+        <span class="u-lbl">À <i>*</i></span>
+        <input class="input input-bordered" type="text" name="destinataires" value="{{ saisie.destinataires }}" placeholder="client@exemple.be" autocomplete="off">
+        <span class="u-petit u-muet mt-1">Plusieurs adresses : sépare-les par une virgule.</span>
+      </label>
+      <label class="form-control">
+        <span class="u-lbl">Copie</span>
+        <input class="input input-bordered" type="text" name="copie" value="{{ saisie.copie }}" autocomplete="off">
+      </label>
+      <label class="form-control">
+        <span class="u-lbl">Objet <i>*</i></span>
+        <input class="input input-bordered" type="text" name="objet" value="{{ saisie.objet }}" maxlength="300" required>
+      </label>
+      <label class="form-control">
+        <span class="u-lbl">Message</span>
+        <textarea class="textarea textarea-bordered" name="corps" rows="14">{{ saisie.corps }}</textarea>
+      </label>
+    </div>
+  </form>
+
+  <aside class="flex flex-col gap-4">
+    <section class="u-card">
+      <div class="u-card-h"><h2>Pièce jointe</h2></div>
+      <div class="u-card-b">
+        {% for p in pieces %}<div class="flex gap-2 items-center text-[13.5px]">{% call ui::icone("pdf", 16) %}{% endcall %}<span>{{ p }}</span></div>{% endfor %}
+      </div>
+    </section>
+    {% if !avertissements.is_empty() %}
+    <section class="u-card">
+      <div class="u-card-h"><h2>À vérifier</h2><span class="u-pastille s-a-envoyer">{{ avertissements.len() }} point(s)</span></div>
+      <div class="u-card-b">
+        {% for m in avertissements %}
+        <div class="flex gap-2 items-start text-[13.5px]"><span class="text-[#953A0A] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    <section class="u-card">
+      <div class="u-card-h"><h2>Déjà envoyés</h2></div>
+      {% for a in anciens %}
+      <div class="u-ligne-montant" style="flex-direction:column;gap:2px">
+        <span class="flex justify-between gap-2"><span>{{ a.destinataires }}</span><span class="u-pastille {{ a.classe }}">{{ a.statut }}</span></span>
+        <small class="u-muet">{{ a.quand }} · {{ a.objet }}</small>
+      </div>
+      {% else %}
+      <div class="u-ligne-montant u-muet">Aucun e-mail pour cette pièce.</div>
+      {% endfor %}
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  <a class="btn" href="{{ retour }}">Annuler</a>
+  <button class="btn btn-primary" type="submit" form="email">{% if envoi_actif %}Envoyer{% else %}Enregistrer (mode test){% endif %}</button>
+</div>
+{% endblock %}

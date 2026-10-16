@@ -457,6 +457,9 @@ impl Retour {
             ("1", _) => "Les informations sont enregistrées.",
             ("envoye", false) => "Le devis est marqué comme envoyé.",
             ("envoye", true) => "L'avenant est marqué comme envoyé.",
+            ("email_envoye", false) => "Le devis est envoyé par e-mail.",
+            ("email_envoye", true) => "L'avenant est envoyé par e-mail.",
+            ("email_enregistre", _) => "Mode test : l'e-mail est enregistré (Réglages › E-mails) mais n'est pas parti, car aucune clé Brevo n'est configurée. Marque la pièce comme envoyée à la main si tu l'as envoyée autrement.",
             ("accepte", false) => "Le devis est accepté et son chantier est créé.",
             ("accepte", true) => "L'avenant est accepté : il compte maintenant dans le total du chantier.",
             ("refuse", false) => "Le devis est refusé.",
@@ -472,6 +475,7 @@ impl Retour {
         match self.erreur.as_str() {
             "date" => "La date de la décision doit être comprise entre la date du devis et aujourd'hui.",
             "motif" => "Le motif est trop long (500 caractères au maximum).",
+            "email_echec" => "L'e-mail n'a pas pu partir : le détail est dans Réglages › E-mails.",
             _ => "",
         }
     }

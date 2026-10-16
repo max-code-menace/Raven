@@ -39,7 +39,7 @@
                 {% endif %}
                 {% if !l.brouillon %}<a class="u-mi" href="/factures/{{ l.id }}#historique">Afficher l'historique</a>{% endif %}
                 <div class="u-sep"></div>
-                {% call ui::bientot("Envoyer par e-mail", "étape 8") %}{% endcall %}
+                {% if !l.brouillon %}<a class="u-mi" href="/factures/{{ l.id }}/email">Envoyer par e-mail</a>{% endif %}
                 <a class="u-mi" href="/factures/{{ l.id }}/pdf?telecharger=1">Exporter en PDF</a>
                 {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
                 <div class="u-sep"></div>

@@ -1,4 +1,4 @@
-use ubifacture::{AppState, app, db};
+use ubifacture::{AppState, app, db, emails};
 
 #[tokio::main]
 async fn main() {
@@ -11,6 +11,14 @@ async fn main() {
         }
     };
     println!("Base de données connectée, migrations appliquées.");
+
+    // E-mails : sans BREVO_CLE_API, rien ne part (les e-mails sont seulement enregistrés dans l'application).
+    emails::configurer(std::env::var("BREVO_CLE_API").ok(), std::env::var("ADRESSE_PUBLIQUE").ok());
+    if emails::envoi_actif() {
+        println!("E-mails : envoi par Brevo activé.");
+    } else {
+        println!("E-mails : mode test (pas de BREVO_CLE_API), les e-mails sont seulement enregistrés.");
+    }
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001")
         .await

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}E-mails · Réglages · Ubifacture{% endblock %}
+{% block nav_reglages_emails %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("reglages", 20) %}{% endcall %}</span>
+      <div>
+        <h1>E-mails</h1>
+        <div class="u-sous-titre">Réglages · modèles des e-mails, état de l'envoi et journal de tout ce qui a été envoyé</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Envoi</h2>
+    {% if envoi_actif %}<span class="u-pastille s-accepte">Brevo connecté</span>{% else %}<span class="u-pastille s-a-envoyer">Mode test</span>{% endif %}
+  </div>
+  <div class="u-infos">
+    <div>
+      <span><span class="u-cle">Service</span>Brevo (API)</span>
+      <span><span class="u-cle">État</span>{% if envoi_actif %}Les e-mails partent vraiment.{% else %}Aucune clé : les e-mails sont seulement enregistrés ci-dessous, rien ne part.{% endif %}</span>
+    </div>
+    <div>
+      <span><span class="u-cle">Expéditeur</span>{% if expediteur.is_empty() %}<span class="text-[#953A0A]">À compléter : e-mail de la société (Réglages › Société)</span>{% else %}{{ expediteur }}{% endif %}</span>
+      <span><span class="u-cle">Adresse des liens envoyés aux clients</span><span class="mono">{{ adresse_publique }}</span></span>
+    </div>
+    <div>
+      <span class="u-petit u-muet">Pour envoyer vraiment : crée un compte Brevo, valide l'adresse de l'expéditeur chez Brevo, puis lance le serveur avec la variable <span class="mono">BREVO_CLE_API</span> (fichier <span class="mono">.env</span>). <span class="mono">ADRESSE_PUBLIQUE</span> donne l'adresse du site une fois en ligne.</span>
+    </div>
+  </div>
+</section>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Modèles</h2><span class="u-petit u-muet">Les variables entre crochets sont remplacées à l'envoi.</span></div>
+  <div class="flex flex-col gap-3 p-4">
+    {% for m in modeles %}
+    <details class="u-card" id="modele-{{ m.code }}" style="box-shadow:none"{% if m.ouvert %} open{% endif %}>
+      <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>{{ m.nom }}</h2><span class="u-petit u-muet truncate max-w-[50%]">{{ m.objet }}</span></summary>
+      <form method="post" action="/parametres/emails/{{ m.code }}" class="u-card-b">
+        <label class="form-control">
+          <span class="u-lbl">Objet <i>*</i></span>
+          <input class="input input-bordered" type="text" name="objet" value="{{ m.objet }}" maxlength="300" required>
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Message</span>
+          <textarea class="textarea textarea-bordered" name="corps" rows="12">{{ m.corps }}</textarea>
+        </label>
+        <button class="btn btn-primary btn-sm self-end" type="submit">Enregistrer le modèle</button>
+      </form>
+    </details>
+    {% endfor %}
+  </div>
+</section>
+
+<details class="u-card">
+  <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Variables</h2></summary>
+  <table class="u-table">
+    <tbody>
+      {% for (nom, sens) in variables %}
+      <tr><td class="mono nw">{{ nom }}</td><td>{{ sens }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</details>
+
+<section class="u-card" id="journal">
+  <div class="u-card-h"><h2>Journal des e-mails <span class="u-compte">{{ journal.len() }}</span></h2><span class="u-petit u-muet">les 50 derniers</span></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>Date</th><th>Modèle</th><th>À</th><th class="w-full">Objet</th><th>Statut</th></tr></thead>
+      <tbody>
+        {% for e in journal %}
+        <tr>
+          <td class="nw">{{ e.quand }}</td>
+          <td class="nw">{% if e.lien.is_empty() %}{{ e.modele }}{% else %}<a href="{{ e.lien }}">{{ e.modele }}</a>{% endif %}</td>
+          <td>{{ e.destinataires }}</td>
+          <td>
+            <details>
+              <summary class="cursor-pointer">{{ e.objet }}</summary>
+              <div class="u-adresse mt-2 whitespace-pre-line">{{ e.corps }}</div>
+              {% if !e.pieces.is_empty() %}<div class="u-petit u-muet mt-1">Pièce jointe : {{ e.pieces }}</div>{% endif %}
+            </details>
+            {% if !e.erreur.is_empty() %}<div class="u-petit text-[#8E2B22]">{{ e.erreur }}</div>{% endif %}
+          </td>
+          <td><span class="u-pastille {{ e.classe }}">{{ e.statut }}</span></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="5">Aucun e-mail pour l'instant.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
