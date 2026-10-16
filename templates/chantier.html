@@ -56,6 +56,11 @@
         <div class="stat-value text-2xl">{{ finances.reste }}</div>
         {% if !finances.pourcentage_avance.is_empty() %}<div class="stat-desc">Avancé : {{ finances.avance }} ({{ finances.pourcentage_avance }})</div>{% endif %}
       </div>
+      <div class="stat">
+        <div class="stat-title">Reste à facturer HT</div>
+        <div class="stat-value text-2xl">{{ factures.reste_a_facturer }}</div>
+        <div class="stat-desc">Facturé : {{ factures.facture_ht }} HT · {{ factures.facture_ttc }} TTC</div>
+      </div>
     </div>
 
     <form class="card bg-base-100 shadow" method="post" action="/chantiers/{{ id }}">
@@ -85,6 +90,8 @@
       <h2 class="card-title">Avancements</h2>
       {% if let Some(brouillon) = finances.brouillon %}
       <a class="btn btn-primary btn-sm" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Reprendre le brouillon</a>
+      {% else if finances.finale %}
+      <span class="text-sm opacity-70">Facture finale créée : le chantier est soldé.</span>
       {% else %}
       <form method="post" action="/chantiers/{{ id }}/avancements">
         <button class="btn btn-primary btn-sm" type="submit">Nouvel avancement</button>
@@ -109,8 +116,17 @@
             <td class="text-right whitespace-nowrap">{{ a.pourcentage }}</td>
             <td class="text-right whitespace-nowrap">{{ a.pourcentage_cumul }}</td>
             <td class="text-right whitespace-nowrap">{{ a.reste }}</td>
-            <td>{% if a.brouillon %}<span class="badge badge-ghost">Brouillon</span>{% else %}<span class="badge badge-success">Validé</span>{% endif %}</td>
-            <td class="text-right"><a class="btn btn-ghost btn-xs" href="/chantiers/{{ id }}/avancements/{{ a.id }}">Ouvrir</a></td>
+            <td>
+              {% if a.brouillon %}<span class="badge badge-ghost">Brouillon</span>
+              {% else if let Some((facture_id, facture_texte)) = a.facture %}<a class="badge badge-primary whitespace-nowrap" href="/factures/{{ facture_id }}">Facturé · {{ facture_texte }}</a>
+              {% else %}<span class="badge badge-success">Validé</span>{% endif %}
+            </td>
+            <td class="text-right whitespace-nowrap">
+              {% if !a.brouillon && a.facture.is_none() %}
+              <form class="inline" method="post" action="/chantiers/{{ id }}/avancements/{{ a.id }}/facturer"><button class="btn btn-primary btn-xs" type="submit">Facturer</button></form>
+              {% endif %}
+              <a class="btn btn-ghost btn-xs" href="/chantiers/{{ id }}/avancements/{{ a.id }}">Ouvrir</a>
+            </td>
           </tr>
           {% else %}
           <tr><td colspan="9" class="text-center opacity-70 py-6">Aucun avancement.</td></tr>
@@ -122,6 +138,64 @@
       <span>Total devis/avenants HT <strong>{{ finances.total }}</strong></span>
       <span>Avancé (validé) <strong>{{ finances.avance }}</strong>{% if !finances.pourcentage_avance.is_empty() %} ({{ finances.pourcentage_avance }}){% endif %}</span>
       <span>Reste à avancer HT <strong>{{ finances.reste }}</strong></span>
+    </div>
+  </div>
+</div>
+
+<div class="card bg-base-100 shadow mt-4">
+  <div class="card-body">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="card-title">Factures et notes de crédit</h2>
+      {% if !finances.finale %}
+      <div class="flex flex-wrap gap-2">
+        <details class="dropdown dropdown-end">
+          <summary class="btn btn-outline btn-sm">Facture d'acompte…</summary>
+          <form method="post" action="/chantiers/{{ id }}/factures/acompte" class="dropdown-content z-10 mt-1 flex w-72 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
+            <span class="text-sm">Sur le total devis/avenants HT ({{ finances.total }}), réparti entre les taux de TVA.</span>
+            <select class="select select-bordered select-sm" name="mode">
+              <option value="pourcentage">En pourcentage (%)</option>
+              <option value="montant">En montant HT (€)</option>
+            </select>
+            <input class="input input-bordered input-sm" type="text" inputmode="decimal" name="valeur" placeholder="30" required>
+            <button class="btn btn-primary btn-sm" type="submit">Créer le brouillon</button>
+          </form>
+        </details>
+        <details class="dropdown dropdown-end">
+          <summary class="btn btn-outline btn-sm">Facture finale…</summary>
+          <form method="post" action="/chantiers/{{ id }}/factures/finale" class="dropdown-content z-10 mt-1 flex w-72 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
+            <span class="text-sm">Facture le reste à avancer ({{ finances.reste }} HT), puis déduit les acomptes déjà facturés. Plus aucun avancement ni acompte ne sera possible ensuite.</span>
+            <button class="btn btn-primary btn-sm" type="submit">Créer la facture finale</button>
+          </form>
+        </details>
+      </div>
+      {% endif %}
+    </div>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr><th>Pièce</th><th>Type</th><th>Date</th><th class="text-right">Montant HT</th><th class="text-right">Montant TTC</th><th>Statut</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for f in factures.factures %}
+          <tr class="hover">
+            <td class="font-medium whitespace-nowrap">{{ f.titre }}</td>
+            <td class="whitespace-nowrap">{{ f.genre }}</td>
+            <td class="whitespace-nowrap">{{ f.date }}</td>
+            <td class="text-right whitespace-nowrap">{{ f.montant_ht }}</td>
+            <td class="text-right whitespace-nowrap">{{ f.montant_ttc }}</td>
+            <td><span class="badge {{ f.classe_statut }} whitespace-nowrap">{{ f.statut }}</span></td>
+            <td class="text-right"><a class="btn btn-ghost btn-xs" href="/factures/{{ f.id }}">Ouvrir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center opacity-70 py-6">Aucune facture.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex flex-wrap justify-end gap-6 text-sm">
+      <span>Facturé HT (pièces validées) <strong>{{ factures.facture_ht }}</strong></span>
+      <span>Facturé TTC <strong>{{ factures.facture_ttc }}</strong></span>
+      <span>Reste à facturer HT <strong>{{ factures.reste_a_facturer }}</strong></span>
     </div>
   </div>
 </div>

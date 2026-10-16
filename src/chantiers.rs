@@ -250,6 +250,11 @@ impl Retour {
         match self.erreur.as_str() {
             "date" => "La date de début n'est pas valide.",
             "statut" => "Ce statut n'existe pas.",
+            "finale" => "Ce chantier a déjà sa facture finale : plus d'avancement ni d'acompte possible.",
+            "acompte" => "L'acompte doit être un pourcentage ou un montant HT positif, au plus le total devis/avenants.",
+            "rien" => "Il n'y a rien à facturer.",
+            "avancement_brouillon" => "Valide ou supprime d'abord l'avancement en brouillon.",
+            "facture_brouillon" => "Valide ou supprime d'abord la facture en brouillon de ce chantier (un acompte en brouillon ne serait pas déduit).",
             _ => "",
         }
     }
@@ -287,6 +292,8 @@ struct PageFiche {
     total_ht: String,
     /// Les avancements du chantier (onglet Finances) et le reste à avancer.
     finances: crate::avancements::Finances,
+    /// Les factures et notes de crédit du chantier.
+    factures: crate::factures_chantier::Recap,
     message_ok: &'static str,
     message_erreur: &'static str,
 }
@@ -308,6 +315,7 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
     let (libelle, classe) = statut(&f.statut);
     let avenants = crate::avenants::recap(&state.db, id).await?;
     let finances = crate::avancements::finances(&state.db, id).await?;
+    let factures = crate::factures_chantier::recap(&state.db, id, finances.total_cents).await?;
     let page = PageFiche {
         id,
         onglet,
@@ -336,6 +344,7 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
         jours_supplementaires: avenants.jours_acceptes,
         avenants: avenants.lignes,
         finances,
+        factures,
         message_ok: retour.message_ok(),
         message_erreur: retour.message_erreur(),
     };
@@ -350,8 +359,8 @@ async fn devis_avenants(State(state): State<AppState>, Path(id): Path<i64>) -> R
     charger_fiche(&state, id, "devis", Retour::default()).await
 }
 
-async fn onglet_finances(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    charger_fiche(&state, id, "finances", Retour::default()).await
+async fn onglet_finances(State(state): State<AppState>, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
+    charger_fiche(&state, id, "finances", retour).await
 }
 
 #[derive(Deserialize, Default)]

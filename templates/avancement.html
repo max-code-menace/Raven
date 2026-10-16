@@ -49,6 +49,13 @@
         </form>
       </details>
       {% endif %}
+      {% if let Some(f) = facture %}
+      <a class="btn btn-sm btn-outline" href="/factures/{{ f }}">Voir la facture d'avancement</a>
+      {% else if !brouillon %}
+      <form method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/facturer">
+        <button class="btn btn-sm btn-primary" type="submit">Créer la facture d'avancement</button>
+      </form>
+      {% endif %}
       {% if peut_remettre_en_brouillon %}
       <form method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/brouillon">
         <button class="btn btn-sm btn-ghost" type="submit">Remettre en brouillon</button>

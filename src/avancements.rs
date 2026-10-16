@@ -4,7 +4,7 @@
 //! Le serveur enregistre le montant de la période (en centimes), vérifie que le cumul reste entre 0 et 100 %
 //! et calcule les totaux : total du chantier, déjà avancé, période, cumul, reste à avancer.
 //! Un seul brouillon à la fois par chantier ; un avancement validé ne se modifie plus.
-//! Il deviendra une facture d'avancement à l'étape 7.
+//! Un avancement validé devient une facture d'avancement (voir `factures_chantier`) ; il ne se remet plus en brouillon ensuite.
 
 use std::collections::HashMap;
 
@@ -17,10 +17,12 @@ use axum::{
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgPool, Postgres, Transaction};
 
 use crate::avancement_calcul as ac;
 use crate::calcul;
+use crate::facture_calcul;
+use crate::factures::NouvelleLigne;
 use crate::commun::format_euros;
 use crate::{AppState, Erreur};
 
@@ -48,6 +50,8 @@ struct Poste {
     quantite_e5: Option<i64>,
     unite: String,
     prix_e5: Option<i64>,
+    /// Le taux de TVA de la ligne (aucun pour un titre, un texte ou l'ajustement).
+    taux_tva_id: Option<i64>,
     total_cents: i64,
 }
 
@@ -124,6 +128,7 @@ fn construire_bloc(devis: &DevisDuChantier, lignes: &[&LigneDevis]) -> Bloc {
             quantite_e5: if chiffre { l.quantite_e5 } else { None },
             unite: l.unite.clone(),
             prix_e5: if chiffre { l.prix_unitaire_e5 } else { None },
+            taux_tva_id: if chiffre { l.taux_tva_id } else { None },
             total_cents: total,
         });
     }
@@ -138,6 +143,7 @@ fn construire_bloc(devis: &DevisDuChantier, lignes: &[&LigneDevis]) -> Bloc {
             quantite_e5: None,
             unite: String::new(),
             prix_e5: None,
+            taux_tva_id: None,
             total_cents: ajustement,
         });
     }
@@ -380,6 +386,8 @@ struct Page {
     date_champ: String,
     brouillon: bool,
     peut_remettre_en_brouillon: bool,
+    /// La facture qui reprend cet avancement.
+    facture: Option<i64>,
     message_ok: &'static str,
     message_erreur: &'static str,
     grille: Grille,
@@ -422,6 +430,7 @@ impl Retour {
 
 async fn afficher(State(state): State<AppState>, Path((chantier_id, id)): Path<(i64, i64)>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
     let a = charger_avancement(&state.db, chantier_id, id).await?;
+    let facture = facture_de(&state.db, id).await?;
     let grille = charger_grille(&state.db, chantier_id, id, &a, String::new()).await?;
     let page = Page {
         chantier_id,
@@ -432,7 +441,8 @@ async fn afficher(State(state): State<AppState>, Path((chantier_id, id)): Path<(
         date: a.date_avancement.format("%d/%m/%Y").to_string(),
         date_champ: a.date_avancement.to_string(),
         brouillon: a.statut == "brouillon",
-        peut_remettre_en_brouillon: a.statut == "valide" && a.numero == a.dernier,
+        peut_remettre_en_brouillon: a.statut == "valide" && a.numero == a.dernier && facture.is_none(),
+        facture,
         message_ok: retour.message_ok(),
         message_erreur: retour.message_erreur(),
         grille,
@@ -449,6 +459,10 @@ async fn creer(State(state): State<AppState>, Path(chantier_id): Path<i64>) -> R
     let existe: Option<i64> =
         sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1 FOR UPDATE").bind(chantier_id).fetch_optional(&mut *tx).await?;
     existe.ok_or_else(Erreur::introuvable)?;
+    // La facture finale solde le chantier : plus rien à avancer ensuite.
+    if a_une_finale(&mut *tx, chantier_id).await? {
+        return Ok(Redirect::to(&format!("/chantiers/{chantier_id}/finances?erreur=finale")));
+    }
     let brouillon: Option<i64> = sqlx::query_scalar("SELECT id FROM avancements WHERE chantier_id = $1 AND statut = 'brouillon'")
         .bind(chantier_id)
         .fetch_optional(&mut *tx)
@@ -641,6 +655,9 @@ async fn remettre_en_brouillon(State(state): State<AppState>, Path((chantier_id,
     if a.statut != "valide" || a.numero != a.dernier {
         return Err(Erreur::conflit("Seul le dernier avancement validé peut être remis en brouillon."));
     }
+    if facture_de(&state.db, id).await?.is_some() {
+        return Err(Erreur::conflit("Cet avancement est facturé : il ne peut plus être remis en brouillon."));
+    }
     sqlx::query("UPDATE avancements SET statut = 'brouillon', updated_at = now() WHERE id = $1").bind(id).execute(&state.db).await?;
     Ok(Redirect::to(&format!("/chantiers/{chantier_id}/avancements/{id}?ok=brouillon")))
 }
@@ -655,6 +672,145 @@ async fn supprimer(State(state): State<AppState>, Path((chantier_id, id)): Path<
     Ok(Redirect::to(&format!("/chantiers/{chantier_id}/finances")))
 }
 
+// ─── Pour les factures (étape 7) ────────────────────────────────────────────
+
+/// Les bases HT d'un devis ou d'un avenant par taux de TVA (lignes chiffrées seulement).
+fn bases_du_bloc(b: &Bloc) -> Vec<(i64, i64)> {
+    facture_calcul::par_cle(b.postes.iter().filter(|p| p.nature == Nature::Chiffre).filter_map(|p| Some((p.taux_tva_id?, p.total_cents))))
+}
+
+/// Un montant d'un poste, par taux de TVA : une ligne chiffrée a son taux ; l'ajustement (remise) d'un devis
+/// se répartit entre les taux de ce devis au prorata de leurs bases, comme dans ses totaux.
+fn par_taux(p: &Poste, bloc: &Bloc, montant: i64) -> Vec<(i64, i64)> {
+    if let Some(t) = p.taux_tva_id {
+        return vec![(t, montant)];
+    }
+    let bases = bases_du_bloc(bloc);
+    let valeurs: Vec<i64> = bases.iter().map(|(_, b)| *b).collect();
+    bases.iter().zip(facture_calcul::repartir(montant, &valeurs)).map(|((t, _), part)| (*t, part)).filter(|(_, part)| *part != 0).collect()
+}
+
+/// Les bases HT de tout le chantier par taux (devis de base et avenants acceptés, remises comprises) :
+/// un acompte se répartit entre les taux selon ces bases.
+pub(crate) async fn bases_par_taux(db: &PgPool, chantier_id: i64) -> Result<Vec<(i64, i64)>, sqlx::Error> {
+    let blocs = charger_blocs(db, chantier_id).await?;
+    let mut montants = Vec::new();
+    for b in &blocs {
+        for p in b.postes.iter().filter(|p| p.avancable()) {
+            montants.extend(par_taux(p, b, p.total_cents));
+        }
+    }
+    Ok(facture_calcul::par_cle(montants))
+}
+
+/// Les lignes de la facture de l'avancement n° `numero` : pour chaque devis ou avenant, un titre puis chaque poste
+/// avancé pendant la période (montant de la période, avec le % de la période et le % cumulé).
+pub(crate) async fn lignes_de_facture(db: &PgPool, chantier_id: i64, numero: i32) -> Result<Vec<NouvelleLigne>, sqlx::Error> {
+    let blocs = charger_blocs(db, chantier_id).await?;
+    let montants = charger_montants(db, chantier_id).await?;
+    let (precedent, periode) = repartir(&montants, numero);
+    Ok(construire_lignes_facture(&blocs, &precedent, &periode))
+}
+
+fn construire_lignes_facture(blocs: &[Bloc], precedent: &HashMap<String, i64>, periode: &HashMap<String, i64>) -> Vec<NouvelleLigne> {
+    let mut lignes = Vec::new();
+    for b in blocs {
+        let mut siennes = Vec::new();
+        for p in b.postes.iter().filter(|p| p.avancable()) {
+            let m = periode.get(&p.cle).copied().unwrap_or(0);
+            if m == 0 {
+                continue;
+            }
+            let cumul = precedent.get(&p.cle).copied().unwrap_or(0) + m;
+            let pourcent = |x: i64| ac::pourcentage_centiemes(x, p.total_cents).map(ac::pourcentage_en_texte).unwrap_or_default();
+            let nom = if p.numero.is_empty() { p.description.clone() } else { format!("{} {}", p.numero, p.description) };
+            let description = format!("{nom}\nAvancement de la période : {} (cumul : {})", pourcent(m), pourcent(cumul));
+            match p.taux_tva_id {
+                Some(t) => {
+                    let quantite = p.quantite_e5.and_then(|q| ac::quantite_depuis_montant(m, p.total_cents, q));
+                    siennes.push(NouvelleLigne {
+                        genre: "poste",
+                        description,
+                        quantite_e5: quantite,
+                        unite: if quantite.is_some() { p.unite.clone() } else { String::new() },
+                        prix_unitaire_e5: if quantite.is_some() { p.prix_e5 } else { None },
+                        taux_tva_id: Some(t),
+                        total_cents: m,
+                    });
+                }
+                None => {
+                    for (t, part) in par_taux(p, b, m) {
+                        siennes.push(NouvelleLigne::forfait(description.clone(), t, part));
+                    }
+                }
+            }
+        }
+        if !siennes.is_empty() {
+            lignes.push(NouvelleLigne::titre(b.titre.clone()));
+            lignes.extend(siennes);
+        }
+    }
+    lignes
+}
+
+/// Ce qui reste à avancer, poste par poste (clé, montant), après tous les avancements enregistrés,
+/// et les lignes de la facture qui solde ces postes.
+pub(crate) async fn preparer_solde(db: &PgPool, chantier_id: i64) -> Result<(Vec<(String, i64)>, Vec<NouvelleLigne>), sqlx::Error> {
+    let blocs = charger_blocs(db, chantier_id).await?;
+    let montants = charger_montants(db, chantier_id).await?;
+    let (cumul, _) = repartir(&montants, i32::MAX);
+    let soldes: Vec<(String, i64)> = blocs
+        .iter()
+        .flat_map(|b| b.postes.iter())
+        .filter(|p| p.avancable())
+        .map(|p| (p.cle.clone(), p.total_cents - cumul.get(&p.cle).copied().unwrap_or(0)))
+        .filter(|(_, reste)| *reste != 0)
+        .collect();
+    let periode: HashMap<String, i64> = soldes.iter().cloned().collect();
+    let lignes = construire_lignes_facture(&blocs, &cumul, &periode);
+    Ok((soldes, lignes))
+}
+
+/// Crée l'avancement validé « Solde » qui porte chaque poste à 100 % (pour la facture finale). Renvoie (id, numéro).
+pub(crate) async fn inserer_solde(tx: &mut Transaction<'_, Postgres>, chantier_id: i64, soldes: &[(String, i64)]) -> Result<(i64, i32), sqlx::Error> {
+    let numero: i32 = sqlx::query_scalar("SELECT COALESCE(max(numero), 0) + 1 FROM avancements WHERE chantier_id = $1")
+        .bind(chantier_id)
+        .fetch_one(&mut **tx)
+        .await?;
+    let total: i64 = soldes.iter().map(|(_, m)| m).sum();
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO avancements (chantier_id, numero, date_avancement, reference, statut, montant_ht_cents)
+         VALUES ($1, $2, (now() AT TIME ZONE 'Europe/Brussels')::date, 'Solde (facture finale)', 'valide', $3) RETURNING id",
+    )
+    .bind(chantier_id)
+    .bind(numero)
+    .bind(total)
+    .fetch_one(&mut **tx)
+    .await?;
+    for (cle, montant) in soldes {
+        let (ligne, ajustement) = colonnes_cle(cle);
+        sqlx::query("INSERT INTO avancement_lignes (avancement_id, devis_ligne_id, ajustement_devis_id, montant_cents) VALUES ($1, $2, $3, $4)")
+            .bind(id)
+            .bind(ligne)
+            .bind(ajustement)
+            .bind(montant)
+            .execute(&mut **tx)
+            .await?;
+    }
+    Ok((id, numero))
+}
+
+/// La facture qui reprend cet avancement, s'il y en a une : (id, numéro).
+/// La facture qui reprend cet avancement, s'il y en a une.
+async fn facture_de(db: &PgPool, avancement_id: i64) -> Result<Option<i64>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM factures WHERE avancement_id = $1").bind(avancement_id).fetch_optional(db).await
+}
+
+/// Le chantier a-t-il déjà sa facture finale (brouillon compris) ?
+pub(crate) async fn a_une_finale<'e>(db: impl sqlx::PgExecutor<'e>, chantier_id: i64) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM factures WHERE chantier_id = $1 AND genre = 'finale')").bind(chantier_id).fetch_one(db).await
+}
+
 // ─── L'onglet Finances du chantier ──────────────────────────────────────────
 
 pub struct LigneListe {
@@ -667,12 +823,17 @@ pub struct LigneListe {
     pub pourcentage_cumul: String,
     pub reste: String,
     pub brouillon: bool,
+    /// La facture qui reprend cet avancement : (id, « Facture N° 127 » ou « Facture en brouillon »).
+    pub facture: Option<(i64, String)>,
 }
 
 pub struct Finances {
     pub avancements: Vec<LigneListe>,
     /// L'avancement en brouillon, s'il y en a un : « Nouvel avancement » le rouvre.
     pub brouillon: Option<i64>,
+    /// La facture finale existe : plus de nouvel avancement.
+    pub finale: bool,
+    pub total_cents: i64,
     pub total: String,
     pub avance: String,
     pub pourcentage_avance: String,
@@ -681,8 +842,10 @@ pub struct Finances {
 
 pub async fn finances(db: &PgPool, chantier_id: i64) -> Result<Finances, sqlx::Error> {
     let total: i64 = charger_blocs(db, chantier_id).await?.iter().map(|b| b.total_cents).sum();
-    let lignes: Vec<(i64, i32, NaiveDate, String, i64, String)> = sqlx::query_as(
-        "SELECT id, numero, date_avancement, reference, montant_ht_cents, statut::text FROM avancements WHERE chantier_id = $1 ORDER BY numero",
+    let lignes: Vec<(i64, i32, NaiveDate, String, i64, String, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "SELECT a.id, a.numero, a.date_avancement, a.reference, a.montant_ht_cents, a.statut::text, f.id, f.numero
+         FROM avancements a LEFT JOIN factures f ON f.avancement_id = a.id
+         WHERE a.chantier_id = $1 ORDER BY a.numero",
     )
     .bind(chantier_id)
     .fetch_all(db)
@@ -691,7 +854,7 @@ pub async fn finances(db: &PgPool, chantier_id: i64) -> Result<Finances, sqlx::E
     let mut avance = 0;
     let mut brouillon = None;
     let mut vues = Vec::new();
-    for (id, numero, date, reference, montant, statut) in lignes {
+    for (id, numero, date, reference, montant, statut, facture_id, facture_numero) in lignes {
         cumul += montant;
         if statut == "brouillon" {
             brouillon = Some(id);
@@ -709,11 +872,19 @@ pub async fn finances(db: &PgPool, chantier_id: i64) -> Result<Finances, sqlx::E
             pourcentage_cumul: pourcent(cumul),
             reste: format_euros(total - cumul),
             brouillon: statut == "brouillon",
+            facture: facture_id.map(|f| {
+                (f, match facture_numero {
+                    Some(n) => format!("Facture N° {n}"),
+                    None => "Facture en brouillon".to_string(),
+                })
+            }),
         });
     }
     Ok(Finances {
         avancements: vues,
         brouillon,
+        finale: a_une_finale(db, chantier_id).await?,
+        total_cents: total,
         total: format_euros(total),
         avance: format_euros(avance),
         pourcentage_avance: ac::pourcentage_centiemes(avance, total).map(ac::pourcentage_en_texte).unwrap_or_default(),
