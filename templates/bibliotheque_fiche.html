@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}{% if id.is_some() %}Modifier un ouvrage{% else %}Nouvel ouvrage{% endif %} · Bibliothèque · Ubifacture{% endblock %}
+{% block nav_bibliotheque %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="/bibliotheque" aria-label="Retour à la bibliothèque" title="Retour à la bibliothèque">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>{% if id.is_some() %}Modifier un ouvrage{% else %}Nouvel ouvrage{% endif %}</h1>
+        <div class="u-sous-titre">Bibliothèque de prix · inséré dans un devis, l'ouvrage devient une ligne (une copie : la changer ici ne change aucun devis)</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !erreurs.is_empty() %}
+<div role="alert" class="u-bandeau erreur">
+  {% call ui::icone("attention", 18) %}{% endcall %}
+  <ul class="list-disc pl-5">{% for e in erreurs %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+<form id="ouvrage" class="u-card" method="post" action="{% if let Some(i) = id %}/bibliotheque/{{ i }}{% else %}/bibliotheque{% endif %}">
+  <div class="u-card-h"><h2>{% call ui::icone("bibliotheque", 17) %}{% endcall %}Ouvrage</h2></div>
+  <div class="u-deux">
+    <div class="u-col">
+      <h3>Description</h3>
+      <label class="form-control">
+        <span class="u-lbl">Description <i>*</i></span>
+        <textarea class="textarea textarea-bordered" name="description" rows="3" maxlength="5000" required>{{ saisie.description }}</textarea>
+      </label>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="form-control">
+          <span class="u-lbl">Type <i>*</i></span>
+          <select class="select select-bordered" name="genre">
+            {% for g in genres %}<option value="{{ g.valeur }}"{% if g.choisi %} selected{% endif %}>{{ g.libelle }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Catégorie</span>
+          <input class="input input-bordered" type="text" name="categorie" value="{{ saisie.categorie }}" maxlength="100" list="categories">
+          <datalist id="categories">{% for c in categories %}<option value="{{ c }}"></option>{% endfor %}</datalist>
+        </label>
+      </div>
+      <label class="form-control">
+        <span class="u-lbl">Fournisseur</span>
+        <input class="input input-bordered" type="text" name="fournisseur" value="{{ saisie.fournisseur }}" maxlength="100">
+      </label>
+      <label class="form-control">
+        <span class="u-lbl">Remarque (reprise sous la ligne du devis)</span>
+        <textarea class="textarea textarea-bordered" name="remarque" rows="2" maxlength="5000">{{ saisie.remarque }}</textarea>
+      </label>
+    </div>
+    <div class="u-col">
+      <h3>Prix</h3>
+      <label class="form-control">
+        <span class="u-lbl">Unité</span>
+        <input class="input input-bordered" type="text" name="unite" value="{{ saisie.unite }}" maxlength="20" placeholder="m², h, pièce, forfait…">
+      </label>
+      <div class="grid gap-3 grid-cols-3">
+        <label class="form-control">
+          <span class="u-lbl">Prix d'achat</span>
+          <input class="input input-bordered text-right" type="text" inputmode="decimal" name="prix_achat" value="{{ saisie.prix_achat }}">
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Marge (%)</span>
+          <input class="input input-bordered text-right" type="text" inputmode="decimal" name="marge" value="{{ saisie.marge }}" placeholder="{{ marge_calculee }}">
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Prix de vente <i>*</i></span>
+          <input class="input input-bordered text-right" type="text" inputmode="decimal" name="prix_vente" value="{{ saisie.prix_vente }}">
+        </label>
+      </div>
+      <p class="u-petit u-muet" style="margin:0">Hors TVA, par unité. Sans prix de vente, il est calculé : prix d'achat + marge. Avec un prix de vente, la marge se recalcule{% if !marge_calculee.is_empty() %} (actuellement {{ marge_calculee }}){% endif %}.</p>
+    </div>
+  </div>
+</form>
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  <a class="btn" href="/bibliotheque">Annuler</a>
+  <button class="btn btn-primary" type="submit" form="ouvrage">Enregistrer</button>
+</div>
+{% endblock %}

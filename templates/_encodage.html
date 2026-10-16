@@ -1,3 +1,4 @@
+{% import "_ui.html" as ui %}
 {# L'encodage d'un devis : une carte avec le tableau des lignes, l'ajout de lignes et les totaux.
    Chaque champ s'enregistre quand on le quitte ; le serveur renvoie les totaux (voir _encodage_maj.html). #}
 <div id="encodage" class="flex flex-col gap-4">
@@ -100,8 +101,17 @@
             {% for t in enc.types %}
             <button type="button" class="u-mi" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "{{ t.0 }}"}' hx-target="#encodage" hx-swap="outerHTML"><span class="u-type u-type-{{ t.0 }}">{{ t.1 }}</span></button>
             {% endfor %}
-            <div class="u-sep"></div>
-            <span class="u-mi u-off" aria-disabled="true">Ouvrage depuis la bibliothèque <small>bientôt</small></span>
+          </div>
+        </details>
+        <details class="u-menu">
+          <summary class="btn btn-sm btn-ghost">{% call ui::icone("bibliotheque", 14) %}{% endcall %}Depuis la bibliothèque</summary>
+          <div class="u-menu-liste gauche u-menu-form" style="top:auto;bottom:calc(100% + 4px);min-width:420px">
+            <label class="u-recherche" style="flex:none">
+              {% call ui::icone("recherche", 16) %}{% endcall %}
+              <input class="input input-bordered input-sm w-full" type="search" name="q" placeholder="Rechercher un ouvrage" aria-label="Rechercher un ouvrage" autocomplete="off"
+                     hx-get="/bibliotheque/choisir?devis={{ enc.id }}" hx-trigger="load, input changed delay:300ms, search" hx-target="next .u-choix" hx-swap="innerHTML">
+            </label>
+            <div class="u-choix max-h-72 overflow-y-auto"></div>
           </div>
         </details>
         <button type="button" class="btn btn-sm btn-ghost" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "poste_libre"}' hx-target="#encodage" hx-swap="outerHTML">+ Poste libre</button>

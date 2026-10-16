@@ -1,0 +1,52 @@
+{% import "_ui.html" as ui %}
+<div class="overflow-x-auto">
+  <table class="u-table">
+    <thead>
+      <tr>
+        <th class="w-full">Description</th><th>Type</th><th>Catégorie</th><th>Fournisseur</th><th>Unité</th>
+        <th class="n">Prix d'achat</th><th class="n">Marge</th><th class="n">Prix de vente</th><th class="n"><span class="sr-only">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in liste.lignes %}
+      <tr>
+        <td class="min-w-[220px]"><a href="/bibliotheque/{{ l.id }}" class="whitespace-pre-line">{{ l.description }}</a></td>
+        <td class="nw"><span class="u-type {{ l.classe_genre }}">{{ l.genre }}</span></td>
+        <td class="nw">{{ l.categorie }}</td>
+        <td>{{ l.fournisseur }}</td>
+        <td class="nw">{{ l.unite }}</td>
+        <td class="n">{{ l.achat }}</td>
+        <td class="n">{{ l.marge }}</td>
+        <td class="n font-medium">{{ l.vente }}</td>
+        <td class="n">
+          <div class="inline-flex gap-0.5">
+            <a class="btn u-ib" href="/bibliotheque/{{ l.id }}" aria-label="Modifier" title="Modifier">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
+            <details class="u-menu">
+              <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
+              <form method="post" action="/bibliotheque/{{ l.id }}/supprimer" class="u-menu-liste u-menu-form">
+                <span class="u-petit">Retirer cet ouvrage de la bibliothèque ? Les devis qui l'utilisent gardent leur ligne.</span>
+                <button class="btn btn-danger btn-sm" type="submit">Supprimer</button>
+              </form>
+            </details>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr class="vide"><td colspan="9">Aucun ouvrage trouvé. « Nouveau » en haut à droite pour en ajouter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="u-pied">
+  {% call ui::par_page() %}{% endcall %}
+  <span>{{ liste.total }} ouvrage(s)</span>
+  <div class="u-pages">
+    {% if liste.page > 1 %}
+    <a href="/bibliotheque?{{ liste.requete }}&page={{ liste.page - 1 }}" hx-get="/bibliotheque?{{ liste.requete }}&page={{ liste.page - 1 }}" hx-target="#liste" hx-push-url="true" aria-label="Page précédente">←</a>
+    {% endif %}
+    <span class="actif">Page {{ liste.page }} / {{ liste.pages }}</span>
+    {% if liste.page < liste.pages %}
+    <a href="/bibliotheque?{{ liste.requete }}&page={{ liste.page + 1 }}" hx-get="/bibliotheque?{{ liste.requete }}&page={{ liste.page + 1 }}" hx-target="#liste" hx-push-url="true" aria-label="Page suivante">→</a>
+    {% endif %}
+  </div>
+</div>

@@ -1,0 +1,14 @@
+{# Résultats de la recherche dans la bibliothèque, depuis l'Encodage d'un devis (fragment htmx). #}
+<div class="flex flex-col">
+  {% for l in lignes %}
+  <div class="flex items-center gap-2 py-1.5 border-b border-[#EEEFEC]">
+    <span class="flex-1 min-w-0">
+      <span class="block truncate text-[13.5px]" title="{{ l.description }}">{{ l.description }}</span>
+      <small class="u-muet"><span class="u-type {{ l.classe_genre }}">{{ l.genre }}</span>{% if !l.categorie.is_empty() %} · {{ l.categorie }}{% endif %} · {{ l.vente }}{% if !l.unite.is_empty() %} / {{ l.unite }}{% endif %}</small>
+    </span>
+    <button type="button" class="btn btn-sm" hx-post="/devis/{{ devis }}/bibliotheque" hx-vals='{"ouvrage": "{{ l.id }}"}' hx-target="#encodage" hx-swap="outerHTML">Insérer</button>
+  </div>
+  {% else %}
+  <p class="u-petit u-muet py-2" style="margin:0">{% if q.is_empty() %}La bibliothèque est vide : ajoute des ouvrages dans le menu Bibliothèque.{% else %}Aucun ouvrage ne correspond.{% endif %}</p>
+  {% endfor %}
+</div>

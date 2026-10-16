@@ -240,6 +240,16 @@ async fn vitrine(pool: PgPool) {
     // Étape 9-2 : deux achats saisis sur le chantier.
     poster(&s, &format!("/chantiers/{chantier}/achats"), &format!("date={aujourdhui}&categorie=fourniture&fournisseur=Brico+Pro&description=Panneaux+PIR&montant=950")).await;
     poster(&s, &format!("/chantiers/{chantier}/achats"), &format!("date={aujourdhui}&categorie=sous_traitant&fournisseur=Nacelles+SA&description=Location+3+jours&montant=640")).await;
+    // Étape 9-3 : quelques ouvrages dans la bibliothèque.
+    for corps in [
+        "description=Panneaux+isolants+PIR+12+cm&genre=fourniture&categorie=Toiture&fournisseur=Brico+Pro&unite=m%C2%B2&prix_achat=29&prix_vente=42,50",
+        "description=D%C3%A9montage+de+l%27ancienne+couverture&genre=main_oeuvre&categorie=Toiture&unite=h&prix_achat=28&marge=60",
+        "description=Location+d%27une+nacelle&genre=sous_traitant&categorie=Chantier&fournisseur=Nacelles+SA&unite=j&prix_achat=220&prix_vente=280",
+        "description=Remplacement+d%27un+chauffe-eau+80+l&genre=ouvrage&categorie=Sanitaire&unite=forfait&prix_achat=640&marge=35",
+        "description=Pose+de+goutti%C3%A8res+en+zinc&genre=ouvrage&unite=m&prix_vente=58",
+    ] {
+        poster(&s, "/bibliotheque", corps).await;
+    }
     // Étape 8-4 : un dossier d'export du jour, et l'adresse du comptable.
     poster(&s, "/exports/comptable", "email=compta%40fiduciaire.example").await;
     poster(&s, "/exports", &format!("debut={aujourdhui}&fin={aujourdhui}&format=les_deux&contenu=toutes")).await;

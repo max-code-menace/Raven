@@ -521,6 +521,43 @@ async fn ajouter(State(state): State<AppState>, Path(id): Path<i64>, Form(f): Fo
 
 #[derive(Deserialize, Default)]
 #[serde(default)]
+struct OuvrageChoisi {
+    ouvrage: i64,
+}
+
+/// Insère un ouvrage de la bibliothèque (étape 9-3) à la fin du devis : une copie de sa description, de son type, de
+/// son unité, de ses prix d'achat et de vente et de sa remarque, quantité 1, TVA par défaut du devis.
+async fn ajouter_ouvrage(State(state): State<AppState>, Path(id): Path<i64>, Form(f): Form<OuvrageChoisi>) -> Result<Html<String>, Erreur> {
+    let entete = charger_entete(&state.db, id).await?;
+    exiger_brouillon(&entete)?;
+    if entete.taux_par_defaut.is_none() {
+        let message = "Choisis d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
+        let enc = charger_encodage(&state.db, id, &entete, message).await?;
+        return Ok(Html(Bloc { enc }.render()?));
+    }
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
+    let fait = sqlx::query(
+        "INSERT INTO devis_lignes (devis_id, position, genre, description, quantite_e5, unite, prix_unitaire_e5, prix_achat_unitaire_e5,
+                                   remarque, taux_tva_id)
+         SELECT $1, COALESCE((SELECT max(position) FROM devis_lignes WHERE devis_id = $1), 0) + 1,
+                genre, description, 100000, unite, prix_vente_e5, prix_achat_e5, remarque, $3
+         FROM ouvrages WHERE id = $2",
+    )
+    .bind(id)
+    .bind(f.ouvrage)
+    .bind(entete.taux_par_defaut)
+    .execute(&mut *tx)
+    .await?;
+    let message = if fait.rows_affected() == 0 { "Cet ouvrage n'existe plus dans la bibliothèque.".to_string() } else { String::new() };
+    recalculer(&mut tx, id).await?;
+    tx.commit().await?;
+    let enc = charger_encodage(&state.db, id, &entete, message).await?;
+    Ok(Html(Bloc { enc }.render()?))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
 struct MajLigne {
     description: Option<String>,
     remarque: Option<String>,
@@ -749,6 +786,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/devis/{id}/encodage", get(page))
         .route("/devis/{id}/lignes", post(ajouter))
+        .route("/devis/{id}/bibliotheque", post(ajouter_ouvrage))
         .route("/devis/{id}/marge", post(basculer_marge))
         .route("/devis/{id}/frais-generaux", post(changer_frais_generaux))
         .route("/devis/{id}/lignes/{ligne_id}", post(modifier))

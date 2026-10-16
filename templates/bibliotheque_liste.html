@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Bibliothèque · Ubifacture{% endblock %}
+{% block nav_bibliotheque %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    {% call ui::titre_liste("bibliotheque", "Bibliothèque") %}{% endcall %}
+    <div class="u-actions">
+      <span class="u-petit u-muet">Les ouvrages s'insèrent dans un devis depuis l'onglet Encodage.</span>
+      <a class="btn btn-primary" href="/bibliotheque/nouveau">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</a>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+<div class="grid gap-4 2xl:grid-cols-[220px_minmax(0,1fr)] items-start">
+  <nav class="u-card" aria-label="Catégories">
+    <div class="u-card-h"><h2>Catégories</h2></div>
+    <div class="p-2 flex flex-row flex-wrap 2xl:flex-col gap-0.5">
+      {% for c in liste.categories %}
+      <a class="u-mi w-auto 2xl:w-full{% if c.choisie %} font-semibold{% endif %}" href="{{ c.adresse }}"{% if c.choisie %} aria-current="true" style="background:#DDEFF0;color:#084C57"{% endif %}><span class="flex-1 truncate">{{ c.libelle }}</span><small>{{ c.nombre }}</small></a>
+      {% endfor %}
+    </div>
+  </nav>
+  <section class="u-card">
+    <form class="u-outils" method="get" action="/bibliotheque">
+      <input type="hidden" name="categorie" value="{{ liste.categorie }}">
+      <label class="u-recherche">
+        {% call ui::icone("recherche", 16) %}{% endcall %}
+        <input class="input input-bordered w-full" type="search" name="q" value="{{ liste.q }}" placeholder="Rechercher (description, catégorie, fournisseur)" aria-label="Rechercher" autocomplete="off"
+               hx-get="/bibliotheque" hx-trigger="input changed delay:300ms, search" hx-target="#liste" hx-include="closest form" hx-push-url="true">
+      </label>
+      {% for c in liste.categories %}{% if c.choisie && !liste.categorie.is_empty() %}
+      <a class="u-pastille-filtre" href="/bibliotheque?q={{ liste.q|urlencode }}" title="Retirer le filtre">Catégorie : {{ c.libelle }} <span aria-hidden="true">×</span></a>
+      {% endif %}{% endfor %}
+    </form>
+    <div id="liste">
+      {% include "_bibliotheque_tableau.html" %}
+    </div>
+  </section>
+</div>
+{% endblock %}
