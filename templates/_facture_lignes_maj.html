@@ -1,0 +1,8 @@
+{# Réponse à htmx après la modification d'une ligne : on ne remplace que les totaux et le message. #}
+<div id="lignes-erreur" hx-swap-oob="true">{% if !lignes.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ lignes.message }}</span></div>{% endif %}</div>
+{% for l in lignes.lignes %}
+{% if l.est_poste %}<span id="total-{{ l.id }}" hx-swap-oob="true">{{ l.total }}</span>{% endif %}
+{% endfor %}
+<div id="totaux-facture" class="card bg-base-100 shadow" hx-swap-oob="true">
+  <div class="card-body">{% include "_facture_lignes_totaux.html" %}</div>
+</div>

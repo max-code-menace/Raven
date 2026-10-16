@@ -24,13 +24,13 @@ use crate::{AppState, Erreur};
 
 /// Dans les menus, une entreprise s'écrit « e12 » et un contact « c5 ».
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Personne {
+pub(crate) enum Personne {
     Entreprise(i64),
     Contact(i64),
 }
 
 impl Personne {
-    fn lire(texte: &str) -> Option<Self> {
+    pub(crate) fn lire(texte: &str) -> Option<Self> {
         let texte = texte.trim();
         let (genre, numero) = texte.split_at_checked(1)?;
         let id: i64 = numero.parse().ok().filter(|n| *n > 0)?;
@@ -41,7 +41,7 @@ impl Personne {
         }
     }
 
-    fn code(self) -> String {
+    pub(crate) fn code(self) -> String {
         match self {
             Personne::Entreprise(id) => format!("e{id}"),
             Personne::Contact(id) => format!("c{id}"),
@@ -49,7 +49,7 @@ impl Personne {
     }
 
     /// (entreprise_id, contact_id) tels qu'ils sont enregistrés en base.
-    fn colonnes(personne: Option<Self>) -> (Option<i64>, Option<i64>) {
+    pub(crate) fn colonnes(personne: Option<Self>) -> (Option<i64>, Option<i64>) {
         match personne {
             Some(Personne::Entreprise(id)) => (Some(id), None),
             Some(Personne::Contact(id)) => (None, Some(id)),
@@ -57,21 +57,21 @@ impl Personne {
         }
     }
 
-    fn depuis(entreprise: Option<i64>, contact: Option<i64>) -> Option<Self> {
+    pub(crate) fn depuis(entreprise: Option<i64>, contact: Option<i64>) -> Option<Self> {
         entreprise.map(Personne::Entreprise).or(contact.map(Personne::Contact))
     }
 }
 
 // ─── Ce que l'écran propose dans ses menus ──────────────────────────────────
 
-struct Referentiel {
-    options: Options,
+pub(crate) struct Referentiel {
+    pub(crate) options: Options,
     personnes: Vec<(Personne, String)>,
     contacts: Vec<(i64, String)>,
 }
 
 impl Referentiel {
-    async fn charger(db: &PgPool) -> Result<Self, sqlx::Error> {
+    pub(crate) async fn charger(db: &PgPool) -> Result<Self, sqlx::Error> {
         // Pour une entreprise, `Options` ne charge que les conditions de paiement et les taux de TVA.
         let options = Options::charger(db, Genre::Entreprise).await?;
         let entreprises: Vec<(i64, String)> =
@@ -90,11 +90,11 @@ impl Referentiel {
         Ok(Referentiel { options, personnes, contacts })
     }
 
-    fn existe(&self, personne: Personne) -> bool {
+    pub(crate) fn existe(&self, personne: Personne) -> bool {
         self.personnes.iter().any(|(p, _)| *p == personne)
     }
 
-    fn choix_personnes(&self, actuel: &str) -> Vec<Choix> {
+    pub(crate) fn choix_personnes(&self, actuel: &str) -> Vec<Choix> {
         let actuel = Personne::lire(actuel).map(Personne::code).unwrap_or_default();
         self.personnes
             .iter()

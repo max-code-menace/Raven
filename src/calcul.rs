@@ -66,7 +66,7 @@ pub struct Totaux {
 /// Répartit `total` entre les bases au prorata, sans perdre un centime : la somme des parts
 /// vaut exactement `total`. Le reste va aux plus grandes fractions (à égalité, au premier).
 /// `bases_somme` doit être la somme des bases et être strictement positive.
-fn repartir(total: i64, bases: &[i64], bases_somme: i64) -> Vec<i64> {
+pub(crate) fn repartir(total: i64, bases: &[i64], bases_somme: i64) -> Vec<i64> {
     let (total, somme) = (i128::from(total), i128::from(bases_somme));
     let mut parts: Vec<i64> = Vec::with_capacity(bases.len());
     let mut restes: Vec<i128> = Vec::with_capacity(bases.len());

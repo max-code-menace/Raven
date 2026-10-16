@@ -1,0 +1,70 @@
+<div id="lignes" class="flex flex-col gap-4">
+  <div id="lignes-erreur">{% if !lignes.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ lignes.message }}</span></div>{% endif %}</div>
+  <div class="card bg-base-100 shadow">
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>N°</th><th class="w-full">Description</th><th>Qté</th><th>Unité</th><th>Prix U.</th><th>TVA</th><th class="text-right">Total</th>
+            {% if lignes.modifiables %}<th></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in lignes.lignes %}
+          {% if lignes.modifiables %}
+          <tr class="align-top{% if l.est_titre %} bg-base-200 font-semibold{% endif %}"
+              hx-post="/factures/{{ lignes.id }}/lignes/{{ l.id }}" hx-trigger="change" hx-include="this" hx-swap="none">
+            <td class="whitespace-nowrap">{{ l.numero }}</td>
+            {% if l.est_poste %}
+            <td><textarea class="textarea textarea-bordered textarea-sm w-full min-w-48" rows="1" name="description">{{ l.description }}</textarea></td>
+            <td><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"></td>
+            <td><input class="input input-bordered input-sm w-20" type="text" name="unite" value="{{ l.unite }}"></td>
+            <td><input class="input input-bordered input-sm w-28 text-right" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"></td>
+            <td>
+              <select class="select select-bordered select-sm" name="taux_tva_id">
+                {% for t in l.taux %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
+              </select>
+            </td>
+            <td class="text-right whitespace-nowrap"><span id="total-{{ l.id }}">{{ l.total }}</span></td>
+            {% else %}
+            <td colspan="6"><textarea class="textarea textarea-bordered textarea-sm w-full" rows="1" name="description">{{ l.description }}</textarea></td>
+            {% endif %}
+            <td>
+              <button type="button" class="btn btn-ghost btn-xs text-error" title="Supprimer"
+                      hx-post="/factures/{{ lignes.id }}/lignes/{{ l.id }}/supprimer" hx-target="#lignes" hx-swap="outerHTML"
+                      hx-confirm="Supprimer cette ligne ?">✕</button>
+            </td>
+          </tr>
+          {% else %}
+          <tr class="align-top{% if l.est_titre %} bg-base-200 font-semibold{% endif %}">
+            <td class="whitespace-nowrap">{{ l.numero }}</td>
+            {% if l.est_poste %}
+            <td class="whitespace-pre-line">{{ l.description }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.quantite }}</td>
+            <td>{{ l.unite }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.prix_affiche }}</td>
+            <td class="whitespace-nowrap">{{ l.taux_texte }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.total }}</td>
+            {% else %}
+            <td colspan="6" class="whitespace-pre-line{% if !l.est_titre %} italic{% endif %}">{{ l.description }}</td>
+            {% endif %}
+          </tr>
+          {% endif %}
+          {% else %}
+          <tr><td colspan="8" class="text-center opacity-70 py-8">Aucune ligne.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if lignes.modifiables %}
+    <div class="flex flex-wrap gap-2 p-4">
+      <button type="button" class="btn btn-sm btn-outline" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "poste"}' hx-target="#lignes" hx-swap="outerHTML">+ Poste</button>
+      <button type="button" class="btn btn-sm btn-ghost" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "titre"}' hx-target="#lignes" hx-swap="outerHTML">+ Titre</button>
+      <button type="button" class="btn btn-sm btn-ghost" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "texte"}' hx-target="#lignes" hx-swap="outerHTML">+ Texte</button>
+    </div>
+    {% endif %}
+  </div>
+  <div id="totaux-facture" class="card bg-base-100 shadow">
+    <div class="card-body">{% include "_facture_lignes_totaux.html" %}</div>
+  </div>
+</div>

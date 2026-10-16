@@ -14,6 +14,8 @@ pub mod devis_lignes;
 pub mod devis_pdf;
 pub mod devis_statut;
 pub mod devis_totaux;
+pub mod facture_calcul;
+pub mod factures;
 pub mod fiches;
 pub mod journal;
 pub mod pdf;
@@ -109,6 +111,7 @@ pub fn app(state: AppState) -> Router {
         .merge(chantiers::routes())
         .merge(avenants::routes())
         .merge(avancements::routes())
+        .merge(factures::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

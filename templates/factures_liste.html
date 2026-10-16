@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Factures · Ubifacture{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+  <h1 class="text-2xl font-bold">Factures et notes de crédit</h1>
+  {# Une facture simple, sans devis. Les factures d'acompte, d'avancement et finales se créent depuis le chantier. #}
+  <form method="post" action="/factures">
+    <button class="btn btn-primary" type="submit">Nouvelle facture</button>
+  </form>
+</div>
+
+<form class="flex flex-wrap items-end gap-2 mb-4"
+      hx-get="/factures"
+      hx-target="#liste"
+      hx-push-url="true"
+      hx-trigger="input from:find input[type=search] delay:300ms, change, submit">
+  <input class="input input-bordered w-72" type="search" name="q" value="{{ liste.q }}"
+         placeholder="Rechercher (n°, référence, client)" autocomplete="off">
+  <select class="select select-bordered" name="genre">
+    <option value="">Tous les types</option>
+    {% for g in liste.genres %}<option value="{{ g.valeur }}"{% if g.choisi %} selected{% endif %}>{{ g.libelle }}</option>{% endfor %}
+  </select>
+  <select class="select select-bordered" name="statut">
+    <option value="">Tous les statuts</option>
+    {% for s in liste.statuts %}<option value="{{ s.valeur }}"{% if s.choisi %} selected{% endif %}>{{ s.libelle }}</option>{% endfor %}
+  </select>
+</form>
+
+<div id="liste" class="card bg-base-100 shadow">
+  {% include "_factures_tableau.html" %}
+</div>
+{% endblock %}

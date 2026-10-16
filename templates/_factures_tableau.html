@@ -1,0 +1,53 @@
+<div class="overflow-x-auto">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>N°</th><th>Date</th><th>Type</th><th>Client</th><th>Référence</th>
+        <th class="text-right">Montant HT</th><th class="text-right">Montant TTC</th><th>Échéance</th><th>Statut</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in liste.lignes %}
+      <tr class="hover">
+        <td class="font-medium whitespace-nowrap">{{ l.numero }}</td>
+        <td class="whitespace-nowrap">{{ l.date }}</td>
+        <td class="whitespace-nowrap">{{ l.genre }}</td>
+        <td>{{ l.client }}</td>
+        <td>{{ l.reference }}</td>
+        <td class="text-right whitespace-nowrap">{{ l.montant_ht }}</td>
+        <td class="text-right whitespace-nowrap">{{ l.montant_ttc }}</td>
+        <td class="whitespace-nowrap">{{ l.echeance }}</td>
+        <td><span class="badge {{ l.classe_statut }} whitespace-nowrap">{{ l.statut }}</span></td>
+        <td class="text-right"><a class="btn btn-ghost btn-xs" href="/factures/{{ l.id }}">Ouvrir</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" class="text-center opacity-70 py-8">Aucune facture trouvée.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="flex flex-wrap items-center justify-between gap-4 p-4 text-sm">
+  <span>{{ liste.total }} pièce(s)</span>
+
+  {% if liste.pages > 1 %}
+  <div class="join">
+    {% if liste.page > 1 %}
+    <a class="btn btn-sm join-item" href="/factures?{{ liste.requete }}&page={{ liste.page - 1 }}"
+       hx-get="/factures?{{ liste.requete }}&page={{ liste.page - 1 }}" hx-target="#liste" hx-push-url="true">«</a>
+    {% endif %}
+    <span class="btn btn-sm join-item no-animation">Page {{ liste.page }} / {{ liste.pages }}</span>
+    {% if liste.page < liste.pages %}
+    <a class="btn btn-sm join-item" href="/factures?{{ liste.requete }}&page={{ liste.page + 1 }}"
+       hx-get="/factures?{{ liste.requete }}&page={{ liste.page + 1 }}" hx-target="#liste" hx-push-url="true">»</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# Les notes de crédit comptent en négatif. #}
+  <div class="flex gap-6">
+    <span>Total HT <strong>{{ liste.total_ht }}</strong></span>
+    <span>Total TVA <strong>{{ liste.total_tva }}</strong></span>
+    <span>Total TTC <strong>{{ liste.total_ttc }}</strong></span>
+  </div>
+</div>
