@@ -154,7 +154,8 @@ fn date_du_formulaire(s: &str) -> Option<NaiveDate> {
 const DEPUIS: &str = "FROM devis d
     LEFT JOIN entreprises e ON e.id = d.client_entreprise_id
     LEFT JOIN contacts c ON c.id = d.client_contact_id
-    WHERE ($1 = ''
+    WHERE d.chantier_id IS NULL -- les avenants sont sur la fiche de leur chantier
+      AND ($1 = ''
            OR d.numero::text ILIKE $2
            OR (extract(year FROM d.date_devis)::int || '-' || d.numero) ILIKE $2
            OR d.reference ILIKE $2

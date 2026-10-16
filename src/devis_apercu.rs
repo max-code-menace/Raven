@@ -17,7 +17,6 @@ use crate::{AppState, Erreur};
 #[template(path = "devis_apercu.html")]
 struct Page {
     id: i64,
-    numero: String,
     statut: &'static str,
     classe_statut: &'static str,
     onglet: &'static str,
@@ -30,7 +29,6 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<
     let entete = crate::devis_lignes::charger_entete(&state.db, id).await?;
     let page = Page {
         id,
-        numero: donnees.numero.clone(),
         statut: entete.statut,
         classe_statut: entete.classe_statut,
         onglet: "visualisation",

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 
-{% block title %}Devis N° {{ numero }} · Ubifacture{% endblock %}
+{% block title %}{{ barre.titre }} · Ubifacture{% endblock %}
 
 {% block content %}
 {% include "_devis_entete.html" %}
@@ -16,7 +16,7 @@
 
 {% if !modifiable %}
 <div role="alert" class="alert alert-info mb-4">
-  <span>Ce devis n'est plus un brouillon : il n'est plus modifiable.</span>
+  <span>{% if avenant %}Cet avenant{% else %}Ce devis{% endif %} n'est plus un brouillon : il n'est plus modifiable.</span>
 </div>
 {% endif %}
 
@@ -33,7 +33,7 @@
 
     <section class="card bg-base-100 shadow">
       <div class="card-body">
-        <h2 class="card-title">Détails du devis</h2>
+        <h2 class="card-title">Détails {% if avenant %}de l'avenant{% else %}du devis{% endif %}</h2>
         <div class="grid gap-4 md:grid-cols-2">
           {% call m::champ("Référence *", "reference", form.reference, "text") %}{% endcall %}
           {% call m::champ("Responsable *", "responsable", form.responsable, "text") %}{% endcall %}
@@ -43,6 +43,12 @@
             {# Le numéro est donné par le serveur (numérotation continue) : on ne le modifie pas. #}
             <input class="input input-bordered w-full" type="text" value="{{ numero }}" disabled>
           </label>
+          {% if avenant %}
+          <label class="form-control w-full">
+            <span class="label-text mb-1">Jours ouvrables supplémentaires</span>
+            <input class="input input-bordered w-full" type="number" min="0" max="999" step="1" name="jours_ouvrables" value="{{ form.jours_ouvrables }}">
+          </label>
+          {% endif %}
         </div>
       </div>
     </section>
@@ -131,7 +137,7 @@
 
     {% if modifiable %}
     <div class="flex justify-end gap-2">
-      <a class="btn btn-ghost" href="/devis">Annuler</a>
+      <a class="btn btn-ghost" href="{{ barre.retour }}">Annuler</a>
       <button class="btn btn-primary" type="submit">Enregistrer</button>
     </div>
     {% endif %}

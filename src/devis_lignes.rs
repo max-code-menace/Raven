@@ -43,7 +43,10 @@ const MESSAGE_NON_MODIFIABLE: &str = "Ce devis n'est plus un brouillon : il ne p
 
 /// Ce que les onglets du devis ont en commun : numéro, statut, TVA par défaut et ajustement.
 pub(crate) struct Entete {
+    /// « 2026-57 » pour un devis, « 2 » pour un avenant (numéroté dans son chantier).
     pub(crate) numero: String,
+    /// « Devis » ou « Avenant ».
+    pub(crate) genre: &'static str,
     pub(crate) statut: &'static str,
     pub(crate) classe_statut: &'static str,
     pub(crate) brouillon: bool,
@@ -56,20 +59,27 @@ pub(crate) struct Entete {
     pub(crate) frais_generaux_centiemes: i64,
 }
 
+/// Un devis s'affiche « année-numéro » ; un avenant garde son numéro dans le chantier (« 2 »).
+pub(crate) fn numero_affiche(annee: i32, numero: i64, avenant: bool) -> String {
+    if avenant { numero.to_string() } else { format!("{annee}-{numero}") }
+}
+
 pub(crate) async fn charger_entete(db: &PgPool, id: i64) -> Result<Entete, Erreur> {
-    let ligne: Option<(i64, i32, String, Option<i64>, String, String, i64, bool, i32)> = sqlx::query_as(
+    let ligne: Option<(i64, i32, String, Option<i64>, String, String, i64, bool, i32, bool)> = sqlx::query_as(
         "SELECT numero, extract(year FROM date_devis)::int, statut::text, taux_tva_id,
-                ajustement_libelle, ajustement_mode, ajustement_valeur, marge_activee, frais_generaux_centiemes
+                ajustement_libelle, ajustement_mode, ajustement_valeur, marge_activee, frais_generaux_centiemes,
+                chantier_id IS NOT NULL
          FROM devis WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(db)
     .await?;
-    let (numero, annee, statut_devis, taux_par_defaut, ajustement_libelle, mode, valeur, marge_activee, frais) =
+    let (numero, annee, statut_devis, taux_par_defaut, ajustement_libelle, mode, valeur, marge_activee, frais, avenant) =
         ligne.ok_or_else(Erreur::introuvable)?;
     let (libelle, classe) = statut(&statut_devis);
     Ok(Entete {
-        numero: format!("{annee}-{numero}"),
+        numero: numero_affiche(annee, numero, avenant),
+        genre: if avenant { "Avenant" } else { "Devis" },
         statut: libelle,
         classe_statut: classe,
         brouillon: statut_devis == "brouillon",
@@ -402,7 +412,6 @@ pub(crate) async fn charger_encodage(db: &PgPool, id: i64, entete: &Entete, mess
 #[template(path = "devis_encodage.html")]
 struct Page {
     id: i64,
-    numero: String,
     statut: &'static str,
     classe_statut: &'static str,
     onglet: &'static str,
@@ -452,7 +461,7 @@ async fn page(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html
     let entete = charger_entete(&state.db, id).await?;
     let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
     let barre = charger_barre(&state.db, id).await?;
-    let page = Page { id, numero: entete.numero, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", barre, enc };
+    let page = Page { id, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", barre, enc };
     Ok(Html(page.render()?))
 }
 

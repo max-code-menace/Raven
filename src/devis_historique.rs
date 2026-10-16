@@ -32,7 +32,6 @@ pub struct Evenement {
 #[template(path = "devis_historique.html")]
 struct Page {
     id: i64,
-    numero: String,
     statut: &'static str,
     classe_statut: &'static str,
     onglet: &'static str,
@@ -51,7 +50,6 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<
     .await?;
     let page = Page {
         id,
-        numero: entete.numero,
         statut: entete.statut,
         classe_statut: entete.classe_statut,
         onglet: "historique",

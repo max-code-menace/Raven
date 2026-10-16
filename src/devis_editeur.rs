@@ -130,6 +130,9 @@ struct Devis {
     gestionnaire_contact_id: Option<i64>,
     remarque_1: String,
     remarque_2: String,
+    /// Rempli pour un avenant : le chantier qu'il corrige.
+    chantier_id: Option<i64>,
+    jours_ouvrables: i32,
 }
 
 async fn charger_devis(db: &PgPool, id: i64) -> Result<Option<Devis>, sqlx::Error> {
@@ -139,7 +142,7 @@ async fn charger_devis(db: &PgPool, id: i64) -> Result<Option<Devis>, sqlx::Erro
                 conditions_paiement_id, facturation_identique, facturation_entreprise_id,
                 facturation_contact_id, chantier_identique, chantier_rue, chantier_numero,
                 chantier_code_postal, chantier_ville, chantier_pays, architecte_contact_id,
-                gestionnaire_contact_id, remarque_1, remarque_2
+                gestionnaire_contact_id, remarque_1, remarque_2, chantier_id, jours_ouvrables
          FROM devis WHERE id = $1",
     )
     .bind(id)
@@ -169,6 +172,8 @@ pub struct DevisForm {
     gestionnaire_id: String,
     remarque_1: String,
     remarque_2: String,
+    /// Seulement pour un avenant.
+    jours_ouvrables: String,
 }
 
 fn id_en_texte(id: Option<i64>) -> String {
@@ -197,6 +202,7 @@ impl From<&Devis> for DevisForm {
             gestionnaire_id: id_en_texte(d.gestionnaire_contact_id),
             remarque_1: d.remarque_1.clone(),
             remarque_2: d.remarque_2.clone(),
+            jours_ouvrables: d.jours_ouvrables.to_string(),
         }
     }
 }
@@ -221,10 +227,25 @@ struct Valeurs {
     gestionnaire_id: Option<i64>,
     remarque_1: String,
     remarque_2: String,
+    jours_ouvrables: i32,
 }
 
-fn valider(f: &DevisForm, r: &Referentiel) -> Result<Valeurs, Vec<String>> {
+/// Jours ouvrables supplémentaires d'un avenant : un nombre entier de 0 à 999 (vide = 0).
+fn lire_jours_ouvrables(texte: &str) -> Option<i32> {
+    match texte.trim() {
+        "" => Some(0),
+        t => t.parse::<i32>().ok().filter(|n| (0..=999).contains(n)),
+    }
+}
+
+fn valider(f: &DevisForm, r: &Referentiel, avenant: bool) -> Result<Valeurs, Vec<String>> {
     let mut erreurs = Vec::new();
+
+    // Un devis n'a pas de jours ouvrables supplémentaires : seul un avenant en accorde.
+    let jours_ouvrables = if avenant { lire_jours_ouvrables(&f.jours_ouvrables) } else { Some(0) };
+    if jours_ouvrables.is_none() {
+        erreurs.push("Les jours ouvrables supplémentaires sont un nombre entier entre 0 et 999.".to_string());
+    }
 
     let reference = f.reference.trim().to_string();
     if reference.is_empty() {
@@ -289,8 +310,8 @@ fn valider(f: &DevisForm, r: &Referentiel) -> Result<Valeurs, Vec<String>> {
     let architecte_id = contact(&f.architecte_id, "Cet architecte");
     let gestionnaire_id = contact(&f.gestionnaire_id, "Ce gestionnaire");
 
-    let (Some(date_devis), Some(client), Some(taux_tva_id), Some(conditions_paiement_id)) =
-        (date_devis, client, taux_tva_id, conditions_paiement_id)
+    let (Some(date_devis), Some(client), Some(taux_tva_id), Some(conditions_paiement_id), Some(jours_ouvrables)) =
+        (date_devis, client, taux_tva_id, conditions_paiement_id, jours_ouvrables)
     else {
         return Err(erreurs);
     };
@@ -319,6 +340,7 @@ fn valider(f: &DevisForm, r: &Referentiel) -> Result<Valeurs, Vec<String>> {
         gestionnaire_id,
         remarque_1: f.remarque_1.trim().to_string(),
         remarque_2: f.remarque_2.trim().to_string(),
+        jours_ouvrables,
     })
 }
 
@@ -334,7 +356,7 @@ async fn enregistrer_en_base(db: &PgPool, id: i64, v: &Valeurs) -> Result<bool, 
                 chantier_identique = $11, chantier_rue = $12, chantier_numero = $13,
                 chantier_code_postal = $14, chantier_ville = $15, chantier_pays = $16,
                 architecte_contact_id = $17, gestionnaire_contact_id = $18,
-                remarque_1 = $19, remarque_2 = $20, updated_at = now()
+                remarque_1 = $19, remarque_2 = $20, jours_ouvrables = $22, updated_at = now()
          WHERE id = $21 AND statut = 'brouillon'",
     )
     .bind(&v.reference)
@@ -358,6 +380,7 @@ async fn enregistrer_en_base(db: &PgPool, id: i64, v: &Valeurs) -> Result<bool, 
     .bind(&v.remarque_1)
     .bind(&v.remarque_2)
     .bind(id)
+    .bind(v.jours_ouvrables)
     .execute(db)
     .await?;
     Ok(res.rows_affected() > 0)
@@ -373,6 +396,8 @@ struct Page {
     statut: &'static str,
     classe_statut: &'static str,
     onglet: &'static str,
+    /// Un avenant montre en plus ses jours ouvrables supplémentaires.
+    avenant: bool,
     /// Seul un brouillon se modifie : un devis envoyé ou accepté est en lecture seule.
     modifiable: bool,
     /// Message de confirmation (après un enregistrement ou un changement de statut).
@@ -397,12 +422,13 @@ fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, re
     let pays = if form.chantier_pays.is_empty() { "BE".to_string() } else { form.chantier_pays.clone() };
     Page {
         id,
-        numero: format!("{}-{}", d.annee, d.numero),
+        numero: crate::devis_lignes::numero_affiche(d.annee, d.numero, d.chantier_id.is_some()),
         statut: libelle,
         classe_statut: classe,
         onglet: "informations",
+        avenant: d.chantier_id.is_some(),
         modifiable: d.statut == "brouillon",
-        message_ok: retour.message_ok().to_string(),
+        message_ok: retour.message_ok(d.chantier_id.is_some()).to_string(),
         message_erreur: retour.message_erreur().to_string(),
         barre,
         erreurs,
@@ -426,13 +452,18 @@ struct Retour {
 
 impl Retour {
     /// Les messages sont fixes : rien de ce qui est dans l'adresse n'est affiché tel quel.
-    fn message_ok(&self) -> &'static str {
-        match self.ok.as_str() {
-            "1" => "Les informations sont enregistrées.",
-            "envoye" => "Le devis est marqué comme envoyé.",
-            "accepte" => "Le devis est accepté et son chantier est créé.",
-            "refuse" => "Le devis est refusé.",
-            "brouillon" => "Le devis est remis en brouillon.",
+    fn message_ok(&self, avenant: bool) -> &'static str {
+        match (self.ok.as_str(), avenant) {
+            ("1", _) => "Les informations sont enregistrées.",
+            ("envoye", false) => "Le devis est marqué comme envoyé.",
+            ("envoye", true) => "L'avenant est marqué comme envoyé.",
+            ("accepte", false) => "Le devis est accepté et son chantier est créé.",
+            ("accepte", true) => "L'avenant est accepté : il compte maintenant dans le total du chantier.",
+            ("refuse", false) => "Le devis est refusé.",
+            ("refuse", true) => "L'avenant est refusé.",
+            ("brouillon", false) => "Le devis est remis en brouillon.",
+            ("brouillon", true) => "L'avenant est remis en brouillon.",
+            ("avenant", _) => "L'avenant est créé en brouillon : complète ses lignes dans l'onglet Encodage.",
             _ => "",
         }
     }
@@ -461,7 +492,7 @@ async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(fo
         return Err(Erreur::conflit("Ce devis n'est plus un brouillon : il ne peut plus être modifié."));
     }
     let referentiel = Referentiel::charger(&state.db).await?;
-    match valider(&form, &referentiel) {
+    match valider(&form, &referentiel, devis.chantier_id.is_some()) {
         Ok(valeurs) => {
             if enregistrer_en_base(&state.db, id, &valeurs).await? {
                 Ok(Redirect::to(&format!("/devis/{id}?ok=1")).into_response())

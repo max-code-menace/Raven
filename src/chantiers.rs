@@ -1,6 +1,6 @@
 //! Chantiers (étape 6-1) : créés à l'acceptation d'un devis, liste filtrée sur « En cours », fiche.
 //! La référence, le client, l'adresse et le montant viennent du devis accepté (il ne change plus).
-//! Les avenants (6-2) et les avancements (6-3) viendront s'ajouter à la fiche.
+//! Les avenants (6-2) sont listés dans l'onglet Devis/avenants ; les avancements (6-3) viendront s'ajouter.
 
 use askama::Template;
 use axum::{
@@ -64,7 +64,11 @@ const DEPUIS: &str = "FROM chantiers ch
 const ADRESSE: &str = "concat_ws(', ', NULLIF(trim(concat_ws(' ', a.rue, a.numero)), ''),
                                    NULLIF(trim(concat_ws(' ', a.code_postal, a.ville)), ''))";
 
-const CLIENT: &str = "COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), ''), '')";
+/// Total devis/avenants HT : le devis de base plus les avenants acceptés.
+const TOTAL_HT: &str = "(d.montant_ht_cents + COALESCE((SELECT sum(av.montant_ht_cents) FROM devis av
+                                                 WHERE av.chantier_id = ch.id AND av.statut = 'accepte'), 0))::bigint";
+
+const CLIENT: &str ="COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), ''), '')";
 
 // ─── Liste ──────────────────────────────────────────────────────────────────
 
@@ -146,7 +150,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     let filtre = filtre_statut(r.statut.trim());
 
     let (total, total_ht): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT count(*), COALESCE(sum(d.montant_ht_cents), 0)::bigint {DEPUIS} {CONDITIONS}"
+        "SELECT count(*), COALESCE(sum({TOTAL_HT}), 0)::bigint {DEPUIS} {CONDITIONS}"
     )))
     .bind(&q)
     .bind(&motif)
@@ -159,7 +163,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
 
     let lignes: Vec<LigneBase> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT ch.id, ch.numero, ch.date_debut, d.reference, {ADRESSE} AS adresse, {CLIENT} AS client,
-                d.montant_ht_cents, ch.statut::text AS statut
+                {TOTAL_HT} AS montant_ht_cents, ch.statut::text AS statut
          {DEPUIS} {CONDITIONS} ORDER BY ch.numero DESC LIMIT $4 OFFSET $5"
     )))
     .bind(&q)
@@ -238,8 +242,7 @@ impl Retour {
     /// Les messages sont fixes : rien de ce qui est dans l'adresse n'est affiché tel quel.
     fn message_ok(&self) -> &'static str {
         match self.ok.as_str() {
-            "1" => "Le chantier est enregistré.",
-            _ => "",
+            "1" => "Le chantier est enregistré.",            _ => "",
         }
     }
 
@@ -275,7 +278,12 @@ struct PageFiche {
     architecte: String,
     devis_ht: String,
     devis_ttc: String,
-    /// Devis de base + avenants (les avenants arrivent à l'étape 6-2).
+    avenants: Vec<crate::avenants::Ligne>,
+    /// Somme des avenants acceptés.
+    avenants_ht: String,
+    /// Jours ouvrables supplémentaires des avenants acceptés.
+    jours_supplementaires: i64,
+    /// Devis de base + avenants acceptés.
     total_ht: String,
     message_ok: &'static str,
     message_erreur: &'static str,
@@ -296,6 +304,7 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
     .await?;
     let f = fiche.ok_or_else(Erreur::introuvable)?;
     let (libelle, classe) = statut(&f.statut);
+    let avenants = crate::avenants::recap(&state.db, id).await?;
     let page = PageFiche {
         id,
         onglet,
@@ -319,7 +328,10 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
         architecte: f.architecte,
         devis_ht: format_euros(f.montant_ht_cents),
         devis_ttc: format_euros(f.montant_ttc_cents),
-        total_ht: format_euros(f.montant_ht_cents),
+        total_ht: format_euros(f.montant_ht_cents + avenants.acceptes_ht_cents),
+        avenants_ht: format_euros(avenants.acceptes_ht_cents),
+        jours_supplementaires: avenants.jours_acceptes,
+        avenants: avenants.lignes,
         message_ok: retour.message_ok(),
         message_erreur: retour.message_erreur(),
     };

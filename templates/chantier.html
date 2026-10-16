@@ -97,8 +97,41 @@
 
 <div class="card bg-base-100 shadow mb-4">
   <div class="card-body">
-    <h2 class="card-title">Avenants</h2>
-    <p class="text-sm opacity-70">Aucun avenant.</p>
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="card-title">Avenants</h2>
+      {# Crée un avenant en brouillon qui reprend l'en-tête du devis, puis ouvre son éditeur. #}
+      <form method="post" action="/chantiers/{{ id }}/avenants">
+        <button class="btn btn-primary btn-sm" type="submit">Nouvel avenant</button>
+      </form>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr><th>N°</th><th>Date</th><th>Référence</th><th class="text-right">J. ouv.</th><th class="text-right">Montant HT</th><th>Statut</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for a in avenants %}
+          <tr class="hover">
+            <td class="font-medium whitespace-nowrap">Avenant n° {{ a.numero }}</td>
+            <td class="whitespace-nowrap">{{ a.date }}</td>
+            <td>{{ a.reference }}</td>
+            <td class="text-right">{{ a.jours_ouvrables }}</td>
+            <td class="text-right whitespace-nowrap">{{ a.montant_ht }}</td>
+            <td>
+              <div class="flex flex-col items-start">
+                <span class="badge {{ a.classe_statut }} whitespace-nowrap">{{ a.statut }}</span>
+                {% if !a.date_acceptation.is_empty() %}<span class="text-xs opacity-70">{{ a.date_acceptation }}</span>{% endif %}
+              </div>
+            </td>
+            <td class="text-right"><a class="btn btn-ghost btn-xs" href="/devis/{{ a.id }}">Ouvrir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center opacity-70 py-6">Aucun avenant.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-sm">Total J. ouv. supplémentaires (avenants acceptés) : <strong>{{ jours_supplementaires }}</strong></p>
   </div>
 </div>
 
@@ -108,7 +141,7 @@
     <table class="table max-w-md">
       <tbody>
         <tr><td>Devis de base</td><td class="text-right whitespace-nowrap">{{ devis_ht }}</td></tr>
-        <tr><td>Avenants</td><td class="text-right whitespace-nowrap">0,00&nbsp;€</td></tr>
+        <tr><td>Avenants acceptés</td><td class="text-right whitespace-nowrap">{{ avenants_ht }}</td></tr>
         <tr class="font-bold"><td>Total devis/avenants HT</td><td class="text-right whitespace-nowrap">{{ total_ht }}</td></tr>
       </tbody>
     </table>

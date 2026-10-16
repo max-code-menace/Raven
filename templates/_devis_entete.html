@@ -1,16 +1,16 @@
 <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
   <div class="flex items-center gap-3">
-    <h1 class="text-2xl font-bold">Devis N° {{ numero }}</h1>
+    <h1 class="text-2xl font-bold">{{ barre.titre }}</h1>
     <span class="badge {{ classe_statut }} whitespace-nowrap">{{ statut }}</span>
   </div>
-  <a class="btn btn-ghost" href="/devis">Retour à la liste</a>
+  <a class="btn btn-ghost" href="{{ barre.retour }}">Retour</a>
 </div>
 
 {% if !barre.resume.is_empty() || barre.chantier.is_some() %}
 <p class="mb-2 text-sm">
   {{ barre.resume }}
   {% if let Some((chantier_id, chantier_numero)) = barre.chantier %}
-  · <a class="link link-primary" href="/chantiers/{{ chantier_id }}">Chantier n° {{ chantier_numero }}</a>
+  {% if !barre.resume.is_empty() %}·{% endif %} <a class="link link-primary" href="/chantiers/{{ chantier_id }}">Chantier n° {{ chantier_numero }}</a>
   {% endif %}
 </p>
 {% endif %}

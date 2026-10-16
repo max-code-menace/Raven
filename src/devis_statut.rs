@@ -68,8 +68,12 @@ pub struct Barre {
     pub date_devis: String,
     /// « Accepté le 15/10/2026 », « Refusé le 15/10/2026 : trop cher »…
     pub resume: String,
-    /// Le chantier né de ce devis : (id, numéro).
+    /// Le chantier né de ce devis, ou celui que cet avenant corrige : (id, numéro).
     pub chantier: Option<(i64, i64)>,
+    /// « Devis N° 2026-57 » ou « Avenant N° 2 ».
+    pub titre: String,
+    /// La liste des devis, ou le chantier pour un avenant.
+    pub retour: String,
 }
 
 fn date_belge(d: NaiveDate) -> String {
@@ -91,8 +95,19 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
         ("refuse", _, Some(d)) => format!("Refusé le {} : {motif}", date_belge(d)),
         _ => String::new(),
     };
-    let chantier: Option<(i64, i64)> =
-        sqlx::query_as("SELECT id, numero FROM chantiers WHERE devis_id = $1").bind(id).fetch_optional(db).await?;
+    let (numero, annee, chantier_avenant): (i64, i32, Option<i64>) =
+        sqlx::query_as("SELECT numero, extract(year FROM date_devis)::int, chantier_id FROM devis WHERE id = $1").bind(id).fetch_one(db).await?;
+    let avenant = chantier_avenant.is_some();
+    let chantier: Option<(i64, i64)> = sqlx::query_as("SELECT id, numero FROM chantiers WHERE devis_id = $1 OR id = $2")
+        .bind(id)
+        .bind(chantier_avenant)
+        .fetch_optional(db)
+        .await?;
+    let titre = format!("{} N° {}", if avenant { "Avenant" } else { "Devis" }, crate::devis_lignes::numero_affiche(annee, numero, avenant));
+    let retour = match (avenant, chantier) {
+        (true, Some((chantier_id, _))) => format!("/chantiers/{chantier_id}/devis"),
+        _ => "/devis".to_string(),
+    };
     Ok(Barre {
         peut_marquer_envoye: Action::MarquerEnvoye.permise_depuis(&statut_devis),
         peut_accepter: Action::Accepter.permise_depuis(&statut_devis),
@@ -102,6 +117,8 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
         date_devis: date_devis.to_string(),
         resume,
         chantier,
+        titre,
+        retour,
     })
 }
 
@@ -115,13 +132,14 @@ struct Decision {
 async fn changer(state: AppState, id: i64, action: Action, decision: Decision) -> Result<Redirect, Erreur> {
     let retour = |code: &str| Ok(Redirect::to(&format!("/devis/{id}?{code}")));
     let mut tx = state.db.begin().await?;
-    let ligne: Option<(String, NaiveDate, NaiveDate)> = sqlx::query_as(
-        "SELECT statut::text, date_devis, (now() AT TIME ZONE 'Europe/Brussels')::date FROM devis WHERE id = $1 FOR UPDATE",
+    let ligne: Option<(String, NaiveDate, NaiveDate, bool)> = sqlx::query_as(
+        "SELECT statut::text, date_devis, (now() AT TIME ZONE 'Europe/Brussels')::date, chantier_id IS NOT NULL
+         FROM devis WHERE id = $1 FOR UPDATE",
     )
     .bind(id)
     .fetch_optional(&mut *tx)
     .await?;
-    let (avant, date_devis, aujourdhui) = ligne.ok_or_else(Erreur::introuvable)?;
+    let (avant, date_devis, aujourdhui, avenant) = ligne.ok_or_else(Erreur::introuvable)?;
     if !action.permise_depuis(&avant) {
         return Err(Erreur::conflit("Ce changement de statut n'est pas possible pour ce devis."));
     }
@@ -159,8 +177,7 @@ async fn changer(state: AppState, id: i64, action: Action, decision: Decision) -
     .execute(&mut *tx)
     .await?;
 
-    let mut detail = format!("{} → {}", statut(&avant).0, statut(vers).0);
-    if let Some(d) = date {
+    let mut detail = format!("{} → {}", statut(&avant).0, statut(vers).0);    if let Some(d) = date {
         detail.push_str(&format!(" (décision du {})", date_belge(d)));
     }
     if !motif_refus.is_empty() {
@@ -168,8 +185,9 @@ async fn changer(state: AppState, id: i64, action: Action, decision: Decision) -
     }
     journal::noter(&mut tx, id, Genre::Statut, &detail).await?;
 
-    // Accepter crée le chantier dans la même transaction : jamais l'un sans l'autre.
-    if let (Action::Accepter, Some(d)) = (action, date) {
+    // Accepter un devis crée le chantier dans la même transaction : jamais l'un sans l'autre.
+    // Un avenant appartient déjà à son chantier : il ne crée rien.
+    if let (Action::Accepter, Some(d), false) = (action, date, avenant) {
         let numero = crate::chantiers::creer(&mut tx, id, d).await?;
         journal::noter(&mut tx, id, Genre::Chantier, &format!("Chantier n° {numero} créé")).await?;
     }

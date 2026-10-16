@@ -82,7 +82,7 @@
 
 #let devis(d) = {
   set document(
-    title: "Devis N° " + d.numero,
+    title: d.genre + " N° " + d.numero,
     author: if d.societe != none { d.societe.nom } else { "" },
   )
   set page(
@@ -127,12 +127,13 @@
   )
 
   v(0.9cm)
-  text(size: 17pt, weight: "bold", fill: accent)[DEVIS N° #d.numero]
+  text(size: 17pt, weight: "bold", fill: accent)[#upper(d.genre) N° #d.numero]
   v(4pt)
   grid(
     columns: (auto, 1fr),
     column-gutter: 10pt,
     row-gutter: 4pt,
+    ..if d.corrige != "" { (text(fill: gris)[Corrige], d.corrige) } else { () },
     text(fill: gris)[Référence], d.reference,
     text(fill: gris)[Date], d.date,
     text(fill: gris)[Responsable], d.responsable,

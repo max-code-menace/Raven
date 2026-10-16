@@ -43,6 +43,10 @@ pub struct Societe {
 pub struct Donnees {
     pub id: i64,
     pub numero: String,
+    /// « Devis » ou « Avenant ».
+    pub genre: &'static str,
+    /// Pour un avenant : « Chantier n° 1 · devis 2026-57 ». Vide pour un devis.
+    pub corrige: String,
     pub brouillon: bool,
     pub date: String,
     pub reference: String,
@@ -222,10 +226,20 @@ pub async fn charger_donnees(db: &PgPool, id: i64) -> Result<Donnees, Erreur> {
         .and_then(|cid| options.conditions.iter().find(|(i, _)| *i == cid).map(|(_, t)| t.clone()))
         .unwrap_or_default();
     let enc = charger_encodage(db, id, &entete, String::new()).await?;
+    let corrige: Option<String> = sqlx::query_scalar(
+        "SELECT 'Chantier n° ' || ch.numero || ' · devis ' || extract(year FROM b.date_devis)::int || '-' || b.numero
+         FROM devis a JOIN chantiers ch ON ch.id = a.chantier_id JOIN devis b ON b.id = ch.devis_id
+         WHERE a.id = $1",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
 
     Ok(Donnees {
         id,
         numero: entete.numero,
+        genre: entete.genre,
+        corrige: corrige.unwrap_or_default(),
         brouillon: entete.brouillon,
         date: tete.date_devis.format("%d/%m/%Y").to_string(),
         reference: tete.reference,
@@ -363,6 +377,8 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
 
     let donnees = dictionnaire(&[
         ("numero", litteral(&d.numero)),
+        ("genre", litteral(d.genre)),
+        ("corrige", litteral(&d.corrige)),
         ("date", litteral(&d.date)),
         ("reference", litteral(&d.reference)),
         ("responsable", litteral(&d.responsable)),
@@ -384,7 +400,7 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
 /// Le PDF du devis, conditions générales comprises quand elles sont déposées dans Société.
 pub async fn pdf_du_devis(db: &PgPool, id: i64) -> Result<(String, Vec<u8>), Erreur> {
     let donnees = charger_donnees(db, id).await?;
-    let nom = format!("Devis-{}.pdf", donnees.numero);
+    let nom = format!("{}-{}.pdf", donnees.genre, donnees.numero);
     let (texte, fichiers) = source_typst(&donnees);
     let avait_un_logo = !fichiers.is_empty();
 

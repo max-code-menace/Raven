@@ -96,7 +96,6 @@ fn valider(f: &AjustementForm, sous_total_cents: i64) -> Result<Valide, String> 
 #[template(path = "devis_totaux.html")]
 struct Page {
     id: i64,
-    numero: String,
     statut: &'static str,
     classe_statut: &'static str,
     onglet: &'static str,
@@ -115,7 +114,6 @@ async fn construire(state: &AppState, id: i64, entete: Entete, form: Option<Ajus
     let form = form.unwrap_or_else(|| AjustementForm::depuis(entete.ajustement, &entete.ajustement_libelle));
     Ok(Page {
         id,
-        numero: entete.numero,
         statut: entete.statut,
         classe_statut: entete.classe_statut,
         onglet: "totaux",
