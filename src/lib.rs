@@ -29,6 +29,7 @@ pub mod paiements;
 pub mod pdf;
 pub mod rappels;
 pub mod societe;
+pub mod statistiques;
 pub mod suivi_chantier;
 pub mod ubl;
 
@@ -132,6 +133,7 @@ pub fn app(state: AppState) -> Router {
         .merge(page_client::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
+        .merge(statistiques::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

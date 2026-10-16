@@ -31,7 +31,7 @@
       <a class="u-sous {% block nav_rappels %}{% endblock %}" href="/factures/rappels">Rappels de paiement</a>
       <span class="u-bientot u-sous" title="Factures fournisseurs : phase 2 (Peppol)">Factures fournisseurs<small>phase 2</small></span>
       <a class="u-sous {% block nav_exports %}{% endblock %}" href="/exports">Export factures</a>
-      <span class="u-bientot" title="Statistiques : étape 9">{% call ui::icone("stats", 18) %}{% endcall %}Statistiques<small>bientôt</small></span>
+      <a class="{% block nav_statistiques %}{% endblock %}" href="/statistiques">{% call ui::icone("stats", 18) %}{% endcall %}Statistiques</a>
     </nav>
     <div class="u-side-bas u-nav">
       <span class="u-groupe">{% call ui::icone("reglages", 18) %}{% endcall %}<span style="flex:1">Réglages</span></span>
