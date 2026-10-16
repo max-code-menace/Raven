@@ -31,9 +31,9 @@ pub mod rappels;
 pub mod societe;
 pub mod statistiques;
 pub mod suivi_chantier;
+pub mod tableau_de_bord;
 pub mod ubl;
 
-use askama::Template;
 use axum::{
     Router,
     extract::State,
@@ -93,14 +93,6 @@ impl From<askama::Error> for Erreur {
     }
 }
 
-#[derive(Template)]
-#[template(path = "home.html")]
-struct HomeTemplate;
-
-async fn home() -> Result<Html<String>, Erreur> {
-    Ok(Html(HomeTemplate.render()?))
-}
-
 // Fragment HTML renvoyé à htmx quand on clique sur « Tester le serveur ».
 async fn sante(State(state): State<AppState>) -> Result<Html<&'static str>, Erreur> {
     sqlx::query("SELECT 1").execute(&state.db).await?;
@@ -109,7 +101,7 @@ async fn sante(State(state): State<AppState>) -> Result<Html<&'static str>, Erre
 
 pub fn app(state: AppState) -> Router {
     Router::new()
-        .route("/", get(home))
+        .route("/", get(tableau_de_bord::afficher))
         .route("/sante", get(sante))
         .merge(devis::routes())
         .merge(devis_editeur::routes())

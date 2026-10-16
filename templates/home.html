@@ -1,34 +1,78 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
+{% block title %}Tableau de bord · Ubifacture{% endblock %}
 {% block nav_tableau %}actif{% endblock %}
 
 {% block entete %}
 <header class="u-top">
   <div class="u-top-ligne">
     {% call ui::titre_liste("tableau", "Tableau de bord") %}{% endcall %}
+    <div class="u-actions">
+      <a class="btn" href="/statistiques">{% call ui::icone("stats", 16) %}{% endcall %}Statistiques</a>
+    </div>
   </div>
 </header>
 {% endblock %}
 
 {% block content %}
-<div class="u-bandeau">
-  {% call ui::icone("info", 18) %}{% endcall %}
-  <span>Les blocs du tableau de bord (devis, factures, chantiers, notifications) arriveront avec les paiements et les statistiques. En attendant, tout se trouve dans le menu à gauche.</span>
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  <section class="u-card">
+    <div class="u-card-h"><h2>{% call ui::icone("devis", 17) %}{% endcall %}Mes devis</h2></div>
+    <div class="u-card-b">
+      <div><span class="u-pastille s-envoye">En attente de réponse</span> <span class="u-petit u-muet">({{ devis_attente.nombre }})</span></div>
+      <a class="u-grand no-underline text-[#17191C] hover:text-[#0B6371]" href="/devis?statut=envoye&statut=envoi_en_cours&statut=signe">{{ devis_attente.montant }}</a>
+      <div class="u-ligne-montant px-0"><a href="/devis?statut=a_envoyer&statut=echec_envoi">À envoyer ({{ devis_a_envoyer.nombre }})</a><span>{{ devis_a_envoyer.montant }}</span></div>
+      <div class="u-ligne-montant px-0"><a href="/devis?statut=brouillon">Brouillons ({{ devis_brouillons.nombre }})</a><span>{{ devis_brouillons.montant }}</span></div>
+    </div>
+  </section>
+  <section class="u-card">
+    <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Mes factures</h2></div>
+    <div class="u-card-b">
+      <div><span class="u-pastille s-retard">En retard</span> <span class="u-petit u-muet">({{ factures_retard.nombre }})</span></div>
+      <a class="u-grand no-underline hover:text-[#0B6371]" style="color:#953A0A" href="/factures?statut=en_retard">{{ factures_retard.montant }}</a>
+      <div class="u-ligne-montant px-0"><a href="/factures?statut=a_envoyer">À envoyer ({{ factures_a_envoyer.nombre }})</a><span>{{ factures_a_envoyer.montant }}</span></div>
+      <div class="u-ligne-montant px-0"><a href="/factures">Reste à encaisser ({{ factures_a_encaisser.nombre }})</a><span>{{ factures_a_encaisser.montant }}</span></div>
+    </div>
+  </section>
+  <section class="u-card">
+    <div class="u-card-h"><h2>{% call ui::icone("chantiers", 17) %}{% endcall %}Mes chantiers</h2></div>
+    <div class="u-card-b">
+      <div><span class="u-pastille s-chantier">En cours</span> <span class="u-petit u-muet">({{ chantiers_en_cours }})</span></div>
+      <a class="u-grand no-underline text-[#17191C] hover:text-[#0B6371]" href="/chantiers">{{ chantiers_reste_a_facturer }}</a>
+      <div class="u-ligne-montant px-0"><span class="u-muet">Reste à facturer HT</span><span></span></div>
+      <div class="u-ligne-montant px-0"><span>Avancements en brouillon ({{ avancements_brouillons.nombre }})</span><span>{{ avancements_brouillons.montant }}</span></div>
+    </div>
+  </section>
+  <section class="u-card">
+    <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Mes notes de crédit</h2></div>
+    <div class="u-card-b">
+      <div><span class="u-pastille s-brouillon">Brouillon</span> <span class="u-petit u-muet">({{ notes_brouillons.nombre }})</span></div>
+      <a class="u-grand no-underline text-[#17191C] hover:text-[#0B6371]" href="/factures?genre=note_credit&statut=brouillon">{{ notes_brouillons.montant }}</a>
+      <div class="u-ligne-montant px-0"><a href="/factures?genre=note_credit">Émises en {{ annee }} ({{ notes_annee.nombre }})</a><span>{{ notes_annee.montant }}</span></div>
+    </div>
+  </section>
 </div>
-<section class="u-card">
-  <div class="u-card-h"><h2>Accès rapides</h2></div>
-  <div class="u-card-b">
-    <div class="u-actions">
-      <a class="btn" href="/devis">{% call ui::icone("devis", 16) %}{% endcall %}Devis</a>
-      <a class="btn" href="/chantiers">{% call ui::icone("chantiers", 16) %}{% endcall %}Chantiers</a>
-      <a class="btn" href="/factures">{% call ui::icone("finances", 16) %}{% endcall %}Factures clients</a>
-      <a class="btn" href="/contacts">{% call ui::icone("contacts", 16) %}{% endcall %}Contacts</a>
+
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] items-start">
+  <section class="u-card">
+    <div class="u-card-h"><h2>{% call ui::icone("cloche", 17) %}{% endcall %}À surveiller <span class="u-compte">{{ alertes.len() }}</span></h2></div>
+    {% for a in alertes %}
+    <div class="flex gap-3 items-start px-[18px] py-3 border-b border-[#EEEFEC]">
+      <i class="w-2 h-2 rounded-full mt-[7px] flex-none" style="background:{{ a.couleur }}" aria-hidden="true"></i>
+      <span class="flex-1 text-[13.5px]">{{ a.texte }}</span>
+      <a class="btn btn-sm" href="{{ a.lien }}">{{ a.action }}</a>
     </div>
-    <div class="flex items-center gap-3 u-petit u-muet">
-      <button class="btn btn-sm" hx-get="/sante" hx-target="#etat" hx-swap="innerHTML">Tester le serveur</button>
-      <span id="etat"></span>
-    </div>
-  </div>
-</section>
+    {% else %}
+    <div class="px-[18px] py-6 text-center u-muet text-[13.5px]">Rien à signaler : aucune facture à relancer, aucun devis en attente d'action.</div>
+    {% endfor %}
+  </section>
+  <section class="u-card">
+    <div class="u-card-h"><h2>{% call ui::icone("stats", 17) %}{% endcall %}Ce mois-ci</h2><span class="u-petit u-muet">{{ mois_texte }}</span></div>
+    <div class="u-ligne-montant"><span>Facturé HT</span><b>{{ mois_facture }}</b></div>
+    <div class="u-ligne-montant"><span>Encaissé</span><b>{{ mois_encaisse }}</b></div>
+    <div class="u-ligne-montant"><span>Devis envoyés</span><b>{{ mois_devis_envoyes }}</b></div>
+    <div class="u-ligne-montant"><span>Devis acceptés</span><b>{{ mois_devis_acceptes }} · {{ mois_conversion }}</b></div>
+  </section>
+</div>
 {% endblock %}
