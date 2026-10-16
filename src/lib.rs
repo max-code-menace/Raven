@@ -24,6 +24,7 @@ pub mod fiches;
 pub mod journal;
 pub mod paiements;
 pub mod pdf;
+pub mod rappels;
 pub mod societe;
 
 use askama::Template;
@@ -121,6 +122,7 @@ pub fn app(state: AppState) -> Router {
         .merge(facture_pdf::routes())
         .merge(paiements::routes())
         .merge(envoi::routes())
+        .merge(rappels::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

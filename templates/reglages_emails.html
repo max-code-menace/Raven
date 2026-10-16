@@ -67,6 +67,22 @@
   </div>
 </section>
 
+<form class="u-card" id="rappels" method="post" action="/parametres/rappels">
+  <div class="u-card-h"><h2>{% call ui::icone("cloche", 17) %}{% endcall %}Rappels de paiement</h2><a class="u-petit" href="/factures/rappels">Voir les factures à relancer</a></div>
+  <div class="u-grille-champs">
+    <label class="form-control">
+      <span class="u-lbl">Premier rappel (« Oubli de paiement ? »), jours après l'échéance</span>
+      <input class="input input-bordered" type="number" name="premier" min="1" max="365" value="{{ rappel_premier }}" required>
+    </label>
+    <label class="form-control">
+      <span class="u-lbl">Rappel suivant (« Rappel de paiement »), jours après le précédent</span>
+      <input class="input input-bordered" type="number" name="suivant" min="1" max="365" value="{{ rappel_suivant }}" required>
+    </label>
+    <div class="flex items-end"><button class="btn btn-primary btn-sm" type="submit">Enregistrer les délais</button></div>
+  </div>
+  <p class="u-petit u-muet px-[18px] pb-4" style="margin:0">Semi-automatique : l'application propose chaque jour les factures à relancer (écran Rappels de paiement, tableau de bord, fiche de la facture) ; rien ne part sans ton clic.</p>
+</form>
+
 <details class="u-card">
   <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Variables</h2></summary>
   <table class="u-table">

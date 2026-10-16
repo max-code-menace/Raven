@@ -583,6 +583,7 @@ impl Retour {
             "payee" => "Le paiement est enregistré : la facture est payée.",
             "paiement_retire" => "Le paiement est retiré.",
             "email_envoye" => "La pièce est envoyée par e-mail.",
+            "rappel_envoye" => "Le rappel de paiement est envoyé.",
             "email_enregistre" => "Mode test : l'e-mail est enregistré (Réglages › E-mails) mais n'est pas parti, car aucune clé Brevo n'est configurée. Marque la pièce comme envoyée à la main si tu l'as envoyée autrement.",
             _ => "",
         }
@@ -689,6 +690,8 @@ struct Page {
     payer_ouvert: bool,
     aujourdhui: String,
     historique: Vec<Evenement>,
+    /// Facture en retard : (où en sont les rappels, un rappel est dû aujourd'hui).
+    rappel: Option<(String, bool)>,
 }
 
 #[derive(Template)]
@@ -804,6 +807,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         payer_ouvert: retour.payer == "1" && solde.a_recevoir(),
         aujourdhui: aujourdhui.to_string(),
         historique: historique(&state.db, id).await?,
+        rappel: if solde.etat == "en_retard" { crate::rappels::resume_facture(&state.db, id).await? } else { None },
     };
     Ok(Html(page.render()?))
 }

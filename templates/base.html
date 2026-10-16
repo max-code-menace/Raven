@@ -28,6 +28,7 @@
       <span class="u-groupe">{% call ui::icone("finances", 18) %}{% endcall %}<span style="flex:1">Finances</span></span>
       <a class="u-sous {% block nav_factures %}{% endblock %}" href="/factures">Factures clients</a>
       <a class="u-sous {% block nav_notes %}{% endblock %}" href="/factures?genre=note_credit">Notes de crédit</a>
+      <a class="u-sous {% block nav_rappels %}{% endblock %}" href="/factures/rappels">Rappels de paiement</a>
       <span class="u-bientot u-sous" title="Factures fournisseurs : phase 2 (Peppol)">Factures fournisseurs<small>phase 2</small></span>
       <span class="u-bientot u-sous" title="Export pour le comptable : étape 8">Export factures<small>bientôt</small></span>
       <span class="u-bientot" title="Statistiques : étape 9">{% call ui::icone("stats", 18) %}{% endcall %}Statistiques<small>bientôt</small></span>

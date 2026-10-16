@@ -59,7 +59,8 @@
 {% if etat == "en_retard" %}
 <div role="status" class="u-bandeau alerte">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
-  <span><strong>En retard de {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %}.</strong> Reste à recevoir : {{ montants.reste }}. On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
+  <span class="flex-1"><strong>En retard de {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %}.</strong> Reste à recevoir : {{ montants.reste }}.{% if let Some((texte, _)) = rappel %} {{ texte }}{% endif %} On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
+  <a class="btn btn-sm{% if let Some((_, du)) = rappel %}{% if *du %} btn-primary{% endif %}{% endif %}" href="/factures/{{ id }}/rappel">{% call ui::icone("cloche", 14) %}{% endcall %}Envoyer un rappel</a>
 </div>
 {% else if etat == "payee" %}
 <div role="status" class="u-bandeau ok">

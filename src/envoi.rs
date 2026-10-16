@@ -61,7 +61,7 @@ pub(crate) fn statut_email(code: &str) -> (&'static str, &'static str) {
     }
 }
 
-async fn anciens(db: &PgPool, devis: Option<i64>, facture: Option<i64>) -> Result<Vec<Ancien>, sqlx::Error> {
+pub(crate) async fn anciens(db: &PgPool, devis: Option<i64>, facture: Option<i64>) -> Result<Vec<Ancien>, sqlx::Error> {
     let lignes: Vec<(String, String, String, String)> = sqlx::query_as(
         "SELECT to_char(created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI'), destinataires, objet, statut
          FROM emails WHERE ($1::bigint IS NOT NULL AND devis_id = $1) OR ($2::bigint IS NOT NULL AND facture_id = $2)
@@ -316,6 +316,8 @@ pub struct EmailVue {
 #[derive(Template)]
 #[template(path = "reglages_emails.html")]
 struct PageReglages {
+    rappel_premier: i32,
+    rappel_suivant: i32,
     envoi_actif: bool,
     expediteur: String,
     adresse_publique: String,
@@ -345,6 +347,7 @@ async fn reglages(State(state): State<AppState>, Query(r): Query<RetourReglages>
     .fetch_all(&state.db)
     .await?;
     let noms: Vec<(String, String)> = modeles.iter().map(|(c, n, _, _)| (c.clone(), n.clone())).collect();
+    let (rappel_premier, rappel_suivant) = crate::rappels::delais(&state.db).await?;
     let (nom_societe, email_societe, _) = emails::societe(&state.db).await?;
     let page = PageReglages {
         envoi_actif: emails::envoi_actif(),
@@ -377,8 +380,18 @@ async fn reglages(State(state): State<AppState>, Query(r): Query<RetourReglages>
                 }
             })
             .collect(),
-        message_ok: if r.ok == "modele" { "Le modèle est enregistré." } else { "" },
-        message_erreur: if r.erreur == "modele" { "Le modèle n'est pas enregistré : l'objet est obligatoire (300 caractères), le message 20 000 caractères au maximum." } else { "" },
+        message_ok: match r.ok.as_str() {
+            "modele" => "Le modèle est enregistré.",
+            "delais" => "Les délais des rappels sont enregistrés.",
+            _ => "",
+        },
+        message_erreur: match r.erreur.as_str() {
+            "modele" => "Le modèle n'est pas enregistré : l'objet est obligatoire (300 caractères), le message 20 000 caractères au maximum.",
+            "delais" => "Les délais ne sont pas enregistrés : un nombre de jours entre 1 et 365.",
+            _ => "",
+        },
+        rappel_premier,
+        rappel_suivant,
     };
     Ok(Html(page.render()?))
 }

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Rappels de paiement · Ubifacture{% endblock %}
+{% block nav_rappels %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("cloche", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Rappels de paiement</h1>
+        <div class="u-sous-titre">Les factures en retard. Premier rappel {{ premier }} jours après l'échéance (« Oubli de paiement ? »), puis tous les {{ suivant }} jours (« Rappel de paiement »). Rien ne part sans ton clic.</div>
+      </div>
+    </div>
+    <div class="u-actions">
+      <a class="btn" href="/parametres/emails#rappels">{% call ui::icone("reglages", 16) %}{% endcall %}Délais et modèles</a>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+{% if !envoi_actif %}
+<div role="status" class="u-bandeau alerte">
+  {% call ui::icone("info", 18) %}{% endcall %}
+  <span><strong>Mode test.</strong> Aucune clé Brevo : les rappels sont enregistrés (Réglages › E-mails) mais ne partent pas.</span>
+</div>
+{% endif %}
+
+<form class="u-card" method="post" action="/factures/rappels">
+  <div class="u-card-h">
+    <h2>{% call ui::icone("cloche", 17) %}{% endcall %}À relancer aujourd'hui <span class="u-compte">{{ a_relancer.len() }}</span></h2>
+    <span class="u-petit u-muet">Reste dû : <strong>{{ total_a_relancer }}</strong></span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr>
+          <th style="width:20px"><span class="sr-only">Choisir</span></th>
+          <th>N°</th><th>Date</th><th>Client</th><th>Référence</th><th class="n">Reste à payer</th><th>Retard</th><th>Déjà relancée</th><th>Rappel proposé</th>
+          <th class="n"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in a_relancer %}
+        <tr>
+          <td>{% if l.email.is_empty() %}<input type="checkbox" class="checkbox checkbox-sm" disabled aria-label="Pas d'e-mail pour ce client">{% else %}<input type="checkbox" class="checkbox checkbox-sm" name="facture" value="{{ l.id }}" checked aria-label="Relancer la facture {{ l.numero }}">{% endif %}</td>
+          <td class="mono nw"><a href="/factures/{{ l.id }}">{{ l.numero }}</a></td>
+          <td class="nw">{{ l.date }}</td>
+          <td>{{ l.client }}{% if l.email.is_empty() %}<small class="block text-[#953A0A]">pas d'e-mail : complète la fiche du client</small>{% else %}<small class="block u-muet">{{ l.email }}</small>{% endif %}</td>
+          <td>{{ l.reference }}</td>
+          <td class="n">{{ l.reste }}</td>
+          <td class="nw"><span class="u-pastille s-retard">{{ l.jours_retard }} j</span></td>
+          <td class="nw">{{ l.rappels }}</td>
+          <td class="nw">« {{ l.prochain_modele }} »</td>
+          <td class="n"><a class="btn btn-sm" href="/factures/{{ l.id }}/rappel">Relire et envoyer</a></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="10">Aucune facture à relancer aujourd'hui.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if !a_relancer.is_empty() %}
+  <div class="u-pied">
+    <span>Chaque facture cochée reçoit son rappel prérempli, avec la facture en PDF.</span>
+    <button class="btn btn-primary" type="submit">{% call ui::icone("cloche", 16) %}{% endcall %}Envoyer les rappels cochés</button>
+  </div>
+  {% endif %}
+</form>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Autres factures en retard <span class="u-compte">{{ autres.len() }}</span></h2><span class="u-petit u-muet">déjà relancées récemment, ou pas encore assez en retard</span></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr><th>N°</th><th>Date</th><th>Client</th><th>Référence</th><th class="n">Reste à payer</th><th>Retard</th><th>Déjà relancée</th><th>Prochain rappel</th><th class="n"><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for l in autres %}
+        <tr>
+          <td class="mono nw"><a href="/factures/{{ l.id }}">{{ l.numero }}</a></td>
+          <td class="nw">{{ l.date }}</td>
+          <td>{{ l.client }}</td>
+          <td>{{ l.reference }}</td>
+          <td class="n">{{ l.reste }}</td>
+          <td class="nw"><span class="u-pastille s-retard">{{ l.jours_retard }} j</span></td>
+          <td class="nw">{{ l.rappels }}</td>
+          <td class="nw">{{ l.prochain }}</td>
+          <td class="n"><a class="btn btn-sm btn-ghost" href="/factures/{{ l.id }}/rappel">Relancer maintenant</a></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="9">Aucune autre facture en retard.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

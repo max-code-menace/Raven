@@ -233,7 +233,8 @@ async fn vitrine(pool: PgPool) {
     sqlx::query("UPDATE factures SET date_echeance = date_echeance - 31 WHERE id = $1").bind(simples[0]).execute(&pool).await.unwrap();
     poster(&s, &format!("/factures/{}/paiements", simples[1]), &format!("genre=complet&date={aujourdhui}&methode_id={virement}")).await;
 
-    // Étape 8-2 : deux e-mails enregistrés (mode test, rien ne part).
+    // Étape 8-2 : deux e-mails enregistrés (mode test, rien ne part). 8-3 : la facture en retard est à relancer.
+    sqlx::query("UPDATE entreprises SET email = 'compta@hotel-du-parc.example' WHERE id = $1").bind(hotel).execute(&pool).await.unwrap();
     poster(&s, &format!("/factures/{facture}/email"), "destinataires=lambert%40exemple.be&objet=Facture+n%C2%B0+125&corps=Bonjour").await;
     poster(&s, &format!("/devis/{}/email", devis_ids[3]), "destinataires=lambert%40exemple.be&objet=Devis+F28&corps=Bonjour").await;
 
