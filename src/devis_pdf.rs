@@ -115,7 +115,7 @@ fn depuis_adresse((nom, rue, numero, code_postal, ville, pays, tva): Adresse) ->
 
 /// L'entreprise ou le contact choisi ; `facturation` demande son adresse de facturation
 /// (qui est l'adresse normale quand « facturation identique » est coché sur sa fiche).
-async fn charger_bloc(db: &PgPool, entreprise: Option<i64>, contact: Option<i64>, facturation: bool) -> Result<Option<Bloc>, sqlx::Error> {
+pub(crate) async fn charger_bloc(db: &PgPool, entreprise: Option<i64>, contact: Option<i64>, facturation: bool) -> Result<Option<Bloc>, sqlx::Error> {
     let champs = |nom: &str| {
         let colonne = |c: &str| {
             if facturation {
@@ -146,7 +146,7 @@ async fn charger_bloc(db: &PgPool, entreprise: Option<i64>, contact: Option<i64>
     Ok(None)
 }
 
-async fn charger_societe(db: &PgPool) -> Result<Option<Societe>, sqlx::Error> {
+pub(crate) async fn charger_societe(db: &PgPool) -> Result<Option<Societe>, sqlx::Error> {
     let ligne: Option<(String, String, String, String, String, String, String, String, String)> = sqlx::query_as(
         "SELECT nom, rue, numero, code_postal, ville, pays, COALESCE(numero_tva, ''), email, telephone
          FROM societe WHERE id = 1",
@@ -258,7 +258,7 @@ pub async fn charger_donnees(db: &PgPool, id: i64) -> Result<Donnees, Erreur> {
 // ─── Le texte Typst ─────────────────────────────────────────────────────────
 
 /// Un texte entre guillemets, tel que Typst le lit : aucun caractère ne peut en sortir.
-fn litteral(texte: &str) -> String {
+pub(crate) fn litteral(texte: &str) -> String {
     let mut sortie = String::with_capacity(texte.len() + 2);
     sortie.push('"');
     for c in texte.chars() {
@@ -277,7 +277,7 @@ fn litteral(texte: &str) -> String {
 }
 
 /// `(clé: valeur, …)` ; les valeurs sont déjà du texte Typst.
-fn dictionnaire(champs: &[(&str, String)]) -> String {
+pub(crate) fn dictionnaire(champs: &[(&str, String)]) -> String {
     if champs.is_empty() {
         return "(:)".to_string();
     }
@@ -286,15 +286,15 @@ fn dictionnaire(champs: &[(&str, String)]) -> String {
 }
 
 /// `(a, b,)` : la virgule finale garde un tableau d'un seul élément.
-fn tableau(elements: &[String]) -> String {
+pub(crate) fn tableau(elements: &[String]) -> String {
     if elements.is_empty() { "()".to_string() } else { format!("({},)", elements.join(", ")) }
 }
 
-fn option_litteral(texte: Option<&str>) -> String {
+pub(crate) fn option_litteral(texte: Option<&str>) -> String {
     texte.map(litteral).unwrap_or_else(|| "none".to_string())
 }
 
-fn bloc_typst(b: &Bloc) -> String {
+pub(crate) fn bloc_typst(b: &Bloc) -> String {
     let adresse: Vec<String> = b.adresse.iter().map(|l| litteral(l)).collect();
     dictionnaire(&[("nom", litteral(&b.nom)), ("adresse", tableau(&adresse)), ("tva", litteral(&b.tva))])
 }

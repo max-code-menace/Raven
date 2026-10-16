@@ -257,7 +257,8 @@ pub(crate) fn numeros(lignes: &[LigneBase]) -> Vec<String> {
                 format!("{lot}.0")
             } else {
                 rang += 1;
-                format!("{lot}.{rang}")
+                // Sans titre avant elle, une ligne est simplement numérotée 1, 2, 3…
+                if lot == 0 { rang.to_string() } else { format!("{lot}.{rang}") }
             }
         })
         .collect()
@@ -312,7 +313,6 @@ pub(crate) struct Facture {
     pub(crate) avancement_id: Option<i64>,
     pub(crate) facture_origine_id: Option<i64>,
     pub(crate) vcs: Option<String>,
-    pub(crate) montant_ttc_cents: i64,
 }
 
 impl Facture {
@@ -330,7 +330,7 @@ pub(crate) async fn charger<'e>(db: impl sqlx::PgExecutor<'e>, id: i64) -> Resul
     sqlx::query_as(
         "SELECT id, genre::text AS genre, numero, statut::text AS statut, date_facture, date_echeance, reference, responsable,
                 client_entreprise_id, client_contact_id, conditions_paiement_id, taux_tva_id, remarque, chantier_id,
-                avancement_id, facture_origine_id, vcs, montant_ttc_cents
+                avancement_id, facture_origine_id, vcs
          FROM factures WHERE id = $1",
     )
     .bind(id)
@@ -1049,6 +1049,53 @@ async fn supprimer(State(state): State<AppState>, Path(id): Path<i64>) -> Result
     Ok(Redirect::to(&retour))
 }
 
+// ─── Note de crédit ─────────────────────────────────────────────────────────
+
+/// « Créditer » une facture validée : une note de crédit en brouillon qui reprend toutes ses lignes.
+/// Pour un crédit partiel, on ajuste ou supprime des lignes avant de valider (jamais plus que ce qui reste à créditer).
+async fn crediter(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let mut tx = state.db.begin().await?;
+    sqlx::query("SELECT id FROM factures WHERE id = $1 FOR UPDATE").bind(id).execute(&mut *tx).await?;
+    let f = charger(&mut *tx, id).await?.ok_or_else(Erreur::introuvable)?;
+    let Some(numero) = f.numero.filter(|_| f.genre != "note_credit") else {
+        return Err(Erreur::conflit("Seule une facture validée peut être créditée."));
+    };
+    let brouillon: Option<i64> = sqlx::query_scalar("SELECT id FROM factures WHERE facture_origine_id = $1 AND statut = 'brouillon'")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    if let Some(note) = brouillon {
+        return Ok(Redirect::to(&format!("/factures/{note}")));
+    }
+    if reste_a_crediter(&state.db, id, None).await? <= 0 {
+        return Err(Erreur::conflit("Cette facture est déjà entièrement créditée."));
+    }
+    let note: i64 = sqlx::query_scalar(
+        "INSERT INTO factures (genre, date_facture, reference, responsable, client_entreprise_id, client_contact_id,
+                               conditions_paiement_id, taux_tva_id, chantier_id, facture_origine_id)
+         SELECT 'note_credit', (now() AT TIME ZONE 'Europe/Brussels')::date, $2, responsable, client_entreprise_id, client_contact_id,
+                conditions_paiement_id, taux_tva_id, chantier_id, id
+         FROM factures WHERE id = $1 RETURNING id",
+    )
+    .bind(id)
+    .bind(format!("Note de crédit pour la facture n° {numero}"))
+    .fetch_one(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO facture_lignes (facture_id, position, genre, description, quantite_e5, unite, prix_unitaire_e5,
+                                     taux_tva_id, taux_centiemes, total_cents)
+         SELECT $1, position, genre, description, quantite_e5, unite, prix_unitaire_e5, taux_tva_id, taux_centiemes, total_cents
+         FROM facture_lignes WHERE facture_id = $2",
+    )
+    .bind(note)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    recalculer(&mut tx, note).await?;
+    tx.commit().await?;
+    Ok(Redirect::to(&format!("/factures/{note}?ok=credit")))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/factures", get(liste).post(nouvelle))
@@ -1059,6 +1106,7 @@ pub fn routes() -> Router<AppState> {
         .route("/factures/{id}/valider", post(valider))
         .route("/factures/{id}/envoyee", post(marquer_envoyee))
         .route("/factures/{id}/supprimer", post(supprimer))
+        .route("/factures/{id}/crediter", post(crediter))
 }
 
 
@@ -1101,6 +1149,7 @@ mod tests {
     fn numerotation_des_lignes() {
         let lignes = [ligne("titre", 0, None), ligne("poste", 1, Some(600)), ligne("texte", 0, None), ligne("titre", 0, None), ligne("poste", 1, Some(600))];
         assert_eq!(numeros(&lignes), vec!["1.0", "1.1", "1.2", "2.0", "2.1"]);
+        assert_eq!(numeros(&[ligne("poste", 1, Some(600)), ligne("poste", 1, Some(600))]), vec!["1", "2"]);
     }
 
     #[test]
