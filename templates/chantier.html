@@ -25,6 +25,7 @@
 <div role="tablist" class="tabs tabs-bordered mb-4">
   <a role="tab" class="tab{% if onglet == "tableau" %} tab-active{% endif %}" href="/chantiers/{{ id }}">Tableau de bord</a>
   <a role="tab" class="tab{% if onglet == "devis" %} tab-active{% endif %}" href="/chantiers/{{ id }}/devis">Devis/avenants</a>
+  <a role="tab" class="tab{% if onglet == "finances" %} tab-active{% endif %}" href="/chantiers/{{ id }}/finances">Finances</a>
 </div>
 
 {% if onglet == "tableau" %}
@@ -50,6 +51,11 @@
         <div class="stat-title">Total devis/avenants HT</div>
         <div class="stat-value text-2xl">{{ total_ht }}</div>
       </div>
+      <div class="stat">
+        <div class="stat-title">Reste à avancer HT</div>
+        <div class="stat-value text-2xl">{{ finances.reste }}</div>
+        {% if !finances.pourcentage_avance.is_empty() %}<div class="stat-desc">Avancé : {{ finances.avance }} ({{ finances.pourcentage_avance }})</div>{% endif %}
+      </div>
     </div>
 
     <form class="card bg-base-100 shadow" method="post" action="/chantiers/{{ id }}">
@@ -70,6 +76,53 @@
         <button class="btn btn-primary btn-sm" type="submit">Enregistrer</button>
       </div>
     </form>
+  </div>
+</div>
+{% else if onglet == "finances" %}
+<div class="card bg-base-100 shadow">
+  <div class="card-body">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h2 class="card-title">Avancements</h2>
+      {% if let Some(brouillon) = finances.brouillon %}
+      <a class="btn btn-primary btn-sm" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Reprendre le brouillon</a>
+      {% else %}
+      <form method="post" action="/chantiers/{{ id }}/avancements">
+        <button class="btn btn-primary btn-sm" type="submit">Nouvel avancement</button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>N°</th><th>Date</th><th>Référence</th><th class="text-right">Montant HT</th>
+            <th class="text-right">% avancé</th><th class="text-right">% avancé cumulé</th><th class="text-right">Reste à avancer HT</th><th>Statut</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in finances.avancements %}
+          <tr class="hover">
+            <td class="font-medium">{{ a.numero }}</td>
+            <td class="whitespace-nowrap">{{ a.date }}</td>
+            <td>{{ a.reference }}</td>
+            <td class="text-right whitespace-nowrap">{{ a.montant }}</td>
+            <td class="text-right whitespace-nowrap">{{ a.pourcentage }}</td>
+            <td class="text-right whitespace-nowrap">{{ a.pourcentage_cumul }}</td>
+            <td class="text-right whitespace-nowrap">{{ a.reste }}</td>
+            <td>{% if a.brouillon %}<span class="badge badge-ghost">Brouillon</span>{% else %}<span class="badge badge-success">Validé</span>{% endif %}</td>
+            <td class="text-right"><a class="btn btn-ghost btn-xs" href="/chantiers/{{ id }}/avancements/{{ a.id }}">Ouvrir</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center opacity-70 py-6">Aucun avancement.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="flex flex-wrap justify-end gap-6 text-sm">
+      <span>Total devis/avenants HT <strong>{{ finances.total }}</strong></span>
+      <span>Avancé (validé) <strong>{{ finances.avance }}</strong>{% if !finances.pourcentage_avance.is_empty() %} ({{ finances.pourcentage_avance }}){% endif %}</span>
+      <span>Reste à avancer HT <strong>{{ finances.reste }}</strong></span>
+    </div>
   </div>
 </div>
 {% else %}

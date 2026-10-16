@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Avancement n° {{ numero }} · Chantier N° {{ chantier_numero }} · Ubifacture{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+  <div class="flex items-center gap-3">
+    <h1 class="text-2xl font-bold">Avancement n° {{ numero }}</h1>
+    {% if brouillon %}<span class="badge badge-ghost">Brouillon</span>{% else %}<span class="badge badge-success">Validé</span>{% endif %}
+  </div>
+  <a class="btn btn-ghost" href="/chantiers/{{ chantier_id }}/finances">Retour au chantier n° {{ chantier_numero }}</a>
+</div>
+
+{% if !message_ok.is_empty() %}
+<div role="alert" class="alert alert-success mb-4"><span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="alert alert-error mb-4"><span>{{ message_erreur }}</span></div>
+{% endif %}
+
+<div class="card bg-base-100 shadow mb-4">
+  <div class="card-body">
+    {% if brouillon %}
+    <form class="flex flex-wrap items-end gap-3" method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/infos">
+      <label class="form-control">
+        <span class="label-text mb-1">Référence *</span>
+        <input class="input input-bordered input-sm w-72" type="text" name="reference" value="{{ reference }}" maxlength="200" required>
+      </label>
+      <label class="form-control">
+        <span class="label-text mb-1">Date de l'avancement *</span>
+        <input class="input input-bordered input-sm" type="date" name="date" value="{{ date_champ }}" required>
+      </label>
+      <button class="btn btn-sm btn-outline" type="submit">Enregistrer</button>
+    </form>
+    {% else %}
+    <p><span class="opacity-70">Référence :</span> {{ reference }} · <span class="opacity-70">Date :</span> {{ date }}</p>
+    {% endif %}
+
+    <div class="flex flex-wrap gap-2 mt-2">
+      {% if brouillon %}
+      <form method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/valider">
+        <button class="btn btn-sm btn-success" type="submit">Valider l'avancement</button>
+      </form>
+      <details class="dropdown">
+        <summary class="btn btn-sm btn-ghost text-error">Supprimer…</summary>
+        <form method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/supprimer" class="dropdown-content z-10 mt-1 flex w-64 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
+          <span class="text-sm">Supprimer cet avancement en brouillon et tout ce qui y est saisi ?</span>
+          <button class="btn btn-sm btn-error" type="submit">Confirmer la suppression</button>
+        </form>
+      </details>
+      {% endif %}
+      {% if peut_remettre_en_brouillon %}
+      <form method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/brouillon">
+        <button class="btn btn-sm btn-ghost" type="submit">Remettre en brouillon</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if brouillon %}
+    <p class="text-sm opacity-70 mt-2">Pour chaque ligne, saisis ce qui a été réalisé pendant la période : en quantité, en % ou en €. Les deux autres colonnes se calculent.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% include "_avancement_grille.html" %}
+{% endblock %}

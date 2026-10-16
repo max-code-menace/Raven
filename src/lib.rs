@@ -1,3 +1,5 @@
+pub mod avancement_calcul;
+pub mod avancements;
 pub mod avenants;
 pub mod chantiers;
 pub mod commun;
@@ -106,6 +108,7 @@ pub fn app(state: AppState) -> Router {
         .merge(devis_historique::routes())
         .merge(chantiers::routes())
         .merge(avenants::routes())
+        .merge(avancements::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

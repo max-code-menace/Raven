@@ -1,6 +1,6 @@
 //! Chantiers (étape 6-1) : créés à l'acceptation d'un devis, liste filtrée sur « En cours », fiche.
 //! La référence, le client, l'adresse et le montant viennent du devis accepté (il ne change plus).
-//! Les avenants (6-2) sont listés dans l'onglet Devis/avenants ; les avancements (6-3) viendront s'ajouter.
+//! Les avenants (6-2) sont dans l'onglet Devis/avenants, les avancements (6-3) dans l'onglet Finances.
 
 use askama::Template;
 use axum::{
@@ -285,6 +285,8 @@ struct PageFiche {
     jours_supplementaires: i64,
     /// Devis de base + avenants acceptés.
     total_ht: String,
+    /// Les avancements du chantier (onglet Finances) et le reste à avancer.
+    finances: crate::avancements::Finances,
     message_ok: &'static str,
     message_erreur: &'static str,
 }
@@ -305,6 +307,7 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
     let f = fiche.ok_or_else(Erreur::introuvable)?;
     let (libelle, classe) = statut(&f.statut);
     let avenants = crate::avenants::recap(&state.db, id).await?;
+    let finances = crate::avancements::finances(&state.db, id).await?;
     let page = PageFiche {
         id,
         onglet,
@@ -332,6 +335,7 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
         avenants_ht: format_euros(avenants.acceptes_ht_cents),
         jours_supplementaires: avenants.jours_acceptes,
         avenants: avenants.lignes,
+        finances,
         message_ok: retour.message_ok(),
         message_erreur: retour.message_erreur(),
     };
@@ -344,6 +348,10 @@ async fn tableau_de_bord(State(state): State<AppState>, Path(id): Path<i64>, Que
 
 async fn devis_avenants(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
     charger_fiche(&state, id, "devis", Retour::default()).await
+}
+
+async fn onglet_finances(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+    charger_fiche(&state, id, "finances", Retour::default()).await
 }
 
 #[derive(Deserialize, Default)]
@@ -377,6 +385,7 @@ pub fn routes() -> Router<AppState> {
         .route("/chantiers", get(liste))
         .route("/chantiers/{id}", get(tableau_de_bord).post(enregistrer))
         .route("/chantiers/{id}/devis", get(devis_avenants))
+        .route("/chantiers/{id}/finances", get(onglet_finances))
 }
 
 #[cfg(test)]
