@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Export factures · Ubifacture{% endblock %}
+{% block nav_exports %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("pdf", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Export factures</h1>
+        <div class="u-sous-titre">Les factures et notes de crédit validées d'une période, pour le comptable : PDF, UBL 2.1 (Peppol BIS 3.0) et un récapitulatif Excel, dans un fichier ZIP.</div>
+      </div>
+    </div>
+    <div class="u-actions">
+      <details class="u-menu">
+        <summary class="btn btn-primary">{% call ui::icone("plus", 16) %}{% endcall %}Nouvel export</summary>
+        <form method="post" action="/exports" class="u-menu-liste u-menu-form" style="min-width:340px">
+          <span class="u-lbl" style="margin:0">Création d'un dossier d'export</span>
+          <div class="grid gap-3 grid-cols-2">
+            <label class="form-control">
+              <span class="u-lbl">Du <i>*</i></span>
+              <input class="input input-bordered input-sm" type="date" name="debut" value="{{ debut }}" required>
+            </label>
+            <label class="form-control">
+              <span class="u-lbl">Au <i>*</i></span>
+              <input class="input input-bordered input-sm" type="date" name="fin" value="{{ fin }}" required>
+            </label>
+          </div>
+          <span class="u-petit u-muet">Période basée sur la date des pièces. Proposée : le mois passé.</span>
+          <label class="form-control">
+            <span class="u-lbl">Format</span>
+            <select class="select select-bordered select-sm" name="format">
+              {% for f in formats %}<option value="{{ f.valeur }}"{% if f.choisi %} selected{% endif %}>{{ f.libelle }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="form-control">
+            <span class="u-lbl">Contenu</span>
+            <select class="select select-bordered select-sm" name="contenu">
+              {% for c in contenus %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
+            </select>
+          </label>
+          <button class="btn btn-primary btn-sm" type="submit">Créer le dossier</button>
+        </form>
+      </details>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+
+<section class="u-card">
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr><th>N°</th><th>Date</th><th>Période</th><th>Format</th><th>Contenu</th><th class="n">Nb. pièces</th><th class="n">Taille</th><th>Comptable</th><th class="n"><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for e in exports %}
+        <tr>
+          <td class="mono">{{ e.id }}</td>
+          <td class="nw">{{ e.date }}</td>
+          <td class="nw">{{ e.periode }}</td>
+          <td class="nw">{{ e.format }}</td>
+          <td>{{ e.contenu }}</td>
+          <td class="n">{{ e.nombre }}</td>
+          <td class="n">{{ e.taille }}</td>
+          <td>{% if e.envoye.is_empty() %}<span class="u-muet">—</span>{% else %}<span class="u-statut"><span class="u-pastille s-accepte">Envoyé</span><small>{{ e.envoye }}</small></span>{% endif %}</td>
+          <td class="n">
+            <div class="inline-flex gap-1 items-center">
+              <a class="btn btn-sm" href="/exports/{{ e.id }}/telecharger" title="Télécharger le ZIP">{% call ui::icone("pdf", 14) %}{% endcall %}ZIP</a>
+              <form method="post" action="/exports/{{ e.id }}/envoyer"><button class="btn btn-sm" type="submit" title="Envoyer le dossier au comptable par e-mail">Envoyer</button></form>
+              <details class="u-menu">
+                <summary class="btn u-ib" aria-label="Supprimer le dossier" title="Supprimer le dossier">{% call ui::icone("corbeille", 15) %}{% endcall %}</summary>
+                <form method="post" action="/exports/{{ e.id }}/supprimer" class="u-menu-liste u-menu-form">
+                  <span class="u-petit">Supprimer ce dossier d'export ? Les factures ne changent pas ; elles redeviennent « non exportées ».</span>
+                  <button class="btn btn-danger btn-sm" type="submit">Supprimer le dossier</button>
+                </form>
+              </details>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="9">Aucun export pour l'instant : « Nouvel export » en haut à droite.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<form class="u-card" method="post" action="/exports/comptable">
+  <div class="u-card-h"><h2>{% call ui::icone("contacts", 17) %}{% endcall %}Comptable</h2>{% if !envoi_actif %}<span class="u-pastille s-a-envoyer">E-mails en mode test</span>{% endif %}</div>
+  <div class="u-grille-champs">
+    <label class="form-control">
+      <span class="u-lbl">Adresse e-mail du comptable</span>
+      <input class="input input-bordered" type="email" name="email" value="{{ email_comptable }}" placeholder="comptable@exemple.be">
+    </label>
+    <div class="flex items-end"><button class="btn btn-sm" type="submit">Enregistrer</button></div>
+  </div>
+  <p class="u-petit u-muet px-[18px] pb-4" style="margin:0">« Envoyer au comptable » joint le dossier ZIP au modèle « Export pour le comptable » (Réglages › E-mails). Le format UBL 2.1 et le contenu attendus sont à confirmer avec le comptable.</p>
+</form>
+{% endblock %}

@@ -237,6 +237,9 @@ async fn vitrine(pool: PgPool) {
     sqlx::query("UPDATE entreprises SET email = 'compta@hotel-du-parc.example' WHERE id = $1").bind(hotel).execute(&pool).await.unwrap();
     poster(&s, &format!("/factures/{facture}/email"), "destinataires=lambert%40exemple.be&objet=Facture+n%C2%B0+125&corps=Bonjour").await;
     poster(&s, &format!("/devis/{}/email", devis_ids[3]), "destinataires=lambert%40exemple.be&objet=Devis+F28&corps=Bonjour").await;
+    // Étape 8-4 : un dossier d'export du jour, et l'adresse du comptable.
+    poster(&s, "/exports/comptable", "email=compta%40fiduciaire.example").await;
+    poster(&s, "/exports", &format!("debut={aujourdhui}&fin={aujourdhui}&format=les_deux&contenu=toutes")).await;
 
     let ecoute = tokio::net::TcpListener::bind("127.0.0.1:3002").await.expect("port 3002 occupé");
     println!("Vitrine prête sur http://127.0.0.1:3002 (chantier {chantier}, facture {facture}, avancement {av2})");

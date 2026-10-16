@@ -16,6 +16,7 @@ pub mod devis_statut;
 pub mod devis_totaux;
 pub mod emails;
 pub mod envoi;
+pub mod exports;
 pub mod facture_calcul;
 pub mod factures;
 pub mod factures_chantier;
@@ -26,6 +27,7 @@ pub mod paiements;
 pub mod pdf;
 pub mod rappels;
 pub mod societe;
+pub mod ubl;
 
 use askama::Template;
 use axum::{
@@ -123,6 +125,7 @@ pub fn app(state: AppState) -> Router {
         .merge(paiements::routes())
         .merge(envoi::routes())
         .merge(rappels::routes())
+        .merge(exports::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)
