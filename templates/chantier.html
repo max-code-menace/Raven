@@ -85,6 +85,46 @@
       <span class="u-grand">{{ factures.reste_a_facturer }}</span>
       <span class="u-petit u-muet">Facturé : {{ factures.facture_ht }} HT · {{ factures.facture_ttc }} TTC</span>
     </div>
+    <div class="u-ligne-montant"><span>Encaissé</span><span style="color:#1C6B3C">{{ suivi.encaisse }}</span></div>
+    <div class="u-ligne-montant" style="font-weight:600"><span>Reste à recevoir TTC</span><span>{{ suivi.reste_a_recevoir }}</span></div>
+  </section>
+</div>
+
+<div class="grid gap-4 lg:grid-cols-3 items-start">
+  <section class="u-card">
+    <div class="u-card-h"><h2>Rentabilité</h2><span class="u-petit u-muet">HT</span></div>
+    <table class="u-table">
+      <thead><tr><th></th><th class="n">Prévu</th><th class="n">Actuel</th></tr></thead>
+      <tbody>
+        <tr><td>Ventes</td><td class="n">{{ suivi.ventes_prevues }}</td><td class="n" title="Facturé HT">{{ suivi.facture_ht }}</td></tr>
+        <tr><td>Achats</td><td class="n">{{ suivi.achats_prevus }}</td><td class="n">{{ suivi.achats_reels }}</td></tr>
+        <tr><td>Frais généraux</td><td class="n">{{ suivi.frais_generaux }}</td><td class="n u-muet">—</td></tr>
+        <tr class="font-semibold"><td>Bénéfice</td><td class="n">{{ suivi.benefice_prevu }}</td><td class="n"{% if suivi.benefice_actuel_negatif %} style="color:#8E2B22"{% endif %}>{{ suivi.benefice_actuel }}</td></tr>
+        <tr><td>En % du coût</td><td class="n">{{ suivi.taux_prevu }}</td><td class="n">{{ suivi.taux_actuel }}</td></tr>
+      </tbody>
+    </table>
+    <p class="u-petit u-muet px-[18px] py-3" style="margin:0">Prévu : devis de base et avenants acceptés{% if suivi.lignes_sans_achat > 0 %} ({{ suivi.lignes_sans_achat }} ligne(s) sans prix d'achat){% endif %}. Actuel : facturé HT moins les achats saisis.</p>
+  </section>
+
+  <section class="u-card">
+    <div class="u-card-h"><h2>Budget d'achat</h2><a class="u-petit" href="/chantiers/{{ id }}/finances#achats">Achats</a></div>
+    <div class="u-card-b">
+      <span class="u-cle">Disponible HT</span>
+      <span class="u-grand"{% if suivi.depasse %} style="color:#8E2B22"{% endif %}>{{ suivi.disponible }}</span>
+      <div class="w-full h-2 rounded-full bg-[#EEF0ED] overflow-hidden" role="img" aria-label="Budget d'achat dépensé : {{ suivi.pourcentage_budget_texte }}">
+        <div class="h-2 rounded-full" style="width:{{ suivi.pourcentage_budget }}%;background:{% if suivi.depasse %}#953A0A{% else %}#0B6371{% endif %}"></div>
+      </div>
+      <span class="u-petit u-muet">Dépensé : {{ suivi.achats_reels }} sur {{ suivi.achats_prevus }} prévus ({{ suivi.pourcentage_budget_texte }}){% if suivi.depasse %} · budget dépassé{% endif %}</span>
+    </div>
+  </section>
+
+  <section class="u-card">
+    <div class="u-card-h"><h2>Main d'œuvre</h2></div>
+    <div class="u-card-b">
+      <span class="u-cle">Heures prévues</span>
+      <span class="u-grand">{{ suivi.heures_prevues }}</span>
+      <span class="u-petit u-muet">Lignes de main d'œuvre en heures des devis. Heures pointées : pas de pointage dans Ubifacture.</span>
+    </div>
   </section>
 </div>
 
@@ -107,9 +147,6 @@
       <button class="btn btn-sm self-end" type="submit">Enregistrer</button>
     </div>
   </form>
-  <section class="u-card lg:col-span-2">
-    <div class="u-card-h" style="border-bottom:0"><h2 class="u-muet">Rentabilité, budget d'achat, main d'œuvre</h2><span class="u-bientot-note">bientôt (étape 9)</span></div>
-  </section>
 </div>
 
 {% else if onglet == "finances" %}
@@ -239,6 +276,78 @@
       <span>Facturé HT (pièces validées) <strong>{{ factures.facture_ht }}</strong></span>
       <span>Facturé TTC <strong>{{ factures.facture_ttc }}</strong></span>
       <span>Reste à facturer HT <strong>{{ factures.reste_a_facturer }}</strong></span>
+    </div>
+  </div>
+</details>
+
+<details class="u-card" id="achats" open>
+  <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Achats du chantier <span class="u-compte">{{ suivi.achats.len() }}</span></h2><span class="u-petit u-muet font-normal">saisis à la main en attendant les factures fournisseurs (phase 2)</span></summary>
+  <div class="u-outils" style="justify-content:flex-end">
+    <details class="u-menu">
+      <summary class="btn btn-sm">{% call ui::icone("plus", 14) %}{% endcall %}Ajouter un achat</summary>
+      <form method="post" action="/chantiers/{{ id }}/achats" class="u-menu-liste u-menu-form" style="min-width:320px">
+        <div class="grid gap-3 grid-cols-2">
+          <label class="form-control">
+            <span class="u-lbl">Date <i>*</i></span>
+            <input class="input input-bordered input-sm" type="date" name="date" value="{{ suivi.aujourdhui }}" required>
+          </label>
+          <label class="form-control">
+            <span class="u-lbl">Montant HT <i>*</i></span>
+            <input class="input input-bordered input-sm text-right" type="text" inputmode="decimal" name="montant" placeholder="1250,00" required>
+          </label>
+        </div>
+        <label class="form-control">
+          <span class="u-lbl">Catégorie</span>
+          <select class="select select-bordered select-sm" name="categorie">
+            {% for c in suivi.categories %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Fournisseur</span>
+          <input class="input input-bordered input-sm" type="text" name="fournisseur" maxlength="300">
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Description</span>
+          <input class="input input-bordered input-sm" type="text" name="description" maxlength="300" placeholder="Facture n°, matériaux…">
+        </label>
+        <span class="u-petit u-muet">Un avoir du fournisseur : montant négatif (« -50 »).</span>
+        <button class="btn btn-primary btn-sm" type="submit">Ajouter l'achat</button>
+      </form>
+    </details>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>Date</th><th>Catégorie</th><th>Fournisseur</th><th class="w-full">Description</th><th class="n">Montant HT</th><th class="n"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for a in suivi.achats %}
+        <tr>
+          <td class="nw">{{ a.date }}</td>
+          <td class="nw">{{ a.categorie }}</td>
+          <td>{{ a.fournisseur }}</td>
+          <td>{{ a.description }}</td>
+          <td class="n">{{ a.montant }}</td>
+          <td class="n">
+            <details class="u-menu">
+              <summary class="btn u-ib" aria-label="Retirer cet achat" title="Retirer cet achat">{% call ui::icone("corbeille", 15) %}{% endcall %}</summary>
+              <form method="post" action="/chantiers/{{ id }}/achats/{{ a.id }}/supprimer" class="u-menu-liste u-menu-form">
+                <span class="u-petit">Retirer cet achat de {{ a.montant }} ?</span>
+                <button class="btn btn-danger btn-sm" type="submit">Retirer</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="6">Aucun achat saisi.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="u-pied">
+    <span>{{ suivi.achats.len() }} achat(s)</span>
+    <div class="flex flex-wrap gap-6">
+      <span>Achats prévus HT <strong>{{ suivi.achats_prevus }}</strong></span>
+      <span>Dépensé HT <strong>{{ suivi.achats_reels }}</strong></span>
+      <span>Disponible HT <strong>{{ suivi.disponible }}</strong></span>
     </div>
   </div>
 </details>

@@ -237,11 +237,18 @@ async fn vitrine(pool: PgPool) {
     sqlx::query("UPDATE entreprises SET email = 'compta@hotel-du-parc.example' WHERE id = $1").bind(hotel).execute(&pool).await.unwrap();
     poster(&s, &format!("/factures/{facture}/email"), "destinataires=lambert%40exemple.be&objet=Facture+n%C2%B0+125&corps=Bonjour").await;
     poster(&s, &format!("/devis/{}/email", devis_ids[3]), "destinataires=lambert%40exemple.be&objet=Devis+F28&corps=Bonjour").await;
+    // Étape 9-2 : deux achats saisis sur le chantier.
+    poster(&s, &format!("/chantiers/{chantier}/achats"), &format!("date={aujourdhui}&categorie=fourniture&fournisseur=Brico+Pro&description=Panneaux+PIR&montant=950")).await;
+    poster(&s, &format!("/chantiers/{chantier}/achats"), &format!("date={aujourdhui}&categorie=sous_traitant&fournisseur=Nacelles+SA&description=Location+3+jours&montant=640")).await;
     // Étape 8-4 : un dossier d'export du jour, et l'adresse du comptable.
     poster(&s, "/exports/comptable", "email=compta%40fiduciaire.example").await;
     poster(&s, "/exports", &format!("debut={aujourdhui}&fin={aujourdhui}&format=les_deux&contenu=toutes")).await;
 
     let ecoute = tokio::net::TcpListener::bind("127.0.0.1:3002").await.expect("port 3002 occupé");
+    // Les pages client : le devis F28 (envoyé) et la facture d'avancement (liens fixes pour la vitrine).
+    let jeton_devis: String = sqlx::query_scalar("UPDATE devis SET jeton = COALESCE(jeton, 'vitrine-devis-f28') WHERE id = $1 RETURNING jeton").bind(devis_ids[3]).fetch_one(&pool).await.unwrap();
+    let jeton_facture: String = sqlx::query_scalar("UPDATE factures SET jeton = COALESCE(jeton, 'vitrine-facture-125') WHERE id = $1 RETURNING jeton").bind(facture).fetch_one(&pool).await.unwrap();
+    println!("Pages client : http://127.0.0.1:3002/client/devis/{jeton_devis} et http://127.0.0.1:3002/client/facture/{jeton_facture}");
     println!("Vitrine prête sur http://127.0.0.1:3002 (chantier {chantier}, facture {facture}, avancement {av2})");
     let serveur = axum::serve(ecoute, s);
     let _ = tokio::time::timeout(std::time::Duration::from_secs(3 * 3600), serveur).await;

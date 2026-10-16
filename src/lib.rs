@@ -28,6 +28,7 @@ pub mod paiements;
 pub mod pdf;
 pub mod rappels;
 pub mod societe;
+pub mod suivi_chantier;
 pub mod ubl;
 
 use askama::Template;
@@ -128,6 +129,7 @@ pub fn app(state: AppState) -> Router {
         .merge(rappels::routes())
         .merge(exports::routes())
         .merge(page_client::routes())
+        .merge(suivi_chantier::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

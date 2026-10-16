@@ -53,6 +53,8 @@
   <span>{{ liste.total }} chantier{% if liste.total > 1 %}s{% endif %}</span>
   <div class="u-totaux">
     <div><small>Devis + avenants HT</small><strong>{{ liste.total_ht }}</strong></div>
+    <div><small>Reste à facturer HT</small><strong>{{ liste.reste_a_facturer }}</strong></div>
+    <div><small>Reste à recevoir TTC</small><strong style="color:#0B6371">{{ liste.reste_a_recevoir }}</strong></div>
   </div>
   <div class="u-pages">
     {% if liste.page > 1 %}

@@ -68,6 +68,14 @@ const ADRESSE: &str = "concat_ws(', ', NULLIF(trim(concat_ws(' ', a.rue, a.numer
 const TOTAL_HT: &str = "(d.montant_ht_cents + COALESCE((SELECT sum(av.montant_ht_cents) FROM devis av
                                                  WHERE av.chantier_id = ch.id AND av.statut = 'accepte'), 0))::bigint";
 
+/// Facturé HT d'un chantier : ses pièces validées, notes de crédit déduites.
+const FACTURE_HT: &str = "COALESCE((SELECT sum(CASE WHEN f.genre = 'note_credit' THEN -f.montant_ht_cents ELSE f.montant_ht_cents END)
+                                    FROM factures f WHERE f.chantier_id = ch.id AND f.numero IS NOT NULL), 0)";
+
+/// Reste à recevoir TTC des factures du chantier.
+const A_RECEVOIR: &str = "COALESCE((SELECT sum(GREATEST(et.reste_cents, 0)) FROM factures f JOIN factures_etats et ON et.facture_id = f.id
+                                    WHERE f.chantier_id = ch.id), 0)";
+
 const CLIENT: &str ="COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), ''), '')";
 
 // ─── Liste ──────────────────────────────────────────────────────────────────
@@ -114,6 +122,8 @@ pub struct Liste {
     pub pages: i64,
     pub total: i64,
     pub total_ht: String,
+    pub reste_a_facturer: String,
+    pub reste_a_recevoir: String,
 }
 
 #[derive(Template)]
@@ -149,8 +159,10 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     let motif = format!("%{}%", echapper_like(&q));
     let filtre = filtre_statut(r.statut.trim());
 
-    let (total, total_ht): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT count(*), COALESCE(sum({TOTAL_HT}), 0)::bigint {DEPUIS} {CONDITIONS}"
+    let (total, total_ht, reste_a_facturer, reste_a_recevoir): (i64, i64, i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT count(*), COALESCE(sum({TOTAL_HT}), 0)::bigint, COALESCE(sum({TOTAL_HT} - {FACTURE_HT}), 0)::bigint,
+                COALESCE(sum({A_RECEVOIR}), 0)::bigint
+         {DEPUIS} {CONDITIONS}"
     )))
     .bind(&q)
     .bind(&motif)
@@ -203,6 +215,8 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
         pages,
         total,
         total_ht: format_euros(total_ht),
+        reste_a_facturer: format_euros(reste_a_facturer),
+        reste_a_recevoir: format_euros(reste_a_recevoir),
     };
 
     // htmx demande uniquement le tableau ; un rechargement de la page demande tout.
@@ -242,7 +256,10 @@ impl Retour {
     /// Les messages sont fixes : rien de ce qui est dans l'adresse n'est affiché tel quel.
     fn message_ok(&self) -> &'static str {
         match self.ok.as_str() {
-            "1" => "Le chantier est enregistré.",            _ => "",
+            "1" => "Le chantier est enregistré.",
+            "achat" => "L'achat est ajouté.",
+            "achat_retire" => "L'achat est retiré.",
+            _ => "",
         }
     }
 
@@ -255,6 +272,7 @@ impl Retour {
             "rien" => "Il n'y a rien à facturer.",
             "avancement_brouillon" => "Valide ou supprime d'abord l'avancement en brouillon.",
             "facture_brouillon" => "Valide ou supprime d'abord la facture en brouillon de ce chantier (un acompte en brouillon ne serait pas déduit).",
+            "achat" => "L'achat n'est pas ajouté : date, catégorie et montant HT (différent de 0) sont obligatoires ; fournisseur et description 300 caractères au maximum.",
             _ => "",
         }
     }
@@ -294,6 +312,8 @@ struct PageFiche {
     finances: crate::avancements::Finances,
     /// Les factures et notes de crédit du chantier.
     factures: crate::factures_chantier::Recap,
+    /// Rentabilité, budget d'achat, main d'œuvre, facturation et achats (étape 9-2).
+    suivi: crate::suivi_chantier::Suivi,
     message_ok: &'static str,
     message_erreur: &'static str,
 }
@@ -316,6 +336,7 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
     let avenants = crate::avenants::recap(&state.db, id).await?;
     let finances = crate::avancements::finances(&state.db, id).await?;
     let factures = crate::factures_chantier::recap(&state.db, id, finances.total_cents).await?;
+    let suivi = crate::suivi_chantier::charger(&state.db, id).await?;
     let page = PageFiche {
         id,
         onglet,
@@ -345,6 +366,7 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
         avenants: avenants.lignes,
         finances,
         factures,
+        suivi,
         message_ok: retour.message_ok(),
         message_erreur: retour.message_erreur(),
     };

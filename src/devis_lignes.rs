@@ -441,6 +441,17 @@ fn exiger_brouillon(entete: &Entete) -> Result<(), Erreur> {
 }
 
 /// Recalcule et enregistre les totaux du devis dans la même transaction que le changement.
+/// La rentabilité prévue d'un devis ou d'un avenant (suivi de chantier, étape 9-2) : ventes, achats, frais généraux,
+/// marge et heures. L'ajustement est la différence entre le total HT enregistré et la somme des lignes.
+pub(crate) async fn rentabilite_prevue(db: &PgPool, devis_id: i64) -> Result<calcul::Rentabilite, sqlx::Error> {
+    let lignes = charger_lignes(db, devis_id).await?;
+    let (montant_ht, frais_generaux): (i64, i32) =
+        sqlx::query_as("SELECT montant_ht_cents, frais_generaux_centiemes FROM devis WHERE id = $1").bind(devis_id).fetch_one(db).await?;
+    let rentables: Vec<calcul::LigneRentable> = lignes.iter().filter_map(LigneBase::en_rentable).collect();
+    let somme: i64 = rentables.iter().map(|l| l.ventes_cents).sum();
+    Ok(calcul::rentabilite(&rentables, i64::from(frais_generaux), montant_ht - somme))
+}
+
 pub(crate) async fn recalculer(tx: &mut Transaction<'_, Postgres>, devis_id: i64) -> Result<(), sqlx::Error> {
     let lignes = charger_lignes(&mut **tx, devis_id).await?;
     let (mode, valeur): (String, i64) = sqlx::query_as("SELECT ajustement_mode, ajustement_valeur FROM devis WHERE id = $1")
