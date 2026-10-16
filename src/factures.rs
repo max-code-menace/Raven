@@ -690,6 +690,8 @@ struct Page {
     payer_ouvert: bool,
     aujourdhui: String,
     historique: Vec<Evenement>,
+    /// L'adresse de la page client en ligne (vide pour un brouillon).
+    lien_client: String,
     /// Facture en retard : (où en sont les rappels, un rappel est dû aujourd'hui).
     rappel: Option<(String, bool)>,
 }
@@ -807,6 +809,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         payer_ouvert: retour.payer == "1" && solde.a_recevoir(),
         aujourdhui: aujourdhui.to_string(),
         historique: historique(&state.db, id).await?,
+        lien_client: if f.numero.is_some() { crate::page_client::lien(&state.db, crate::emails::Piece::Facture, id).await? } else { String::new() },
         rappel: if solde.etat == "en_retard" { crate::rappels::resume_facture(&state.db, id).await? } else { None },
     };
     Ok(Html(page.render()?))

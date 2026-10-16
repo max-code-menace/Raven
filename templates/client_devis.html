@@ -1,0 +1,56 @@
+{% extends "client_base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}{{ titre }} · {{ entreprise.nom }}{% endblock %}
+
+{% block content %}
+{% if merci %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span><strong>Merci, le devis est signé.</strong> {{ entreprise.nom }} est prévenu et reviendra vers vous pour la suite.</span></div>
+{% endif %}
+
+<section class="u-card">
+  <div class="u-card-h"><h2>{% call ui::icone("devis", 17) %}{% endcall %}{{ titre }}</h2>
+    {% if etat == "signe" %}<span class="u-pastille s-signe">Signé</span>
+    {% else if etat == "accepte" %}<span class="u-pastille s-accepte">Accepté</span>
+    {% else if etat == "refuse" %}<span class="u-pastille s-refuse">Plus valable</span>
+    {% else %}<span class="u-pastille s-envoye">À signer</span>{% endif %}
+  </div>
+  <div class="u-card-b">
+    <div class="grid gap-3 grid-cols-2">
+      <div><span class="u-cle">Date</span>{{ date }}</div>
+      <div><span class="u-cle">Pour</span>{{ client }}</div>
+      {% if !reference.is_empty() %}<div class="col-span-2"><span class="u-cle">Référence</span>{{ reference }}</div>{% endif %}
+    </div>
+  </div>
+  <div class="u-ligne-montant"><span>Total HT</span><span>{{ ht }}</span></div>
+  <div class="u-ligne-montant"><span>TVA</span><span>{{ tva }}</span></div>
+  <div class="u-ligne-montant" style="font-weight:600;background:#F2F8F8;border-radius:0 0 12px 12px"><span>Total TTC</span><span>{{ ttc }}</span></div>
+</section>
+
+<a class="btn btn-primary w-full" href="/client/devis/{{ jeton }}/pdf" target="_blank" rel="noopener">{% call ui::icone("pdf", 16) %}{% endcall %}Lire le devis complet (PDF)</a>
+
+{% if etat == "signable" %}
+<form class="u-card" id="signer" method="post" action="/client/devis/{{ jeton }}">
+  <div class="u-card-h"><h2>{% call ui::icone("crayon", 17) %}{% endcall %}Signer le devis</h2></div>
+  <div class="u-card-b">
+    {% if !erreur.is_empty() %}<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>{% endif %}
+    <label class="form-control">
+      <span class="u-lbl">Votre nom complet <i>*</i></span>
+      <input class="input input-bordered" type="text" name="nom" maxlength="120" autocomplete="name" required>
+    </label>
+    <label class="flex gap-3 items-start text-[14px]">
+      <input class="checkbox checkbox-sm mt-0.5" type="checkbox" name="accord" value="oui" required>
+      <span><strong>Bon pour accord.</strong> J'ai lu le devis et ses conditions générales et je les accepte, pour un total de {{ ttc }} TTC.</span>
+    </label>
+    <button class="btn btn-primary" type="submit">Signer le devis</button>
+    <span class="u-petit u-muet">Votre nom, la date et l'heure sont enregistrés avec la signature.</span>
+  </div>
+</form>
+{% else if etat == "signe" %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Signé le {{ signe_le }} par {{ signe_par }}.</span></div>
+{% else if etat == "accepte" %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Ce devis est accepté.{% if !signe_par.is_empty() %} Signé le {{ signe_le }} par {{ signe_par }}.{% endif %}</span></div>
+{% else %}
+<div role="status" class="u-bandeau">{% call ui::icone("info", 18) %}{% endcall %}<span>Ce devis n'est plus valable. Contactez {{ entreprise.nom }} pour une nouvelle offre.</span></div>
+{% endif %}
+{% endblock %}

@@ -22,6 +22,8 @@ struct Page {
     onglet: &'static str,
     barre: Barre,
     a_completer: Vec<String>,
+    /// L'adresse de la page client en ligne (le client consulte et signe).
+    lien_client: String,
 }
 
 async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
@@ -34,6 +36,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<
         onglet: "visualisation",
         barre: charger_barre(&state.db, id).await?,
         a_completer: donnees.a_completer(),
+        lien_client: crate::page_client::lien(&state.db, crate::emails::Piece::Devis, id).await?,
     };
     Ok(Html(page.render()?))
 }

@@ -33,6 +33,14 @@
         {% if !a_completer.is_empty() %}<p class="u-petit u-muet">À compléter avant d'envoyer le devis.</p>{% endif %}
       </div>
     </section>
+    <section class="u-card">
+      <div class="u-card-h"><h2>Page client en ligne</h2></div>
+      <div class="u-card-b">
+        <p class="u-petit u-muet" style="margin:0">Le client y consulte et signe le devis. Le lien est dans l'e-mail ([LINK_DEVIS]).{% if barre.brouillon %} Visible dès que le devis est envoyé.{% endif %}</p>
+        <input class="input input-bordered input-sm mono w-full" type="text" value="{{ lien_client }}" readonly aria-label="Lien de la page client">
+        {% if !barre.brouillon %}<a class="btn btn-sm" href="{{ lien_client }}" target="_blank" rel="noopener">Ouvrir la page client</a>{% endif %}
+      </div>
+    </section>
   </aside>
 </div>
 {% endblock %}

@@ -22,6 +22,7 @@ typst-layout = "0.15.1"
 typst-pdf = "0.15.1"
 typst-render = "0.15.1"
 ureq = { version = "2.12", features = ["json"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]

@@ -97,6 +97,19 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
         ("accepte", Some(d), _) => format!("Accepté le {}", date_belge(d)),
         ("refuse", _, Some(d)) if motif.is_empty() => format!("Refusé le {}", date_belge(d)),
         ("refuse", _, Some(d)) => format!("Refusé le {} : {motif}", date_belge(d)),
+        // Signé en ligne par le client (étape 9-1) : il reste à l'accepter.
+        ("signe", _, _) => {
+            let signature: (Option<String>, String) = sqlx::query_as(
+                "SELECT to_char(signe_le AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI'), signe_par FROM devis WHERE id = $1",
+            )
+            .bind(id)
+            .fetch_one(db)
+            .await?;
+            match signature {
+                (Some(quand), par) => format!("Signé en ligne le {quand} par {par} : à accepter"),
+                _ => String::new(),
+            }
+        }
         _ => String::new(),
     };
     let (numero, annee, chantier_avenant, reference): (i64, i32, Option<i64>, String) =
