@@ -3,102 +3,102 @@
 <div id="grille" class="flex flex-col gap-4">
   {% if !grille.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ grille.message }}</span></div>{% endif %}
 
-  {% for b in grille.blocs %}
-  <div class="card bg-base-100 shadow">
-    <div class="card-body p-4">
-      <h2 class="card-title text-base">{{ b.titre }}</h2>
-      <div class="overflow-x-auto">
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th rowspan="2">N°</th>
-              <th rowspan="2" class="min-w-48">Description</th>
-              <th rowspan="2" class="text-right">Qté</th>
-              <th rowspan="2">Unité</th>
-              <th rowspan="2" class="text-right">P.U.</th>
-              <th rowspan="2" class="text-right">Total</th>
-              <th colspan="3" class="text-center border-l border-base-300">Avancement précédent</th>
-              <th colspan="3" class="text-center border-l border-base-300 bg-base-200">Avancement de la période</th>
-              <th colspan="3" class="text-center border-l border-base-300">Avancement final</th>
-            </tr>
-            <tr>
-              <th class="text-right border-l border-base-300">Qté</th><th class="text-right">%</th><th class="text-right">€</th>
-              <th class="text-right border-l border-base-300 bg-base-200">Qté</th><th class="text-right bg-base-200">%</th><th class="text-right bg-base-200">€</th>
-              <th class="text-right border-l border-base-300">Qté</th><th class="text-right">%</th><th class="text-right">€</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for l in b.lignes %}
-            {% if l.avancable %}
-            <tr>
-              <td class="whitespace-nowrap">{{ l.numero }}</td>
-              <td>{{ l.description }}</td>
-              <td class="text-right whitespace-nowrap">{{ l.quantite }}</td>
-              <td>{{ l.unite }}</td>
-              <td class="text-right whitespace-nowrap">{{ l.prix }}</td>
-              <td class="text-right whitespace-nowrap">{{ l.total }}</td>
-              <td class="text-right whitespace-nowrap border-l border-base-300">{{ l.precedent.quantite }}</td>
-              <td class="text-right whitespace-nowrap">{{ l.precedent.pourcentage }}</td>
-              <td class="text-right whitespace-nowrap">{{ l.precedent.montant }}</td>
-              {% if grille.modifiable %}
-              <td class="border-l border-base-300 bg-base-200">
-                {% if l.a_quantite %}
-                <input id="q-{{ l.cle }}" class="input input-bordered input-xs w-20 text-right" type="text" inputmode="decimal" name="quantite" value="{{ l.saisie.quantite }}"
-                       hx-post="{{ l.adresse }}" hx-trigger="change" hx-target="#grille" hx-swap="outerHTML" aria-label="Quantité de la période">
-                {% endif %}
-              </td>
-              <td class="bg-base-200">
-                <input id="p-{{ l.cle }}" class="input input-bordered input-xs w-20 text-right" type="text" inputmode="decimal" name="pourcentage" value="{{ l.saisie.pourcentage }}"
-                       hx-post="{{ l.adresse }}" hx-trigger="change" hx-target="#grille" hx-swap="outerHTML" aria-label="Pourcentage de la période">
-              </td>
-              <td class="bg-base-200">
-                <input id="m-{{ l.cle }}" class="input input-bordered input-xs w-24 text-right" type="text" inputmode="decimal" name="montant" value="{{ l.saisie.montant }}"
-                       hx-post="{{ l.adresse }}" hx-trigger="change" hx-target="#grille" hx-swap="outerHTML" aria-label="Montant de la période">
-              </td>
-              {% else %}
-              <td class="text-right whitespace-nowrap border-l border-base-300 bg-base-200">{{ l.periode.quantite }}</td>
-              <td class="text-right whitespace-nowrap bg-base-200">{{ l.periode.pourcentage }}</td>
-              <td class="text-right whitespace-nowrap bg-base-200">{{ l.periode.montant }}</td>
-              {% endif %}
-              <td class="text-right whitespace-nowrap border-l border-base-300">{{ l.cumul.quantite }}</td>
-              <td class="text-right whitespace-nowrap">{{ l.cumul.pourcentage }}</td>
-              <td class="text-right whitespace-nowrap font-medium">{{ l.cumul.montant }}</td>
-            </tr>
-            {% else %}
-            <tr class="{% if l.est_titre %}bg-base-200 font-semibold{% endif %}">
-              <td class="whitespace-nowrap">{{ l.numero }}</td>
-              <td colspan="5">{{ l.description }}</td>
-              <td colspan="9" class="text-right whitespace-nowrap text-sm opacity-60">{{ l.total }}</td>
-            </tr>
-            {% endif %}
-            {% endfor %}
-          </tbody>
-          <tfoot>
-            <tr class="font-semibold">
-              <td colspan="5">Total {{ b.titre }}</td>
-              <td class="text-right whitespace-nowrap">{{ b.total }}</td>
-              <td colspan="3" class="text-right whitespace-nowrap border-l border-base-300">{{ b.precedent }}</td>
-              <td colspan="3" class="text-right whitespace-nowrap border-l border-base-300 bg-base-200">{{ b.periode }}</td>
-              <td colspan="3" class="text-right whitespace-nowrap border-l border-base-300">{{ b.cumul }}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+  <section class="u-card">
+    <div class="u-card-h">
+      <h2>Encodage de l'avancement</h2>
+      {% if grille.modifiable %}<span class="u-petit u-muet">Saisis la période en quantité, en % ou en € : les deux autres se calculent.</span>{% endif %}
     </div>
-  </div>
-  {% endfor %}
-
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
-      <table class="table max-w-lg ml-auto">
+    <div class="overflow-x-auto">
+      <table class="u-table u-avgrille">
+        <thead>
+          <tr class="u-groupes">
+            <th colspan="6"></th>
+            <th colspan="3" class="g">Avancement précédent</th>
+            <th colspan="3" class="g u-periode">Avancement de la période</th>
+            <th colspan="3" class="g">Avancement final</th>
+          </tr>
+          <tr>
+            <th>N°</th>
+            <th class="min-w-48">Description</th>
+            <th class="n">Qté</th>
+            <th>Unité</th>
+            <th class="n">P/U</th>
+            <th class="n">Total</th>
+            <th class="n g">Qté</th><th class="n">%</th><th class="n">€</th>
+            <th class="n g u-periode">Qté</th><th class="n u-periode">%</th><th class="n u-periode">€</th>
+            <th class="n g">Qté</th><th class="n">%</th><th class="n">€</th>
+          </tr>
+        </thead>
+        {% for b in grille.blocs %}
         <tbody>
-          <tr><td>Total chantier HT</td><td class="text-right whitespace-nowrap">{{ grille.total }}</td></tr>
-          <tr><td>Avancement précédent</td><td class="text-right whitespace-nowrap">{{ grille.precedent }}</td></tr>
-          <tr class="font-bold"><td>Avancement de la période HT</td><td class="text-right whitespace-nowrap"><span id="periode">{{ grille.periode }}</span></td></tr>
-          <tr><td>Total avancement{% if !grille.pourcentage_cumul.is_empty() %} ({{ grille.pourcentage_cumul }}){% endif %}</td><td class="text-right whitespace-nowrap">{{ grille.cumul }}</td></tr>
-          <tr class="font-semibold"><td>Reste à avancer HT</td><td class="text-right whitespace-nowrap">{{ grille.reste }}</td></tr>
+          <tr class="u-bloc"><td colspan="15">{{ b.titre }}</td></tr>
+          {% for l in b.lignes %}
+          {% if l.avancable %}
+          <tr>
+            <td class="whitespace-nowrap">{{ l.numero }}</td>
+            <td>{{ l.description }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.quantite }}</td>
+            <td>{{ l.unite }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.prix }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.total }}</td>
+            <td class="text-right whitespace-nowrap g">{{ l.precedent.quantite }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.precedent.pourcentage }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.precedent.montant }}</td>
+            {% if grille.modifiable %}
+            <td class="g u-periode">
+              {% if l.a_quantite %}
+              <input id="q-{{ l.cle }}" class="input input-bordered input-xs w-16 text-right u-saisie" type="text" inputmode="decimal" name="quantite" value="{{ l.saisie.quantite }}"
+                     hx-post="{{ l.adresse }}" hx-trigger="change" hx-target="#grille" hx-swap="outerHTML" aria-label="Quantité de la période">
+              {% endif %}
+            </td>
+            <td class="u-periode">
+              <input id="p-{{ l.cle }}" class="input input-bordered input-xs w-16 text-right u-saisie" type="text" inputmode="decimal" name="pourcentage" value="{{ l.saisie.pourcentage }}"
+                     hx-post="{{ l.adresse }}" hx-trigger="change" hx-target="#grille" hx-swap="outerHTML" aria-label="Pourcentage de la période">
+            </td>
+            <td class="u-periode">
+              <input id="m-{{ l.cle }}" class="input input-bordered input-xs w-20 text-right u-saisie" type="text" inputmode="decimal" name="montant" value="{{ l.saisie.montant }}"
+                     hx-post="{{ l.adresse }}" hx-trigger="change" hx-target="#grille" hx-swap="outerHTML" aria-label="Montant de la période">
+            </td>
+            {% else %}
+            <td class="text-right whitespace-nowrap g u-periode">{{ l.periode.quantite }}</td>
+            <td class="text-right whitespace-nowrap u-periode">{{ l.periode.pourcentage }}</td>
+            <td class="text-right whitespace-nowrap u-periode">{{ l.periode.montant }}</td>
+            {% endif %}
+            <td class="text-right whitespace-nowrap g">{{ l.cumul.quantite }}</td>
+            <td class="text-right whitespace-nowrap">{{ l.cumul.pourcentage }}</td>
+            <td class="text-right whitespace-nowrap font-medium">{{ l.cumul.montant }}</td>
+          </tr>
+          {% else %}
+          <tr class="{% if l.est_titre %}lot{% endif %}">
+            <td class="whitespace-nowrap">{{ l.numero }}</td>
+            <td colspan="5">{{ l.description }}</td>
+            <td colspan="9" class="text-right whitespace-nowrap text-sm opacity-60">{{ l.total }}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+          <tr class="u-somme">
+            <td colspan="5">Total {{ b.titre }}</td>
+            <td class="text-right whitespace-nowrap">{{ b.total }}</td>
+            <td colspan="3" class="text-right whitespace-nowrap g">{{ b.precedent }}</td>
+            <td colspan="3" class="text-right whitespace-nowrap g u-periode">{{ b.periode }}</td>
+            <td colspan="3" class="text-right whitespace-nowrap g">{{ b.cumul }}</td>
+          </tr>
         </tbody>
+        {% endfor %}
       </table>
     </div>
-  </div>
+  </section>
+
+  <section class="u-card lg:max-w-xl lg:ml-auto lg:w-full">
+    <div class="u-card-h"><h2>Chantier</h2></div>
+    <table class="u-table">
+      <tbody>
+        <tr><td>Total chantier HT</td><td class="text-right whitespace-nowrap">{{ grille.total }}</td></tr>
+        <tr><td>Avancement précédent</td><td class="text-right whitespace-nowrap">{{ grille.precedent }}</td></tr>
+        <tr class="font-semibold"><td>Avancement de la période HT</td><td class="text-right whitespace-nowrap"><span id="periode">{{ grille.periode }}</span></td></tr>
+        <tr><td>Total avancement (cumulé){% if !grille.pourcentage_cumul.is_empty() %} ({{ grille.pourcentage_cumul }}){% endif %}</td><td class="text-right whitespace-nowrap">{{ grille.cumul }}</td></tr>
+        <tr class="font-semibold"><td>Reste à avancer HT</td><td class="text-right whitespace-nowrap">{{ grille.reste }}</td></tr>
+      </tbody>
+    </table>
+  </section>
 </div>

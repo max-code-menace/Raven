@@ -1,13 +1,13 @@
 {% macro champ(label, nom, valeur, type_champ) %}
 <label class="form-control w-full">
-  <span class="label-text mb-1">{{ label }}</span>
+  <span class="u-lbl">{{ label }}</span>
   <input class="input input-bordered w-full" type="{{ type_champ }}" name="{{ nom }}" value="{{ valeur }}">
 </label>
 {% endmacro %}
 
 {% macro liste_deroulante(label, nom, choix) %}
 <label class="form-control w-full">
-  <span class="label-text mb-1">{{ label }}</span>
+  <span class="u-lbl">{{ label }}</span>
   <select class="select select-bordered w-full" name="{{ nom }}">
     <option value="">—</option>
     {% for c in choix %}
@@ -19,7 +19,7 @@
 
 {% macro pays(label, nom, choix) %}
 <label class="form-control w-full">
-  <span class="label-text mb-1">{{ label }}</span>
+  <span class="u-lbl">{{ label }}</span>
   <select class="select select-bordered w-full" name="{{ nom }}">
     {% for c in choix %}
     <option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>

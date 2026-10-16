@@ -8,6 +8,4 @@
 {% if let Some(r) = enc.rentabilite %}
 <span id="marge-totale" hx-swap-oob="true">{{ r.total.marge }} ({{ r.total.taux_marge }})</span>
 {% endif %}
-<div id="totaux" class="card bg-base-100 shadow" hx-swap-oob="true">
-  <div class="card-body">{% include "_encodage_totaux.html" %}</div>
-</div>
+<div id="totaux" hx-swap-oob="true">{% include "_encodage_totaux.html" %}</div>

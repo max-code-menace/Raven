@@ -403,7 +403,7 @@ fn construire_encodage(
 pub(crate) async fn charger_encodage(db: &PgPool, id: i64, entete: &Entete, message: String) -> Result<Encodage, Erreur> {
     let lignes = charger_lignes(db, id).await?;
     let options = Options::charger(db, Genre::Entreprise).await?;
-    Ok(construire_encodage(id, entete.brouillon, &lignes, &options.taux_tva, entete, message))
+    Ok(construire_encodage(id, entete.brouillon, &lignes, &crate::fiches::taux_courts(&options.taux_tva), entete, message))
 }
 
 // ─── Templates ──────────────────────────────────────────────────────────────

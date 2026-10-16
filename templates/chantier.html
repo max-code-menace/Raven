@@ -1,278 +1,321 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
 {% block title %}Chantier N° {{ numero }} · Ubifacture{% endblock %}
+{% block nav_chantiers %}actif{% endblock %}
 
-{% block content %}
-<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-  <div class="flex items-center gap-3">
-    <h1 class="text-2xl font-bold">Chantier N° {{ numero }}</h1>
-    <span class="badge {{ classe_statut }} whitespace-nowrap">{{ statut }}</span>
-  </div>
-  <a class="btn btn-ghost" href="/chantiers">Retour à la liste</a>
-</div>
-<p class="mb-4 text-sm">
-  {% if !reference.is_empty() %}{{ reference }} · {% endif %}{{ client }}
-  · Début le {{ date_debut }}
-</p>
-
-{% if !message_ok.is_empty() %}
-<div role="alert" class="alert alert-success mb-4"><span>{{ message_ok }}</span></div>
-{% endif %}
-{% if !message_erreur.is_empty() %}
-<div role="alert" class="alert alert-error mb-4"><span>{{ message_erreur }}</span></div>
-{% endif %}
-
-<div role="tablist" class="tabs tabs-bordered mb-4">
-  <a role="tab" class="tab{% if onglet == "tableau" %} tab-active{% endif %}" href="/chantiers/{{ id }}">Tableau de bord</a>
-  <a role="tab" class="tab{% if onglet == "devis" %} tab-active{% endif %}" href="/chantiers/{{ id }}/devis">Devis/avenants</a>
-  <a role="tab" class="tab{% if onglet == "finances" %} tab-active{% endif %}" href="/chantiers/{{ id }}/finances">Finances</a>
-</div>
-
-{% if onglet == "tableau" %}
-<div class="grid gap-4 md:grid-cols-3">
-  <div class="card bg-base-100 shadow md:col-span-2">
-    <div class="card-body">
-      <h2 class="card-title">Informations</h2>
-      <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-        <dt class="opacity-70">Client</dt><dd>{{ client }}</dd>
-        <dt class="opacity-70">Adresse du chantier</dt><dd>{{ adresse }}</dd>
-        <dt class="opacity-70">Référence</dt><dd>{{ reference }}</dd>
-        <dt class="opacity-70">Devis</dt><dd><a class="link link-primary" href="/devis/{{ devis_id }}">N° {{ devis_numero }}</a>{% if !date_acceptation.is_empty() %}, accepté le {{ date_acceptation }}{% endif %}</dd>
-        <dt class="opacity-70">Responsable</dt><dd>{{ responsable }}</dd>
-        <dt class="opacity-70">Gestionnaire</dt><dd>{{ gestionnaire }}</dd>
-        <dt class="opacity-70">Architecte</dt><dd>{{ architecte }}</dd>
-      </dl>
-    </div>
-  </div>
-
-  <div class="flex flex-col gap-4">
-    <div class="stats stats-vertical bg-base-100 shadow">
-      <div class="stat">
-        <div class="stat-title">Total devis/avenants HT</div>
-        <div class="stat-value text-2xl">{{ total_ht }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat-title">Reste à avancer HT</div>
-        <div class="stat-value text-2xl">{{ finances.reste }}</div>
-        {% if !finances.pourcentage_avance.is_empty() %}<div class="stat-desc">Avancé : {{ finances.avance }} ({{ finances.pourcentage_avance }})</div>{% endif %}
-      </div>
-      <div class="stat">
-        <div class="stat-title">Reste à facturer HT</div>
-        <div class="stat-value text-2xl">{{ factures.reste_a_facturer }}</div>
-        <div class="stat-desc">Facturé : {{ factures.facture_ht }} HT · {{ factures.facture_ttc }} TTC</div>
+{% block entete %}
+<header class="u-top avec-onglets">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="/chantiers" aria-label="Retour aux chantiers" title="Retour aux chantiers">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>Chantier N° {{ numero }}{% if !reference.is_empty() %} - {{ reference }}{% endif %}</h1>
+        <div class="u-sous-titre">
+          <span class="u-pastille {{ classe_statut }}">{{ statut }}</span>
+          <span>{{ client }} · Début le {{ date_debut }}</span>
+        </div>
       </div>
     </div>
-
-    <form class="card bg-base-100 shadow" method="post" action="/chantiers/{{ id }}">
-      <div class="card-body gap-3">
-        <h2 class="card-title">Suivi</h2>
-        <label class="form-control">
-          <span class="label-text mb-1">Statut</span>
-          <select class="select select-bordered select-sm" name="statut">
-            {% for s in statuts %}
-            <option value="{{ s.valeur }}"{% if s.choisi %} selected{% endif %}>{{ s.libelle }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="form-control">
-          <span class="label-text mb-1">Début de chantier</span>
-          <input class="input input-bordered input-sm" type="date" name="date_debut" value="{{ date_debut_champ }}" required>
-        </label>
-        <button class="btn btn-primary btn-sm" type="submit">Enregistrer</button>
-      </div>
-    </form>
-  </div>
-</div>
-{% else if onglet == "finances" %}
-<div class="card bg-base-100 shadow">
-  <div class="card-body">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h2 class="card-title">Avancements</h2>
+    <div class="u-actions">
+      <form method="post" action="/chantiers/{{ id }}/avenants">
+        <button class="btn" type="submit" title="Crée un avenant en brouillon qui reprend l'en-tête du devis">Nouvel avenant</button>
+      </form>
       {% if let Some(brouillon) = finances.brouillon %}
-      <a class="btn btn-primary btn-sm" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Reprendre le brouillon</a>
-      {% else if finances.finale %}
-      <span class="text-sm opacity-70">Facture finale créée : le chantier est soldé.</span>
-      {% else %}
+      <a class="btn btn-primary" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Reprendre le brouillon</a>
+      {% else if !finances.finale %}
       <form method="post" action="/chantiers/{{ id }}/avancements">
-        <button class="btn btn-primary btn-sm" type="submit">Nouvel avancement</button>
+        <button class="btn btn-primary" type="submit">Nouvel avancement</button>
       </form>
       {% endif %}
     </div>
-    <div class="overflow-x-auto">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>N°</th><th>Date</th><th>Référence</th><th class="text-right">Montant HT</th>
-            <th class="text-right">% avancé</th><th class="text-right">% avancé cumulé</th><th class="text-right">Reste à avancer HT</th><th>Statut</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for a in finances.avancements %}
-          <tr class="hover">
-            <td class="font-medium">{{ a.numero }}</td>
-            <td class="whitespace-nowrap">{{ a.date }}</td>
-            <td>{{ a.reference }}</td>
-            <td class="text-right whitespace-nowrap">{{ a.montant }}</td>
-            <td class="text-right whitespace-nowrap">{{ a.pourcentage }}</td>
-            <td class="text-right whitespace-nowrap">{{ a.pourcentage_cumul }}</td>
-            <td class="text-right whitespace-nowrap">{{ a.reste }}</td>
-            <td>
-              {% if a.brouillon %}<span class="badge badge-ghost">Brouillon</span>
-              {% else if let Some((facture_id, facture_texte)) = a.facture %}<a class="badge badge-primary whitespace-nowrap" href="/factures/{{ facture_id }}">Facturé · {{ facture_texte }}</a>
-              {% else %}<span class="badge badge-success">Validé</span>{% endif %}
-            </td>
-            <td class="text-right whitespace-nowrap">
-              {% if !a.brouillon && a.facture.is_none() %}
-              <form class="inline" method="post" action="/chantiers/{{ id }}/avancements/{{ a.id }}/facturer"><button class="btn btn-primary btn-xs" type="submit">Facturer</button></form>
-              {% endif %}
-              <a class="btn btn-ghost btn-xs" href="/chantiers/{{ id }}/avancements/{{ a.id }}">Ouvrir</a>
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="9" class="text-center opacity-70 py-6">Aucun avancement.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <div class="flex flex-wrap justify-end gap-6 text-sm">
-      <span>Total devis/avenants HT <strong>{{ finances.total }}</strong></span>
-      <span>Avancé (validé) <strong>{{ finances.avance }}</strong>{% if !finances.pourcentage_avance.is_empty() %} ({{ finances.pourcentage_avance }}){% endif %}</span>
-      <span>Reste à avancer HT <strong>{{ finances.reste }}</strong></span>
-    </div>
   </div>
+  <nav class="u-onglets" aria-label="Parties du chantier">
+    <a class="tab{% if onglet == "tableau" %} tab-active{% endif %}" href="/chantiers/{{ id }}">Tableau de bord</a>
+    <a class="tab{% if onglet == "devis" %} tab-active{% endif %}" href="/chantiers/{{ id }}/devis">Devis/avenants</a>
+    <a class="tab{% if onglet == "finances" %} tab-active{% endif %}" href="/chantiers/{{ id }}/finances">Finances</a>
+  </nav>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+
+{% if onglet == "tableau" %}
+<section class="u-card">
+  <div class="u-card-h"><h2>{% call ui::icone("chantiers", 17) %}{% endcall %}Informations du chantier</h2></div>
+  <div class="u-infos">
+    <div><span><span class="u-cle">Référence</span>{{ reference }}</span><span><span class="u-cle">Numéro</span><span class="mono">{{ numero }}</span></span></div>
+    <div><span><span class="u-cle">Client</span>{{ client }}</span><span><span class="u-cle">Adresse du chantier</span>{{ adresse }}</span></div>
+    <div><span><span class="u-cle">Date de début</span>{{ date_debut }}</span><span><span class="u-cle">Responsable</span>{{ responsable }}</span></div>
+    <div><span><span class="u-cle">Gestionnaire</span>{% if gestionnaire.is_empty() %}—{% else %}{{ gestionnaire }}{% endif %}</span><span><span class="u-cle">Architecte</span>{% if architecte.is_empty() %}—{% else %}{{ architecte }}{% endif %}</span>
+      <span><span class="u-cle">Devis de base</span><a href="/devis/{{ devis_id }}">N° {{ devis_numero }}</a>{% if !date_acceptation.is_empty() %}, accepté le {{ date_acceptation }}{% endif %}</span></div>
+  </div>
+</section>
+
+<div class="grid gap-4 lg:grid-cols-3 items-start">
+  <section class="u-card">
+    <div class="u-card-h"><h2>Montant du chantier</h2></div>
+    <div class="u-card-b">
+      <span class="u-cle">Total devis/avenants HT</span>
+      <span class="u-grand">{{ total_ht }}</span>
+      <div class="u-ligne-montant px-0"><span class="u-muet">Devis de base</span><span>{{ devis_ht }}</span></div>
+      <div class="u-ligne-montant px-0"><span class="u-muet">Avenants acceptés</span><span>{{ avenants_ht }}</span></div>
+    </div>
+  </section>
+
+  <section class="u-card">
+    <div class="u-card-h"><h2>Avancement</h2><a class="u-petit" href="/chantiers/{{ id }}/finances">Finances</a></div>
+    <div class="u-card-b">
+      <span class="u-cle">Reste à avancer HT</span>
+      <span class="u-grand">{{ finances.reste }}</span>
+      {% if !finances.pourcentage_avance.is_empty() %}<span class="u-petit u-muet">Avancé : {{ finances.avance }} ({{ finances.pourcentage_avance }})</span>{% endif %}
+    </div>
+  </section>
+
+  <section class="u-card">
+    <div class="u-card-h"><h2>Facturation</h2><a class="u-petit" href="/chantiers/{{ id }}/finances">Finances</a></div>
+    <div class="u-card-b">
+      <span class="u-cle">Reste à facturer HT</span>
+      <span class="u-grand">{{ factures.reste_a_facturer }}</span>
+      <span class="u-petit u-muet">Facturé : {{ factures.facture_ht }} HT · {{ factures.facture_ttc }} TTC</span>
+    </div>
+  </section>
 </div>
 
-<div class="card bg-base-100 shadow mt-4">
-  <div class="card-body">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h2 class="card-title">Factures et notes de crédit</h2>
-      {% if !finances.finale %}
-      <div class="flex flex-wrap gap-2">
-        <details class="dropdown dropdown-end">
-          <summary class="btn btn-outline btn-sm">Facture d'acompte…</summary>
-          <form method="post" action="/chantiers/{{ id }}/factures/acompte" class="dropdown-content z-10 mt-1 flex w-72 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
-            <span class="text-sm">Sur le total devis/avenants HT ({{ finances.total }}), réparti entre les taux de TVA.</span>
-            <select class="select select-bordered select-sm" name="mode">
-              <option value="pourcentage">En pourcentage (%)</option>
-              <option value="montant">En montant HT (€)</option>
-            </select>
-            <input class="input input-bordered input-sm" type="text" inputmode="decimal" name="valeur" placeholder="30" required>
-            <button class="btn btn-primary btn-sm" type="submit">Créer le brouillon</button>
-          </form>
-        </details>
-        <details class="dropdown dropdown-end">
-          <summary class="btn btn-outline btn-sm">Facture finale…</summary>
-          <form method="post" action="/chantiers/{{ id }}/factures/finale" class="dropdown-content z-10 mt-1 flex w-72 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
-            <span class="text-sm">Facture le reste à avancer ({{ finances.reste }} HT), puis déduit les acomptes déjà facturés. Plus aucun avancement ni acompte ne sera possible ensuite.</span>
-            <button class="btn btn-primary btn-sm" type="submit">Créer la facture finale</button>
-          </form>
-        </details>
-      </div>
-      {% endif %}
-    </div>
-    <div class="overflow-x-auto">
-      <table class="table">
-        <thead>
-          <tr><th>Pièce</th><th>Type</th><th>Date</th><th class="text-right">Montant HT</th><th class="text-right">Montant TTC</th><th>Statut</th><th></th></tr>
-        </thead>
-        <tbody>
-          {% for f in factures.factures %}
-          <tr class="hover">
-            <td class="font-medium whitespace-nowrap">{{ f.titre }}</td>
-            <td class="whitespace-nowrap">{{ f.genre }}</td>
-            <td class="whitespace-nowrap">{{ f.date }}</td>
-            <td class="text-right whitespace-nowrap">{{ f.montant_ht }}</td>
-            <td class="text-right whitespace-nowrap">{{ f.montant_ttc }}</td>
-            <td><span class="badge {{ f.classe_statut }} whitespace-nowrap">{{ f.statut }}</span></td>
-            <td class="text-right"><a class="btn btn-ghost btn-xs" href="/factures/{{ f.id }}">Ouvrir</a></td>
-          </tr>
-          {% else %}
-          <tr><td colspan="7" class="text-center opacity-70 py-6">Aucune facture.</td></tr>
+<div class="grid gap-4 lg:grid-cols-3 items-start">
+  <form class="u-card" method="post" action="/chantiers/{{ id }}">
+    <div class="u-card-h"><h2>Suivi</h2></div>
+    <div class="u-card-b">
+      <label class="form-control">
+        <span class="u-lbl">Statut</span>
+        <select class="select select-bordered select-sm" name="statut">
+          {% for s in statuts %}
+          <option value="{{ s.valeur }}"{% if s.choisi %} selected{% endif %}>{{ s.libelle }}</option>
           {% endfor %}
-        </tbody>
-      </table>
+        </select>
+      </label>
+      <label class="form-control">
+        <span class="u-lbl">Début de chantier</span>
+        <input class="input input-bordered input-sm" type="date" name="date_debut" value="{{ date_debut_champ }}" required>
+      </label>
+      <button class="btn btn-sm self-end" type="submit">Enregistrer</button>
     </div>
-    <div class="flex flex-wrap justify-end gap-6 text-sm">
+  </form>
+  <section class="u-card lg:col-span-2">
+    <div class="u-card-h" style="border-bottom:0"><h2 class="u-muet">Rentabilité, budget d'achat, main d'œuvre</h2><span class="u-bientot-note">bientôt (étape 9)</span></div>
+  </section>
+</div>
+
+{% else if onglet == "finances" %}
+<details class="u-card" open>
+  <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Avancements <span class="u-compte">{{ finances.avancements.len() }}</span></h2></summary>
+  <div class="u-outils" style="justify-content:flex-end">
+    {% if let Some(brouillon) = finances.brouillon %}
+    <a class="btn btn-sm" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Ouvrir le brouillon</a>
+    {% else if finances.finale %}
+    <span class="u-petit u-muet font-normal">Facture finale créée : le chantier est soldé.</span>
+    {% else %}
+    <form method="post" action="/chantiers/{{ id }}/avancements">
+      <button class="btn btn-sm" type="submit">{% call ui::icone("plus", 14) %}{% endcall %}Nouveau</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr>
+          <th>N°</th><th>Date</th><th>Référence</th><th class="n">Montant HT</th>
+          <th class="n">% avancé</th><th class="n">% avancé cumulé</th><th class="n">Reste à avancer HT</th><th>Statut</th><th class="n"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in finances.avancements %}
+        <tr>
+          <td class="mono">{{ a.numero }}</td>
+          <td class="nw">{{ a.date }}</td>
+          <td>{{ a.reference }}</td>
+          <td class="n">{{ a.montant }}</td>
+          <td class="n">{{ a.pourcentage }}</td>
+          <td class="n">{{ a.pourcentage_cumul }}</td>
+          <td class="n">{{ a.reste }}</td>
+          <td>
+            {% if a.brouillon %}<span class="u-pastille s-brouillon">Brouillon</span>
+            {% else if let Some((facture_id, facture_texte)) = a.facture %}<span class="u-statut"><span class="u-pastille s-accepte">Facturé</span><small><a href="/factures/{{ facture_id }}">{{ facture_texte }}</a></small></span>
+            {% else %}<span class="u-pastille s-valide">Validé</span>{% endif %}
+          </td>
+          <td class="n">
+            <div class="inline-flex items-center gap-1">
+              {% if !a.brouillon && a.facture.is_none() %}
+              <form class="inline" method="post" action="/chantiers/{{ id }}/avancements/{{ a.id }}/facturer"><button class="btn btn-sm" type="submit">Facturer</button></form>
+              {% endif %}
+              <a class="btn u-ib" href="/chantiers/{{ id }}/avancements/{{ a.id }}" aria-label="Ouvrir" title="Ouvrir">{% if a.brouillon %}{% call ui::icone("crayon", 16) %}{% endcall %}{% else %}{% call ui::icone("oeil", 16) %}{% endcall %}{% endif %}</a>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="9">Aucun avancement.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="u-pied">
+    <span>{{ finances.avancements.len() }} élément(s)</span>
+    <div class="u-totaux">
+      <div><small>Total chantier HT</small><strong>{{ finances.total }}</strong></div>
+      <div><small>Avancé (validé){% if !finances.pourcentage_avance.is_empty() %} · {{ finances.pourcentage_avance }}{% endif %}</small><strong>{{ finances.avance }}</strong></div>
+      <div><small>Reste à avancer HT</small><strong>{{ finances.reste }}</strong></div>
+    </div>
+  </div>
+</details>
+
+<details class="u-card" open>
+  <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Factures et notes de crédit <span class="u-compte">{{ factures.factures.len() }}</span></h2></summary>
+  <div class="u-outils" style="justify-content:flex-end">
+    {% if !finances.finale %}
+    <details class="u-menu">
+      <summary class="btn btn-sm">{% call ui::icone("plus", 14) %}{% endcall %}Nouveau{% call ui::icone("bas", 14) %}{% endcall %}</summary>
+      <div class="u-menu-liste u-menu-form" style="min-width:320px">
+        <div class="u-adresse flex flex-col gap-1">
+          <div class="flex justify-between"><span>Montant du devis</span><span>{{ devis_ht }}</span></div>
+          <div class="flex justify-between"><span>Avenants</span><span>{{ avenants_ht }}</span></div>
+          <div class="flex justify-between font-semibold"><span>Total à facturer HT</span><span>{{ total_ht }}</span></div>
+          <div class="flex justify-between"><span>Déjà facturé HT</span><span>{{ factures.facture_ht }}</span></div>
+          <div class="flex justify-between font-semibold"><span>Reste à facturer HT</span><span>{{ factures.reste_a_facturer }}</span></div>
+        </div>
+        <form method="post" action="/chantiers/{{ id }}/factures/acompte" class="flex flex-col gap-2">
+          <span class="u-lbl" style="margin:0">Facture d'acompte</span>
+          <span class="u-petit u-muet">Sur le total devis/avenants HT ({{ finances.total }}), répartie entre les taux de TVA.</span>
+          <div class="flex gap-2">
+            <select class="select select-bordered select-sm" name="mode" aria-label="Unité">
+              <option value="pourcentage">%</option>
+              <option value="montant">€ HT</option>
+            </select>
+            <input class="input input-bordered input-sm w-full text-right" type="text" inputmode="decimal" name="valeur" placeholder="30" required aria-label="Montant de l'acompte">
+          </div>
+          <button class="btn btn-sm" type="submit">Créer l'acompte en brouillon</button>
+        </form>
+        <div class="u-sep"></div>
+        <form method="post" action="/chantiers/{{ id }}/factures/finale" class="flex flex-col gap-2">
+          <span class="u-lbl" style="margin:0">Facture finale</span>
+          <span class="u-petit u-muet">Facture le reste à avancer ({{ finances.reste }} HT), puis déduit les acomptes déjà facturés. Plus aucun avancement ni acompte ne sera possible ensuite.</span>
+          <button class="btn btn-primary btn-sm" type="submit">Créer la facture finale</button>
+        </form>
+        <p class="u-petit u-muet">Facture d'avancement : bouton « Facturer » sur un avancement validé.</p>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr><th>Pièce</th><th>Type</th><th>Date</th><th class="n">Montant HT</th><th class="n">Montant TTC</th><th>Statut</th><th class="n"><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for f in factures.factures %}
+        <tr>
+          <td class="nw"><a href="/factures/{{ f.id }}">{{ f.titre }}</a></td>
+          <td class="nw">{{ f.genre }}</td>
+          <td class="nw">{{ f.date }}</td>
+          <td class="n">{{ f.montant_ht }}</td>
+          <td class="n">{{ f.montant_ttc }}</td>
+          <td><span class="u-pastille {{ f.classe_statut }}">{{ f.statut }}</span></td>
+          <td class="n"><a class="btn u-ib" href="/factures/{{ f.id }}" aria-label="Ouvrir" title="Ouvrir">{% call ui::icone("oeil", 16) %}{% endcall %}</a></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="7">Aucune facture.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="u-pied">
+    <span>{{ factures.factures.len() }} élément(s)</span>
+    <div class="flex flex-wrap gap-6">
       <span>Facturé HT (pièces validées) <strong>{{ factures.facture_ht }}</strong></span>
       <span>Facturé TTC <strong>{{ factures.facture_ttc }}</strong></span>
       <span>Reste à facturer HT <strong>{{ factures.reste_a_facturer }}</strong></span>
     </div>
   </div>
-</div>
+</details>
+
+<section class="u-card">
+  <div class="u-card-h" style="border-bottom:0"><h2 class="u-muet">Factures fournisseurs</h2><span class="u-bientot-note">phase 2 (Peppol)</span></div>
+</section>
+
 {% else %}
-<div class="card bg-base-100 shadow mb-4">
-  <div class="card-body">
-    <h2 class="card-title">Devis</h2>
-    <div class="overflow-x-auto">
-      <table class="table">
-        <thead>
-          <tr><th>N°</th><th>Référence</th><th>Date d'acceptation</th><th class="text-right">Montant HT</th><th class="text-right">Montant TTC</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><a class="link link-primary" href="/devis/{{ devis_id }}">{{ devis_numero }}</a></td>
-            <td>{{ reference }}</td>
-            <td>{{ date_acceptation }}</td>
-            <td class="text-right whitespace-nowrap">{{ devis_ht }}</td>
-            <td class="text-right whitespace-nowrap">{{ devis_ttc }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<div class="card bg-base-100 shadow mb-4">
-  <div class="card-body">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h2 class="card-title">Avenants</h2>
-      {# Crée un avenant en brouillon qui reprend l'en-tête du devis, puis ouvre son éditeur. #}
-      <form method="post" action="/chantiers/{{ id }}/avenants">
-        <button class="btn btn-primary btn-sm" type="submit">Nouvel avenant</button>
-      </form>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="table">
-        <thead>
-          <tr><th>N°</th><th>Date</th><th>Référence</th><th class="text-right">J. ouv.</th><th class="text-right">Montant HT</th><th>Statut</th><th></th></tr>
-        </thead>
-        <tbody>
-          {% for a in avenants %}
-          <tr class="hover">
-            <td class="font-medium whitespace-nowrap">Avenant n° {{ a.numero }}</td>
-            <td class="whitespace-nowrap">{{ a.date }}</td>
-            <td>{{ a.reference }}</td>
-            <td class="text-right">{{ a.jours_ouvrables }}</td>
-            <td class="text-right whitespace-nowrap">{{ a.montant_ht }}</td>
-            <td>
-              <div class="flex flex-col items-start">
-                <span class="badge {{ a.classe_statut }} whitespace-nowrap">{{ a.statut }}</span>
-                {% if !a.date_acceptation.is_empty() %}<span class="text-xs opacity-70">{{ a.date_acceptation }}</span>{% endif %}
-              </div>
-            </td>
-            <td class="text-right"><a class="btn btn-ghost btn-xs" href="/devis/{{ a.id }}">Ouvrir</a></td>
-          </tr>
-          {% else %}
-          <tr><td colspan="7" class="text-center opacity-70 py-6">Aucun avenant.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <p class="text-sm">Total J. ouv. supplémentaires (avenants acceptés) : <strong>{{ jours_supplementaires }}</strong></p>
-  </div>
-</div>
-
-<div class="card bg-base-100 shadow">
-  <div class="card-body">
-    <h2 class="card-title">Récapitulatif</h2>
-    <table class="table max-w-md">
+<section class="u-card">
+  <div class="u-card-h"><h2>Devis</h2></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr><th>N°</th><th>Référence</th><th>Date d'acceptation</th><th class="n">Montant HT</th><th class="n">Montant TTC</th></tr>
+      </thead>
       <tbody>
-        <tr><td>Devis de base</td><td class="text-right whitespace-nowrap">{{ devis_ht }}</td></tr>
-        <tr><td>Avenants acceptés</td><td class="text-right whitespace-nowrap">{{ avenants_ht }}</td></tr>
-        <tr class="font-bold"><td>Total devis/avenants HT</td><td class="text-right whitespace-nowrap">{{ total_ht }}</td></tr>
+        <tr>
+          <td class="mono"><a href="/devis/{{ devis_id }}">{{ devis_numero }}</a></td>
+          <td>{{ reference }}</td>
+          <td>{{ date_acceptation }}</td>
+          <td class="n">{{ devis_ht }}</td>
+          <td class="n">{{ devis_ttc }}</td>
+        </tr>
       </tbody>
     </table>
   </div>
-</div>
+</section>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Avenants <span class="u-compte">{{ avenants.len() }}</span></h2>
+    {# Crée un avenant en brouillon qui reprend l'en-tête du devis, puis ouvre son éditeur. #}
+    <form method="post" action="/chantiers/{{ id }}/avenants">
+      <button class="btn btn-sm" type="submit">{% call ui::icone("plus", 14) %}{% endcall %}Nouvel avenant</button>
+    </form>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr><th>N°</th><th>Date</th><th>Référence</th><th class="n">J. ouv.</th><th class="n">Montant HT</th><th>Statut</th><th class="n"><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for a in avenants %}
+        <tr>
+          <td class="nw font-medium">Avenant n° {{ a.numero }}</td>
+          <td class="nw">{{ a.date }}</td>
+          <td>{{ a.reference }}</td>
+          <td class="n">{{ a.jours_ouvrables }}</td>
+          <td class="n">{{ a.montant_ht }}</td>
+          <td>
+            <span class="u-statut">
+              <span class="u-pastille {{ a.classe_statut }}">{{ a.statut }}</span>
+              {% if !a.date_acceptation.is_empty() %}<small>{{ a.date_acceptation }}</small>{% endif %}
+            </span>
+          </td>
+          <td class="n"><a class="btn u-ib" href="/devis/{{ a.id }}" aria-label="Ouvrir" title="Ouvrir">{% call ui::icone("crayon", 16) %}{% endcall %}</a></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="7">Aucun avenant.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="u-pied">
+    <span>Total J. ouv. supplémentaires (avenants acceptés) : <strong>{{ jours_supplementaires }}</strong></span>
+  </div>
+</section>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Récapitulatif</h2></div>
+  <table class="u-table">
+    <tbody>
+      <tr><td>Devis de base</td><td class="text-right whitespace-nowrap">{{ devis_ht }}</td></tr>
+      <tr><td>Avenants acceptés</td><td class="text-right whitespace-nowrap">{{ avenants_ht }}</td></tr>
+      <tr class="font-semibold"><td>Total devis/avenants HT</td><td class="text-right whitespace-nowrap">{{ total_ht }}</td></tr>
+    </tbody>
+  </table>
+</section>
 {% endif %}
 {% endblock %}

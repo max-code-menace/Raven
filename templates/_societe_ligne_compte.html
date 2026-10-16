@@ -1,12 +1,12 @@
-<div class="grid gap-2 md:grid-cols-[2fr_1fr_auto] md:items-end">
+<div class="grid gap-3 md:grid-cols-[2fr_1fr_auto] md:items-end">
   <label class="form-control w-full">
-    <span class="label-text mb-1">IBAN</span>
+    <span class="u-lbl">IBAN</span>
     <input class="input input-bordered w-full" type="text" name="iban" value="{{ compte.iban }}">
   </label>
   <label class="form-control w-full">
-    <span class="label-text mb-1">BIC</span>
+    <span class="u-lbl">BIC</span>
     <input class="input input-bordered w-full" type="text" name="bic" value="{{ compte.bic }}">
   </label>
-  <button type="button" class="btn btn-ghost btn-sm"
-          hx-get="/parametres/societe/ligne/vide" hx-target="closest div" hx-swap="outerHTML">Retirer</button>
+  <button type="button" class="btn u-ib" aria-label="Retirer" title="Retirer"
+          hx-get="/parametres/societe/ligne/vide" hx-target="closest div" hx-swap="outerHTML">✕</button>
 </div>

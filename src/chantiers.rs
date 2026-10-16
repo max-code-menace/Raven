@@ -20,10 +20,10 @@ use crate::{AppState, Erreur};
 const PAR_PAGE: i64 = 20;
 
 /// Valeur en base, libellé affiché, couleur du badge.
-const STATUTS: [(&str, &str, &str); 2] = [("en_cours", "En cours", "badge-info"), ("termine", "Terminé", "badge-success")];
+const STATUTS: [(&str, &str, &str); 2] = [("en_cours", "En cours", "s-chantier"), ("termine", "Terminé", "s-termine")];
 
 fn statut(valeur: &str) -> (&'static str, &'static str) {
-    STATUTS.iter().find(|(v, _, _)| *v == valeur).map(|(_, l, c)| (*l, *c)).unwrap_or(("Inconnu", "badge-ghost"))
+    STATUTS.iter().find(|(v, _, _)| *v == valeur).map(|(_, l, c)| (*l, *c)).unwrap_or(("Inconnu", "s-brouillon"))
 }
 
 fn date_belge(d: NaiveDate) -> String {

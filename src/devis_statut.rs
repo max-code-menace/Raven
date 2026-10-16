@@ -74,6 +74,10 @@ pub struct Barre {
     pub titre: String,
     /// La liste des devis, ou le chantier pour un avenant.
     pub retour: String,
+    /// Pour le titre de la page : « Modifier un devis - {référence} » (le numéro tant qu'il n'y a pas de référence).
+    pub reference: String,
+    pub brouillon: bool,
+    pub avenant: bool,
 }
 
 fn date_belge(d: NaiveDate) -> String {
@@ -95,8 +99,8 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
         ("refuse", _, Some(d)) => format!("Refusé le {} : {motif}", date_belge(d)),
         _ => String::new(),
     };
-    let (numero, annee, chantier_avenant): (i64, i32, Option<i64>) =
-        sqlx::query_as("SELECT numero, extract(year FROM date_devis)::int, chantier_id FROM devis WHERE id = $1").bind(id).fetch_one(db).await?;
+    let (numero, annee, chantier_avenant, reference): (i64, i32, Option<i64>, String) =
+        sqlx::query_as("SELECT numero, extract(year FROM date_devis)::int, chantier_id, reference FROM devis WHERE id = $1").bind(id).fetch_one(db).await?;
     let avenant = chantier_avenant.is_some();
     let chantier: Option<(i64, i64)> = sqlx::query_as("SELECT id, numero FROM chantiers WHERE devis_id = $1 OR id = $2")
         .bind(id)
@@ -117,6 +121,9 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
         date_devis: date_devis.to_string(),
         resume,
         chantier,
+        brouillon: statut_devis == "brouillon",
+        avenant,
+        reference,
         titre,
         retour,
     })

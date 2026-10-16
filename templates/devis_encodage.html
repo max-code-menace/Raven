@@ -1,15 +1,26 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
 {% block title %}{{ barre.titre }} · Encodage · Ubifacture{% endblock %}
+{% block nav_devis %}{% if !barre.avenant %}actif{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if barre.avenant %}actif{% endif %}{% endblock %}
+
+{% block entete %}{% include "_devis_entete.html" %}{% endblock %}
 
 {% block content %}
-{% include "_devis_entete.html" %}
-
 {% if !enc.modifiable %}
-<div role="alert" class="alert alert-info mb-4">
+<div role="status" class="u-bandeau">
+  {% call ui::icone("cadenas", 18) %}{% endcall %}
   <span>Ce devis n'est plus un brouillon : il n'est plus modifiable.</span>
 </div>
 {% endif %}
 
 {% include "_encodage.html" %}
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  <a class="btn" href="{{ barre.retour }}">Fermer</a>
+  <a class="btn btn-primary" href="/devis/{{ id }}/apercu">Aperçu et PDF</a>
+</div>
 {% endblock %}

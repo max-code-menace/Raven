@@ -1,27 +1,51 @@
-<!DOCTYPE html>
-<html lang="fr" data-theme="light">
+{% import "_ui.html" as ui %}<!DOCTYPE html>
+<html lang="fr" data-theme="ubifacture">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Ubifacture{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  {% include "_styles.html" %}
 </head>
-<body class="min-h-screen bg-base-200">
-  <div class="navbar bg-base-100 shadow gap-2">
-    <a class="btn btn-ghost text-xl" href="/">Ubifacture</a>
-    <ul class="menu menu-horizontal">
-      <li><a href="/devis">Devis</a></li>
-      <li><a href="/chantiers">Chantiers</a></li>
-      <li><a href="/factures">Factures</a></li>
-      <li><a href="/entreprises">Entreprises</a></li>
-      <li><a href="/contacts">Contacts</a></li>
-      <li><a href="/parametres/societe">Société</a></li>
-    </ul>
+<body>
+<div class="u-app">
+  {# Menu latéral, dans l'ordre de Vertuoza. Chaque écran allume son entrée avec un bloc nav_… #}
+  <aside class="u-side" aria-label="Menu principal">
+    <a class="u-logo" href="/"><span>U</span><strong>Ubifacture</strong></a>
+    <nav class="u-nav">
+      <a class="{% block nav_tableau %}{% endblock %}" href="/">{% call ui::icone("tableau", 18) %}{% endcall %}Tableau de bord</a>
+      <span class="u-groupe">{% call ui::icone("contacts", 18) %}{% endcall %}<span style="flex:1">Contacts</span></span>
+      <a class="u-sous {% block nav_entreprises %}{% endblock %}" href="/entreprises">Entreprises</a>
+      <a class="u-sous {% block nav_contacts %}{% endblock %}" href="/contacts">Contacts</a>
+      <a class="{% block nav_devis %}{% endblock %}" href="/devis">{% call ui::icone("devis", 18) %}{% endcall %}Devis</a>
+      <span class="u-bientot" title="Bibliothèque de prix : étape 9">{% call ui::icone("bibliotheque", 18) %}{% endcall %}Bibliothèque<small>bientôt</small></span>
+      <a class="{% block nav_chantiers %}{% endblock %}" href="/chantiers">{% call ui::icone("chantiers", 18) %}{% endcall %}Chantiers</a>
+      <span class="u-groupe">{% call ui::icone("finances", 18) %}{% endcall %}<span style="flex:1">Finances</span></span>
+      <a class="u-sous {% block nav_factures %}{% endblock %}" href="/factures">Factures clients</a>
+      <a class="u-sous {% block nav_notes %}{% endblock %}" href="/factures?genre=note_credit">Notes de crédit</a>
+      <span class="u-bientot u-sous" title="Factures fournisseurs : phase 2 (Peppol)">Factures fournisseurs<small>phase 2</small></span>
+      <span class="u-bientot u-sous" title="Export pour le comptable : étape 8">Export factures<small>bientôt</small></span>
+      <span class="u-bientot" title="Statistiques : étape 9">{% call ui::icone("stats", 18) %}{% endcall %}Statistiques<small>bientôt</small></span>
+    </nav>
+    <div class="u-side-bas u-nav">
+      <a class="{% block nav_reglages %}{% endblock %}" href="/parametres/societe">{% call ui::icone("reglages", 18) %}{% endcall %}Réglages · Société</a>
+    </div>
+  </aside>
+
+  <div class="u-page">
+    {# En-tête blanc : icône ou retour, titre, statut, actions, onglets. #}
+    {% block entete %}{% endblock %}
+    <main class="u-body">
+      {% block content %}{% endblock %}
+    </main>
+    {# Barre d'actions collée en bas des éditeurs. #}
+    {% block barre %}{% endblock %}
   </div>
-  <main class="mx-auto max-w-6xl p-4">
-    {% block content %}{% endblock %}
-  </main>
+</div>
 </body>
 </html>

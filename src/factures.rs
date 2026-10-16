@@ -43,14 +43,14 @@ pub(crate) const GENRES: [(&str, &str); 5] = [
 
 /// Valeur en base, libellé, couleur du badge.
 pub(crate) const STATUTS: [(&str, &str, &str); 3] =
-    [("brouillon", "Brouillon", "badge-ghost"), ("a_envoyer", "À envoyer", "badge-warning"), ("envoyee", "Envoyée", "badge-info")];
+    [("brouillon", "Brouillon", "s-brouillon"), ("a_envoyer", "À envoyer", "s-a-envoyer"), ("envoyee", "Envoyée", "s-envoye")];
 
 pub(crate) fn libelle_genre(genre: &str) -> &'static str {
     GENRES.iter().find(|(v, _)| *v == genre).map(|(_, l)| *l).unwrap_or("Facture")
 }
 
 pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
-    STATUTS.iter().find(|(v, _, _)| *v == valeur).map(|(_, l, c)| (*l, *c)).unwrap_or(("Inconnu", "badge-ghost"))
+    STATUTS.iter().find(|(v, _, _)| *v == valeur).map(|(_, l, c)| (*l, *c)).unwrap_or(("Inconnu", "s-brouillon"))
 }
 
 fn date_belge(d: NaiveDate) -> String {
@@ -365,6 +365,10 @@ struct LigneListeBase {
 
 pub struct LigneListe {
     pub id: i64,
+    /// Brouillon : sans numéro, il se modifie et se supprime.
+    pub brouillon: bool,
+    /// Facture validée (pas une note de crédit) : le menu propose « Créditer ».
+    pub peut_crediter: bool,
     pub numero: String,
     pub date: String,
     pub echeance: String,
@@ -379,6 +383,10 @@ pub struct LigneListe {
 
 pub struct Liste {
     pub lignes: Vec<LigneListe>,
+    /// La liste montre seulement les notes de crédit (entrée « Notes de crédit » du menu).
+    pub notes_credit: bool,
+    pub genre_choisi: &'static str,
+    pub statut_choisi: &'static str,
     pub q: String,
     pub genres: Vec<Choix>,
     pub statuts: Vec<Choix>,
@@ -459,6 +467,8 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
                 let (libelle, classe) = statut(&l.statut);
                 LigneListe {
                     id: l.id,
+                    brouillon: l.numero.is_none(),
+                    peut_crediter: l.numero.is_some() && l.genre != "note_credit",
                     numero: match (l.genre.as_str(), l.numero) {
                         ("note_credit", Some(n)) => format!("NC {n}"),
                         (_, Some(n)) => n.to_string(),
@@ -477,6 +487,9 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
             })
             .collect(),
         requete: format!("q={}&genre={genre}&statut={statut_choisi}", encoder_url(&q)),
+        notes_credit: genre == "note_credit",
+        genre_choisi: genre,
+        statut_choisi,
         q,
         genres: GENRES.iter().map(|(v, l)| Choix { valeur: (*v).to_string(), libelle: (*l).to_string(), choisi: *v == genre }).collect(),
         statuts: STATUTS
@@ -688,7 +701,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         a_completer,
         message_ok: retour.message_ok(),
         message_erreur: retour.message_erreur(),
-        lignes: construire_lignes(id, f.brouillon() && f.lignes_libres(), &lignes, &r.options.taux_tva, String::new()),
+        lignes: construire_lignes(id, f.brouillon() && f.lignes_libres(), &lignes, &crate::fiches::taux_courts(&r.options.taux_tva), String::new()),
         form,
     };
     Ok(Html(page.render()?))
@@ -767,7 +780,7 @@ async fn facture_modifiable(db: &PgPool, id: i64) -> Result<Facture, Erreur> {
 async fn rendre_lignes(db: &PgPool, id: i64, message: String, seulement_maj: bool) -> Result<Html<String>, Erreur> {
     let lignes = charger_lignes(db, id).await?;
     let options = crate::fiches::Options::charger(db, crate::fiches::Genre::Entreprise).await?;
-    let vue = construire_lignes(id, true, &lignes, &options.taux_tva, message);
+    let vue = construire_lignes(id, true, &lignes, &crate::fiches::taux_courts(&options.taux_tva), message);
     let html = if seulement_maj { LignesMaj { lignes: vue }.render()? } else { LignesSeules { lignes: vue }.render()? };
     Ok(Html(html))
 }

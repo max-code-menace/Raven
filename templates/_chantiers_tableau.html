@@ -1,58 +1,70 @@
+{% import "_ui.html" as ui %}
 <div class="overflow-x-auto">
-  <table class="table">
+  <table class="u-table">
     <thead>
       <tr>
         <th>N°</th>
-        <th>Début</th>
+        <th>Début de chantier</th>
         <th>Référence</th>
-        <th>Adresse</th>
         <th>Client</th>
-        <th class="text-right">Montant HT</th>
+        <th>Adresse</th>
+        <th class="n">Devis + avenants HT</th>
         <th>Statut</th>
-        <th></th>
+        <th class="n"><span class="sr-only">Actions</span></th>
       </tr>
     </thead>
     <tbody>
       {% for l in liste.lignes %}
-      <tr class="hover">
-        <td class="font-medium whitespace-nowrap">{{ l.numero }}</td>
-        <td class="whitespace-nowrap">{{ l.debut }}</td>
-        <td>{{ l.reference }}</td>
-        <td>{{ l.adresse }}</td>
+      <tr>
+        <td class="mono nw"><a href="/chantiers/{{ l.id }}">{{ l.numero }}</a></td>
+        <td class="nw">{{ l.debut }}</td>
+        <td><a href="/chantiers/{{ l.id }}">{{ l.reference }}</a></td>
         <td>{{ l.client }}</td>
-        <td class="text-right whitespace-nowrap">{{ l.montant_ht }}</td>
-        <td><span class="badge {{ l.classe_statut }} whitespace-nowrap">{{ l.statut }}</span></td>
-        <td class="text-right"><a class="btn btn-ghost btn-xs" href="/chantiers/{{ l.id }}">Ouvrir</a></td>
+        <td>{{ l.adresse }}</td>
+        <td class="n">{{ l.montant_ht }}</td>
+        <td><span class="u-pastille {{ l.classe_statut }}">{{ l.statut }}</span></td>
+        <td class="n">
+          <div class="inline-flex gap-0.5">
+            <a class="btn u-ib" href="/chantiers/{{ l.id }}" aria-label="Ouvrir le chantier" title="Ouvrir le chantier">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
+            <details class="u-menu">
+              <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
+              <div class="u-menu-liste">
+                <a class="u-mi" href="/chantiers/{{ l.id }}">Tableau de bord</a>
+                <a class="u-mi" href="/chantiers/{{ l.id }}/devis">Devis et avenants</a>
+                <a class="u-mi" href="/chantiers/{{ l.id }}/finances">Finances (avancements, factures)</a>
+                <div class="u-sep"></div>
+                {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
+              </div>
+            </details>
+          </div>
+        </td>
       </tr>
       {% else %}
-      <tr>
-        <td colspan="8" class="text-center opacity-70 py-8">Aucun chantier trouvé.</td>
+      <tr class="vide">
+        <td colspan="8">Aucun chantier trouvé.</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
-<div class="flex flex-wrap items-center justify-between gap-4 p-4 text-sm">
+<div class="u-pied">
+  {% call ui::par_page() %}{% endcall %}
   <span>{{ liste.total }} chantier{% if liste.total > 1 %}s{% endif %}</span>
-
-  {% if liste.pages > 1 %}
-  <div class="join">
+  <div class="u-totaux">
+    <div><small>Devis + avenants HT</small><strong>{{ liste.total_ht }}</strong></div>
+  </div>
+  <div class="u-pages">
     {% if liste.page > 1 %}
-    <a class="btn btn-sm join-item"
-       href="/chantiers?{{ liste.requete }}&page={{ liste.page - 1 }}"
+    <a href="/chantiers?{{ liste.requete }}&page={{ liste.page - 1 }}"
        hx-get="/chantiers?{{ liste.requete }}&page={{ liste.page - 1 }}"
-       hx-target="#liste" hx-push-url="true">«</a>
+       hx-target="#liste" hx-push-url="true" aria-label="Page précédente">←</a>
     {% endif %}
-    <span class="btn btn-sm join-item no-animation">Page {{ liste.page }} / {{ liste.pages }}</span>
+    <span class="actif">Page {{ liste.page }} / {{ liste.pages }}</span>
     {% if liste.page < liste.pages %}
-    <a class="btn btn-sm join-item"
-       href="/chantiers?{{ liste.requete }}&page={{ liste.page + 1 }}"
+    <a href="/chantiers?{{ liste.requete }}&page={{ liste.page + 1 }}"
        hx-get="/chantiers?{{ liste.requete }}&page={{ liste.page + 1 }}"
-       hx-target="#liste" hx-push-url="true">»</a>
+       hx-target="#liste" hx-push-url="true" aria-label="Page suivante">→</a>
     {% endif %}
   </div>
-  {% endif %}
-
-  <span>Total HT <strong>{{ liste.total_ht }}</strong></span>
 </div>

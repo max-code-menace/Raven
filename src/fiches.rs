@@ -117,6 +117,21 @@ pub(crate) fn choix_base(liste: &[(i64, String)], actuel: &str) -> Vec<Choix> {
         .collect()
 }
 
+/// Libellé court d'un taux pour les petits menus des lignes : « Taux réduit (6,00 %) » → « 6 % »,
+/// « TVA acquittée par autoliquidation (0,00 %) » → « 0 % autoliq. ». Seul l'affichage change.
+pub(crate) fn taux_court(libelle: &str) -> String {
+    let taux = libelle
+        .rsplit_once('(')
+        .map(|(_, reste)| reste.trim_end_matches(')').replace(",00", "").trim().to_string())
+        .unwrap_or_else(|| libelle.to_string());
+    if libelle.to_lowercase().contains("autoliquidation") { format!("{taux} autoliq.") } else { taux }
+}
+
+/// Libellés courts pour toute la liste des taux.
+pub(crate) fn taux_courts(taux: &[(i64, String)]) -> Vec<(i64, String)> {
+    taux.iter().map(|(id, l)| (*id, taux_court(l))).collect()
+}
+
 /// Les listes qui viennent de la base : conditions de paiement, taux de TVA, entreprises.
 pub(crate) struct Options {
     pub(crate) conditions: Vec<(i64, String)>,
@@ -869,6 +884,15 @@ pub fn routes() -> Router<AppState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn libelles_courts_des_taux() {
+        assert_eq!(taux_court("Taux réduit (6,00 %)"), "6 %");
+        assert_eq!(taux_court("Taux normal (21,00 %)"), "21 %");
+        assert_eq!(taux_court("Taux français (5,50 %)"), "5,50 %");
+        assert_eq!(taux_court("TVA acquittée par autoliquidation (0,00 %)"), "0 % autoliq.");
+        assert_eq!(taux_court("Sans parenthèse"), "Sans parenthèse");
+    }
 
     #[test]
     fn montants_en_euros() {

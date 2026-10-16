@@ -1,5 +1,6 @@
+{% import "_ui.html" as ui %}
 <div class="overflow-x-auto">
-  <table class="table">
+  <table class="u-table">
     <thead>
       <tr>
         <th>Nom</th>
@@ -9,51 +10,56 @@
         {% if liste.est_contact %}<th>Téléphone secondaire</th>{% else %}<th>Numéro TVA</th>{% endif %}
         <th>E-mail</th>
         <th>Adresse</th>
-        <th></th>
+        <th class="n"><span class="sr-only">Actions</span></th>
       </tr>
     </thead>
     <tbody>
       {% for l in liste.lignes %}
-      <tr class="hover">
-        <td class="font-medium">{{ l.nom }}</td>
+      <tr>
+        <td class="nw"><a class="font-medium text-[#17191C] no-underline hover:text-[#0B6371]" href="{{ liste.base }}/{{ l.id }}/modifier">{{ l.nom }}</a></td>
         {% if liste.est_contact %}<td>{{ l.entreprise }}</td>{% endif %}
-        <td>
-          {% for p in l.profils %}<span class="badge badge-ghost mr-1 whitespace-nowrap">{{ p }}</span>{% endfor %}
+        <td>{% for p in l.profils %}<span class="u-profil">{{ p }}</span>{% endfor %}</td>
+        <td class="nw">{{ l.telephone }}</td>
+        {% if liste.est_contact %}<td class="nw u-muet">{{ l.telephone_secondaire }}</td>{% else %}<td class="nw">{{ l.numero_tva }}</td>{% endif %}
+        <td>{% if !l.email.is_empty() %}<a href="mailto:{{ l.email }}">{{ l.email }}</a>{% endif %}</td>
+        <td class="nw">{{ l.adresse }}</td>
+        <td class="n">
+          <div class="inline-flex gap-0.5">
+            <a class="btn u-ib" href="{{ liste.base }}/{{ l.id }}/modifier" aria-label="Modifier" title="Modifier">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
+            <details class="u-menu">
+              <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
+              <div class="u-menu-liste">
+                <a class="u-mi" href="{{ liste.base }}/{{ l.id }}/modifier">Modifier la fiche</a>
+                <div class="u-sep"></div>
+                {% call ui::bientot("Supprimer", "bientôt") %}{% endcall %}
+              </div>
+            </details>
+          </div>
         </td>
-        <td class="whitespace-nowrap">{{ l.telephone }}</td>
-        {% if liste.est_contact %}<td class="whitespace-nowrap">{{ l.telephone_secondaire }}</td>{% else %}<td class="whitespace-nowrap">{{ l.numero_tva }}</td>{% endif %}
-        <td>{{ l.email }}</td>
-        <td>{{ l.adresse }}</td>
-        <td><a class="btn btn-ghost btn-sm" href="{{ liste.base }}/{{ l.id }}/modifier">Modifier</a></td>
       </tr>
       {% else %}
-      <tr>
-        <td colspan="8" class="text-center opacity-70 py-8">
-          {% if liste.est_contact %}Aucun contact trouvé.{% else %}Aucune entreprise trouvée.{% endif %}
-        </td>
+      <tr class="vide">
+        <td colspan="8">{% if liste.est_contact %}Aucun contact trouvé.{% else %}Aucune entreprise trouvée.{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
-<div class="flex items-center justify-between p-4 text-sm">
+<div class="u-pied">
+  {% call ui::par_page() %}{% endcall %}
   <span>{{ liste.total }} résultat(s)</span>
-  {% if liste.pages > 1 %}
-  <div class="join">
+  <div class="u-pages">
     {% if liste.page > 1 %}
-    <a class="btn btn-sm join-item"
-       href="{{ liste.base }}?q={{ liste.q|urlencode }}&profil={{ liste.profil|urlencode }}&page={{ liste.page - 1 }}"
+    <a href="{{ liste.base }}?q={{ liste.q|urlencode }}&profil={{ liste.profil|urlencode }}&page={{ liste.page - 1 }}"
        hx-get="{{ liste.base }}?q={{ liste.q|urlencode }}&profil={{ liste.profil|urlencode }}&page={{ liste.page - 1 }}"
-       hx-target="#liste" hx-push-url="true">«</a>
+       hx-target="#liste" hx-push-url="true" aria-label="Page précédente">←</a>
     {% endif %}
-    <span class="btn btn-sm join-item no-animation">Page {{ liste.page }} / {{ liste.pages }}</span>
+    <span class="actif">Page {{ liste.page }} / {{ liste.pages }}</span>
     {% if liste.page < liste.pages %}
-    <a class="btn btn-sm join-item"
-       href="{{ liste.base }}?q={{ liste.q|urlencode }}&profil={{ liste.profil|urlencode }}&page={{ liste.page + 1 }}"
+    <a href="{{ liste.base }}?q={{ liste.q|urlencode }}&profil={{ liste.profil|urlencode }}&page={{ liste.page + 1 }}"
        hx-get="{{ liste.base }}?q={{ liste.q|urlencode }}&profil={{ liste.profil|urlencode }}&page={{ liste.page + 1 }}"
-       hx-target="#liste" hx-push-url="true">»</a>
+       hx-target="#liste" hx-push-url="true" aria-label="Page suivante">→</a>
     {% endif %}
   </div>
-  {% endif %}
 </div>

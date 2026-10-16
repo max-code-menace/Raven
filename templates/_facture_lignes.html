@@ -1,70 +1,75 @@
+{% import "_ui.html" as ui %}
 <div id="lignes" class="flex flex-col gap-4">
   <div id="lignes-erreur">{% if !lignes.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ lignes.message }}</span></div>{% endif %}</div>
-  <div class="card bg-base-100 shadow">
+  <section class="u-card">
+    <div class="u-card-h"><h2>Lignes</h2>
+      {% if lignes.modifiables %}<span class="u-petit u-muet">Chaque champ s'enregistre quand tu le quittes.</span>
+      {% else %}<span class="u-petit u-muet">Lecture seule</span>{% endif %}
+    </div>
     <div class="overflow-x-auto">
-      <table class="table">
+      <table class="u-table u-encodage">
         <thead>
           <tr>
-            <th>N°</th><th class="w-full">Description</th><th>Qté</th><th>Unité</th><th>Prix U.</th><th>TVA</th><th class="text-right">Total</th>
-            {% if lignes.modifiables %}<th></th>{% endif %}
+            <th>N°</th><th class="w-full">Description</th><th class="n">Qté</th><th>Unité</th><th class="n">Prix U.</th><th>TVA</th><th class="n">Total HT</th>
+            {% if lignes.modifiables %}<th><span class="sr-only">Actions</span></th>{% endif %}
           </tr>
         </thead>
         <tbody>
           {% for l in lignes.lignes %}
           {% if lignes.modifiables %}
-          <tr class="align-top{% if l.est_titre %} bg-base-200 font-semibold{% endif %}"
+          <tr class="align-top{% if l.est_titre %} lot{% endif %}"
               hx-post="/factures/{{ lignes.id }}/lignes/{{ l.id }}" hx-trigger="change" hx-include="this" hx-swap="none">
             <td class="whitespace-nowrap">{{ l.numero }}</td>
             {% if l.est_poste %}
             <td><textarea class="textarea textarea-bordered textarea-sm w-full min-w-48" rows="1" name="description">{{ l.description }}</textarea></td>
-            <td><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"></td>
-            <td><input class="input input-bordered input-sm w-20" type="text" name="unite" value="{{ l.unite }}"></td>
-            <td><input class="input input-bordered input-sm w-28 text-right" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"></td>
+            <td><input class="input input-bordered input-sm w-20 text-right" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"></td>
+            <td><input class="input input-bordered input-sm w-16" type="text" name="unite" value="{{ l.unite }}"></td>
+            <td><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"></td>
             <td>
-              <select class="select select-bordered select-sm" name="taux_tva_id">
+              <select class="select select-bordered select-sm w-32" name="taux_tva_id">
                 {% for t in l.taux %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
               </select>
             </td>
-            <td class="text-right whitespace-nowrap"><span id="total-{{ l.id }}">{{ l.total }}</span></td>
+            <td class="n"><span id="total-{{ l.id }}">{{ l.total }}</span></td>
             {% else %}
             <td colspan="6"><textarea class="textarea textarea-bordered textarea-sm w-full" rows="1" name="description">{{ l.description }}</textarea></td>
             {% endif %}
             <td>
-              <button type="button" class="btn btn-ghost btn-xs text-error" title="Supprimer"
+              <button type="button" class="btn u-ib" title="Supprimer" aria-label="Supprimer"
                       hx-post="/factures/{{ lignes.id }}/lignes/{{ l.id }}/supprimer" hx-target="#lignes" hx-swap="outerHTML"
                       hx-confirm="Supprimer cette ligne ?">✕</button>
             </td>
           </tr>
           {% else %}
-          <tr class="align-top{% if l.est_titre %} bg-base-200 font-semibold{% endif %}">
+          <tr class="align-top{% if l.est_titre %} lot{% endif %}">
             <td class="whitespace-nowrap">{{ l.numero }}</td>
             {% if l.est_poste %}
             <td class="whitespace-pre-line">{{ l.description }}</td>
-            <td class="text-right whitespace-nowrap">{{ l.quantite }}</td>
+            <td class="n">{{ l.quantite }}</td>
             <td>{{ l.unite }}</td>
-            <td class="text-right whitespace-nowrap">{{ l.prix_affiche }}</td>
-            <td class="whitespace-nowrap">{{ l.taux_texte }}</td>
-            <td class="text-right whitespace-nowrap">{{ l.total }}</td>
+            <td class="n">{{ l.prix_affiche }}</td>
+            <td class="nw">{{ l.taux_texte }}</td>
+            <td class="n">{{ l.total }}</td>
             {% else %}
             <td colspan="6" class="whitespace-pre-line{% if !l.est_titre %} italic{% endif %}">{{ l.description }}</td>
             {% endif %}
           </tr>
           {% endif %}
           {% else %}
-          <tr><td colspan="8" class="text-center opacity-70 py-8">Aucune ligne.</td></tr>
+          <tr class="vide"><td colspan="8">Aucune ligne.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    {% if lignes.modifiables %}
-    <div class="flex flex-wrap gap-2 p-4">
-      <button type="button" class="btn btn-sm btn-outline" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "poste"}' hx-target="#lignes" hx-swap="outerHTML">+ Poste</button>
-      <button type="button" class="btn btn-sm btn-ghost" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "titre"}' hx-target="#lignes" hx-swap="outerHTML">+ Titre</button>
-      <button type="button" class="btn btn-sm btn-ghost" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "texte"}' hx-target="#lignes" hx-swap="outerHTML">+ Texte</button>
+    <div class="u-pied" style="align-items:flex-start">
+      <div class="flex flex-wrap gap-2">
+        {% if lignes.modifiables %}
+        <button type="button" class="btn btn-sm" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "poste"}' hx-target="#lignes" hx-swap="outerHTML">+ Poste</button>
+        <button type="button" class="btn btn-sm btn-ghost" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "titre"}' hx-target="#lignes" hx-swap="outerHTML">+ Titre</button>
+        <button type="button" class="btn btn-sm btn-ghost" hx-post="/factures/{{ lignes.id }}/lignes" hx-vals='{"genre": "texte"}' hx-target="#lignes" hx-swap="outerHTML">+ Texte</button>
+        {% endif %}
+      </div>
+      <div id="totaux-facture">{% include "_facture_lignes_totaux.html" %}</div>
     </div>
-    {% endif %}
-  </div>
-  <div id="totaux-facture" class="card bg-base-100 shadow">
-    <div class="card-body">{% include "_facture_lignes_totaux.html" %}</div>
-  </div>
+  </section>
 </div>

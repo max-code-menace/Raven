@@ -1,34 +1,76 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
-{% block title %}Factures · Ubifacture{% endblock %}
+{% block title %}{% if liste.notes_credit %}Notes de crédit{% else %}Factures clients{% endif %} · Ubifacture{% endblock %}
+{% block nav_factures %}{% if !liste.notes_credit %}actif{% endif %}{% endblock %}
+{% block nav_notes %}{% if liste.notes_credit %}actif{% endif %}{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("finances", 20) %}{% endcall %}</span>
+      <div>
+        <h1>{% if liste.notes_credit %}Notes de crédit{% else %}Factures clients{% endif %}</h1>
+        <div class="u-sous-titre">Factures et notes de crédit · une note de crédit compte en négatif dans les totaux</div>
+      </div>
+    </div>
+    <div class="u-actions">
+      <details class="u-menu">
+        <summary class="btn u-ib" style="width:36px;height:36px;border-color:#CDD1CD;background:#fff" aria-label="Plus d'options" title="Plus d'options">{% call ui::points() %}{% endcall %}</summary>
+        <div class="u-menu-liste">
+          {% call ui::bientot("Actions groupées (PDF, rappels)", "étape 8") %}{% endcall %}
+          {% call ui::bientot("Exporter la liste (Excel)", "bientôt") %}{% endcall %}
+        </div>
+      </details>
+      {# Une facture simple, sans devis. Les factures d'acompte, d'avancement et finales se créent depuis le chantier ;
+         une note de crédit, depuis la facture qu'elle corrige (« Créditer »). #}
+      <form method="post" action="/factures">
+        <button class="btn btn-primary" type="submit" title="Nouvelle facture simple (sans devis)">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</button>
+      </form>
+    </div>
+  </div>
+</header>
+{% endblock %}
 
 {% block content %}
-<div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-  <h1 class="text-2xl font-bold">Factures et notes de crédit</h1>
-  {# Une facture simple, sans devis. Les factures d'acompte, d'avancement et finales se créent depuis le chantier. #}
-  <form method="post" action="/factures">
-    <button class="btn btn-primary" type="submit">Nouvelle facture</button>
+<section class="u-card">
+  {# La recherche rafraîchit le tableau en direct (htmx) ; « Appliquer » recharge la page pour mettre à jour les pastilles. #}
+  <form class="u-outils" method="get" action="/factures">
+    <label class="u-recherche">
+      {% call ui::icone("recherche", 16) %}{% endcall %}
+      <input class="input input-bordered w-full" type="search" name="q" value="{{ liste.q }}" placeholder="Rechercher (n°, référence, client)" aria-label="Rechercher" autocomplete="off"
+             hx-get="/factures" hx-trigger="input changed delay:300ms, search" hx-target="#liste" hx-include="closest form" hx-push-url="true">
+    </label>
+    <details class="u-menu">
+      <summary class="btn">{% call ui::icone("filtres", 16) %}{% endcall %}Filtres{% call ui::icone("bas", 14) %}{% endcall %}</summary>
+      <div class="u-menu-liste gauche u-menu-form">
+        <label class="form-control w-full">
+          <span class="u-lbl">Type</span>
+          <select class="select select-bordered w-full" name="genre">
+            <option value="">Tous les types</option>
+            {% for g in liste.genres %}<option value="{{ g.valeur }}"{% if g.choisi %} selected{% endif %}>{{ g.libelle }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="form-control w-full">
+          <span class="u-lbl">Statut</span>
+          <select class="select select-bordered w-full" name="statut">
+            <option value="">Tous les statuts</option>
+            {% for s in liste.statuts %}<option value="{{ s.valeur }}"{% if s.choisi %} selected{% endif %}>{{ s.libelle }}</option>{% endfor %}
+          </select>
+        </label>
+        <button class="btn btn-primary btn-sm self-end" type="submit">Appliquer</button>
+      </div>
+    </details>
+    {% for g in liste.genres %}{% if g.choisi %}
+    <a class="u-pastille-filtre" href="/factures?q={{ liste.q|urlencode }}&statut={{ liste.statut_choisi }}" title="Retirer le filtre">Type : {{ g.libelle }} <span aria-hidden="true">×</span></a>
+    {% endif %}{% endfor %}
+    {% for s in liste.statuts %}{% if s.choisi %}
+    <a class="u-pastille-filtre" href="/factures?q={{ liste.q|urlencode }}&genre={{ liste.genre_choisi }}" title="Retirer le filtre">Statut : {{ s.libelle }} <span aria-hidden="true">×</span></a>
+    {% endif %}{% endfor %}
   </form>
-</div>
-
-<form class="flex flex-wrap items-end gap-2 mb-4"
-      hx-get="/factures"
-      hx-target="#liste"
-      hx-push-url="true"
-      hx-trigger="input from:find input[type=search] delay:300ms, change, submit">
-  <input class="input input-bordered w-72" type="search" name="q" value="{{ liste.q }}"
-         placeholder="Rechercher (n°, référence, client)" autocomplete="off">
-  <select class="select select-bordered" name="genre">
-    <option value="">Tous les types</option>
-    {% for g in liste.genres %}<option value="{{ g.valeur }}"{% if g.choisi %} selected{% endif %}>{{ g.libelle }}</option>{% endfor %}
-  </select>
-  <select class="select select-bordered" name="statut">
-    <option value="">Tous les statuts</option>
-    {% for s in liste.statuts %}<option value="{{ s.valeur }}"{% if s.choisi %} selected{% endif %}>{{ s.libelle }}</option>{% endfor %}
-  </select>
-</form>
-
-<div id="liste" class="card bg-base-100 shadow">
-  {% include "_factures_tableau.html" %}
-</div>
+  <div id="liste">
+    {% include "_factures_tableau.html" %}
+  </div>
+</section>
 {% endblock %}

@@ -1,0 +1,46 @@
+{# Petits éléments communs à tous les écrans (étape Design). À importer avec :
+   {% import "_ui.html" as ui %}  puis  {% call ui::icone("devis", 18) %}{% endcall %} #}
+
+{# Icônes au trait, reprises des planches. Décoratives : aria-hidden. #}
+{% macro icone(nom, taille) %}<svg width="{{ taille }}" height="{{ taille }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if nom == "tableau" -%}<rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect>
+{%- else if nom == "contacts" -%}<circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.9.7 3.1 2.5 3.5 5.2"></path>
+{%- else if nom == "entreprise" -%}<path d="M4 21V5.5A1.5 1.5 0 0 1 5.5 4h7A1.5 1.5 0 0 1 14 5.5V21M14 10h4.5a1.5 1.5 0 0 1 1.5 1.5V21M3 21h18M8 8h2M8 12h2M8 16h2"></path>
+{%- else if nom == "devis" -%}<path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z"></path><path d="M14 3v5h5M9 13h6M9 17h4"></path>
+{%- else if nom == "bibliotheque" -%}<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5zM13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"></path>
+{%- else if nom == "chantiers" -%}<path d="M3 21h18M5 21V10l7-5 7 5v11"></path><path d="M10 21v-6h4v6"></path>
+{%- else if nom == "finances" -%}<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"></path><path d="M9 8h6M9 12h6"></path>
+{%- else if nom == "stats" -%}<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path>
+{%- else if nom == "reglages" -%}<circle cx="12" cy="12" r="3"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"></path>
+{%- else if nom == "cloche" -%}<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 21h4"></path>
+{%- else if nom == "recherche" -%}<circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path>
+{%- else if nom == "filtres" -%}<path d="M4 6h16M7 12h10M10 18h4"></path>
+{%- else if nom == "plus" -%}<path d="M12 5v14M5 12h14"></path>
+{%- else if nom == "crayon" -%}<path d="M4 20h4L19 9l-4-4L4 16z"></path>
+{%- else if nom == "oeil" -%}<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle>
+{%- else if nom == "cadenas" -%}<rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path>
+{%- else if nom == "bas" -%}<path d="M6 9l6 6 6-6"></path>
+{%- else if nom == "gauche" -%}<path d="M15 6l-6 6 6 6"></path>
+{%- else if nom == "droite" -%}<path d="M9 6l6 6-6 6"></path>
+{%- else if nom == "info" -%}<circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path>
+{%- else if nom == "ok" -%}<path d="M5 12.5l4.5 4.5L19 7.5"></path>
+{%- else if nom == "attention" -%}<path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4.5M12 17.5v.5"></path>
+{%- else if nom == "corbeille" -%}<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path>
+{%- else if nom == "pdf" -%}<path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z"></path><path d="M14 3v5h5M12 11v6M9.5 14.5L12 17l2.5-2.5"></path>
+{%- else if nom == "copie" -%}<rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"></path>
+{%- else if nom == "lieu" -%}<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.5"></circle>
+{%- else if nom == "horloge" -%}<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>
+{%- endif -%}
+</svg>{% endmacro %}
+
+{# Les trois points du menu « Plus d'actions » (plein, comme sur les planches). #}
+{% macro points() %}<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>{% endmacro %}
+
+{# Un élément de menu qui n'existe pas encore : grisé, avec l'étape où il arrivera. #}
+{% macro bientot(libelle, quand) %}<span class="u-mi u-off" aria-disabled="true">{{ libelle }} <small>{{ quand }}</small></span>{% endmacro %}
+
+{# Bandeau d'en-tête simple d'une liste : icône, titre, puis les actions (bloc appelant). #}
+{% macro titre_liste(nom_icone, titre) %}<div class="u-titre"><span class="u-ic">{% call icone(nom_icone, 20) %}{% endcall %}</span><h1>{{ titre }}</h1></div>{% endmacro %}
+
+{# Pied d'une liste : « Afficher 20 éléments » (le nombre par page n'est pas encore réglable). #}
+{% macro par_page() %}<span class="u-par-page">Afficher <strong>20</strong> éléments par page</span>{% endmacro %}

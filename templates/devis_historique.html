@@ -1,28 +1,37 @@
 {% extends "base.html" %}
 
 {% block title %}{{ barre.titre }} · Historique · Ubifacture{% endblock %}
+{% block nav_devis %}{% if !barre.avenant %}actif{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if barre.avenant %}actif{% endif %}{% endblock %}
+
+{% block entete %}{% include "_devis_entete.html" %}{% endblock %}
 
 {% block content %}
-{% include "_devis_entete.html" %}
-
-<div class="card bg-base-100 shadow">
+<section class="u-card">
+  <div class="u-card-h"><h2>Historique</h2></div>
   <div class="overflow-x-auto">
-    <table class="table">
+    <table class="u-table">
       <thead>
         <tr><th>Date</th><th>Événement</th><th class="w-full">Détail</th></tr>
       </thead>
       <tbody>
         {% for e in evenements %}
         <tr>
-          <td class="whitespace-nowrap">{{ e.quand }}</td>
-          <td class="whitespace-nowrap"><span class="badge badge-ghost">{{ e.genre }}</span></td>
+          <td class="nw">{{ e.quand }}</td>
+          <td class="nw"><span class="u-profil">{{ e.genre }}</span></td>
           <td>{{ e.detail }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="3" class="text-center opacity-70 py-8">Rien à signaler.</td></tr>
+        <tr class="vide"><td colspan="3">Rien à signaler.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+</section>
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  <a class="btn btn-primary" href="{{ barre.retour }}">Fermer</a>
 </div>
 {% endblock %}

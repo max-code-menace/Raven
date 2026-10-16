@@ -21,14 +21,14 @@ const PAR_PAGE: i64 = 20;
 
 /// Valeur en base, libellé affiché, couleur du badge.
 const STATUTS: [(&str, &str, &str); 8] = [
-    ("brouillon", "Brouillon", "badge-ghost"),
-    ("a_envoyer", "À envoyer", "badge-warning"),
-    ("envoi_en_cours", "Envoi en cours", "badge-warning badge-outline"),
-    ("envoye", "Envoyé", "badge-info"),
-    ("echec_envoi", "Échec envoi", "badge-error"),
-    ("signe", "Signé", "badge-secondary"),
-    ("accepte", "Accepté", "badge-success"),
-    ("refuse", "Refusé", "badge-error badge-outline"),
+    ("brouillon", "Brouillon", "s-brouillon"),
+    ("a_envoyer", "À envoyer", "s-a-envoyer"),
+    ("envoi_en_cours", "Envoi en cours", "s-envoye"),
+    ("envoye", "Envoyé", "s-envoye"),
+    ("echec_envoi", "Échec envoi", "s-echec"),
+    ("signe", "Signé", "s-signe"),
+    ("accepte", "Accepté", "s-accepte"),
+    ("refuse", "Refusé", "s-refuse"),
 ];
 
 pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
@@ -36,7 +36,7 @@ pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
         .iter()
         .find(|(v, _, _)| *v == valeur)
         .map(|(_, l, c)| (*l, *c))
-        .unwrap_or(("Inconnu", "badge-ghost"))
+        .unwrap_or(("Inconnu", "s-brouillon"))
 }
 
 // ─── Création ───────────────────────────────────────────────────────────────
@@ -98,12 +98,16 @@ pub struct Ligne {
     pub statut: &'static str,
     pub classe_statut: &'static str,
     pub date_statut: String,
+    /// Le devis attend encore la décision du client : le menu propose Accepter / Refuser.
+    pub decidable: bool,
 }
 
 impl From<LigneBase> for Ligne {
     fn from(l: LigneBase) -> Self {
+        let decidable = crate::devis_statut::Action::Accepter.permise_depuis(&l.statut);
         let (libelle, classe) = statut(&l.statut);
         Ligne {
+            decidable,
             id: l.id,
             numero: format!("{}-{}", l.annee, l.numero),
             date: l.date_devis.format("%d/%m/%Y").to_string(),
@@ -131,6 +135,8 @@ pub struct Liste {
     pub total: i64,
     pub total_ht: String,
     pub total_ttc: String,
+    /// Les pastilles des filtres actifs : texte affiché et adresse de la liste sans ce filtre.
+    pub pastilles: Vec<(String, String)>,
 }
 
 #[derive(Template)]
@@ -209,6 +215,30 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     morceaux.push(format!("du={}", du.map(|d| d.to_string()).unwrap_or_default()));
     morceaux.push(format!("au={}", au.map(|d| d.to_string()).unwrap_or_default()));
 
+    // Les pastilles des filtres actifs, chacune avec l'adresse de la liste sans ce filtre.
+    let q_url = format!("q={}", encoder_url(&q));
+    let statuts_url: String = statuts_choisis.iter().map(|s| format!("&statut={s}")).collect();
+    let dates_url = format!(
+        "&du={}&au={}",
+        du.map(|d| d.to_string()).unwrap_or_default(),
+        au.map(|d| d.to_string()).unwrap_or_default()
+    );
+    let mut pastilles = Vec::new();
+    if !statuts_choisis.is_empty() {
+        let noms: Vec<&str> = statuts_choisis.iter().map(|s| statut(s).0).collect();
+        pastilles.push((format!("Statut : {}", noms.join(", ")), format!("/devis?{q_url}{dates_url}")));
+    }
+    let belge = |d: NaiveDate| d.format("%d/%m/%Y").to_string();
+    let texte_date = match (du, au) {
+        (Some(a), Some(b)) => Some(format!("Date : du {} au {}", belge(a), belge(b))),
+        (Some(a), None) => Some(format!("Date : depuis le {}", belge(a))),
+        (None, Some(b)) => Some(format!("Date : jusqu'au {}", belge(b))),
+        (None, None) => None,
+    };
+    if let Some(texte) = texte_date {
+        pastilles.push((texte, format!("/devis?{q_url}{statuts_url}")));
+    }
+
     let liste = Liste {
         lignes: lignes.into_iter().map(Ligne::from).collect(),
         q,
@@ -228,6 +258,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
         total,
         total_ht: format_euros(total_ht),
         total_ttc: format_euros(total_ttc),
+        pastilles,
     };
 
     // htmx demande uniquement le tableau ; un rechargement de la page demande tout.

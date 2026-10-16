@@ -1,124 +1,214 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
 {% block title %}{{ titre }} · Ubifacture{% endblock %}
+{% block nav_factures %}{% if genre != "Note de crédit" %}actif{% endif %}{% endblock %}
+{% block nav_notes %}{% if genre == "Note de crédit" %}actif{% endif %}{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="/factures" aria-label="Retour aux factures" title="Retour aux factures">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>{% if brouillon %}Modifier{% else %}Consulter{% endif %} - {{ titre }}</h1>
+        <div class="u-sous-titre">
+          <span class="u-pastille {{ classe_statut }}">{{ statut }}</span>
+          <span>{{ genre }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="u-actions">
+      <details class="u-menu">
+        <summary class="btn">Actions{% call ui::icone("bas", 14) %}{% endcall %}</summary>
+        <div class="u-menu-liste">
+          {% call ui::bientot("Ajouter le paiement", "étape 8") %}{% endcall %}
+          {% if peut_crediter %}
+          <form method="post" action="/factures/{{ id }}/crediter">
+            <button class="u-mi" type="submit">Créditer (note de crédit)</button>
+          </form>
+          {% endif %}
+          {% call ui::bientot("Afficher l'historique", "bientôt") %}{% endcall %}
+          <div class="u-sep"></div>
+          {% call ui::bientot("Envoyer par e-mail", "étape 8") %}{% endcall %}
+          {% call ui::bientot("Envoyer électroniquement", "phase 2") %}{% endcall %}
+          <a class="u-mi" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
+          <a class="u-mi" href="/factures/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
+          {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
+        </div>
+      </details>
+    </div>
+  </div>
+</header>
+{% endblock %}
 
 {% block content %}
-<div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-  <div class="flex items-center gap-3">
-    <h1 class="text-2xl font-bold">{{ titre }}</h1>
-    <span class="badge {{ classe_statut }} whitespace-nowrap">{{ statut }}</span>
-  </div>
-  <a class="btn btn-ghost" href="/factures">Retour à la liste</a>
-</div>
-<p class="mb-4 text-sm">
-  {{ genre }}{% for l in liens %} · <a class="link link-primary" href="{{ l.adresse }}">{{ l.texte }}</a>{% endfor %}
-</p>
-
 {% if !message_ok.is_empty() %}
-<div role="alert" class="alert alert-success mb-4"><span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
 {% endif %}
 {% if !message_erreur.is_empty() %}
-<div role="alert" class="alert alert-error mb-4"><span>{{ message_erreur }}</span></div>
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+{% if !brouillon %}
+<div role="status" class="u-bandeau">
+  {% call ui::icone("cadenas", 18) %}{% endcall %}
+  <span><strong>Pièce verrouillée.</strong> On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
+</div>
 {% endif %}
 
-<div class="card bg-base-100 shadow mb-4">
-  <div class="card-body">
-    {% if brouillon %}
-    <form class="grid gap-3 md:grid-cols-3" method="post" action="/factures/{{ id }}">
-      <label class="form-control">
-        <span class="label-text mb-1">Date *</span>
-        <input class="input input-bordered input-sm" type="date" name="date" value="{{ form.date }}" required>
-      </label>
-      <label class="form-control">
-        <span class="label-text mb-1">Référence</span>
-        <input class="input input-bordered input-sm" type="text" name="reference" value="{{ form.reference }}" maxlength="200">
-      </label>
-      <label class="form-control">
-        <span class="label-text mb-1">Responsable</span>
-        <input class="input input-bordered input-sm" type="text" name="responsable" value="{{ form.responsable }}" maxlength="200">
-      </label>
-      <label class="form-control">
-        <span class="label-text mb-1">Client facturé *</span>
-        <select class="select select-bordered select-sm" name="client">
-          <option value="">—</option>
-          {% for c in clients %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
-        </select>
-      </label>
-      <label class="form-control">
-        <span class="label-text mb-1">Conditions de paiement *</span>
-        <select class="select select-bordered select-sm" name="conditions_paiement_id">
-          <option value="">—</option>
-          {% for c in conditions %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
-        </select>
-      </label>
-      <label class="form-control">
-        <span class="label-text mb-1">TVA par défaut des nouvelles lignes</span>
-        <select class="select select-bordered select-sm" name="taux_tva_id">
-          <option value="">—</option>
-          {% for t in taux_tva %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
-        </select>
-      </label>
-      <label class="form-control md:col-span-3">
-        <span class="label-text mb-1">Remarque (imprimée sur la facture)</span>
-        <textarea class="textarea textarea-bordered textarea-sm" name="remarque" rows="2" maxlength="2000">{{ form.remarque }}</textarea>
-      </label>
-      <div class="md:col-span-3"><button class="btn btn-sm btn-outline" type="submit">Enregistrer les informations</button></div>
-    </form>
-    {% else %}
-    <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-      <dt class="opacity-70">Numéro</dt><dd class="font-semibold">{{ numero }}</dd>
-      <dt class="opacity-70">Date</dt><dd>{{ date }}</dd>
-      {% if !echeance.is_empty() %}<dt class="opacity-70">Échéance</dt><dd>{{ echeance }}</dd>{% endif %}
-      {% if !vcs.is_empty() %}<dt class="opacity-70">Communication structurée</dt><dd class="font-mono">{{ vcs }}</dd>{% endif %}
-      <dt class="opacity-70">Client facturé</dt><dd>{{ client }}</dd>
-      <dt class="opacity-70">Référence</dt><dd>{{ form.reference }}</dd>
-      <dt class="opacity-70">Responsable</dt><dd>{{ form.responsable }}</dd>
-      <dt class="opacity-70">Conditions de paiement</dt><dd>{{ conditions_texte }}</dd>
-      {% if !form.remarque.is_empty() %}<dt class="opacity-70">Remarque</dt><dd class="whitespace-pre-line">{{ form.remarque }}</dd>{% endif %}
-    </dl>
-    {% endif %}
-
-    <div class="flex flex-wrap gap-2 mt-3">
-      <a class="btn btn-sm btn-outline" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
-      <a class="btn btn-sm btn-outline" href="/factures/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+  <div class="flex flex-col gap-4 min-w-0">
+    <section class="u-card">
+      <div class="u-card-h"><h2>Informations générales</h2></div>
       {% if brouillon %}
-      {% if a_completer.is_empty() %}
-      <details class="dropdown">
-        <summary class="btn btn-sm btn-success">Valider…</summary>
-        <form method="post" action="/factures/{{ id }}/valider" class="dropdown-content z-10 mt-1 flex w-72 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
-          <span class="text-sm">La facture reçoit son numéro définitif. Elle ne pourra plus être modifiée ni supprimée : seule une note de crédit pourra la corriger.</span>
-          <button class="btn btn-sm btn-success" type="submit">Valider et numéroter</button>
-        </form>
-      </details>
-      {% endif %}
-      <details class="dropdown">
-        <summary class="btn btn-sm btn-ghost text-error">Supprimer…</summary>
-        <form method="post" action="/factures/{{ id }}/supprimer" class="dropdown-content z-10 mt-1 flex w-64 flex-col gap-3 rounded-box bg-base-100 p-4 shadow">
-          <span class="text-sm">Supprimer ce brouillon ? Il n'a pas de numéro : la numérotation ne garde pas de trou.</span>
-          <button class="btn btn-sm btn-error" type="submit">Confirmer la suppression</button>
-        </form>
-      </details>
-      {% endif %}
-      {% if peut_marquer_envoyee %}
-      <form method="post" action="/factures/{{ id }}/envoyee">
-        <button class="btn btn-sm btn-primary" type="submit">Marquer comme envoyée</button>
+      <form id="facture-infos" method="post" action="/factures/{{ id }}">
+        <div class="u-deux">
+          <div class="u-col">
+            <h3>Détails de la facture</h3>
+            <label class="form-control">
+              <span class="u-lbl">Référence</span>
+              <input class="input input-bordered" type="text" name="reference" value="{{ form.reference }}" maxlength="200">
+            </label>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="form-control">
+                <span class="u-lbl">Date <i>*</i></span>
+                <input class="input input-bordered" type="date" name="date" value="{{ form.date }}" required>
+              </label>
+              <label class="form-control">
+                <span class="u-lbl">Responsable</span>
+                <input class="input input-bordered" type="text" name="responsable" value="{{ form.responsable }}" maxlength="200">
+              </label>
+            </div>
+          </div>
+          <div class="u-col">
+            <h3>Coordonnées du client</h3>
+            <label class="form-control">
+              <span class="u-lbl">Client facturé <i>*</i></span>
+              <select class="select select-bordered" name="client">
+                <option value="">—</option>
+                {% for c in clients %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="u-deux" style="border-top:1px solid #E9EBE7">
+          <div class="u-col">
+            <h3>Informations de facturation</h3>
+            <label class="form-control">
+              <span class="u-lbl">Conditions de paiement <i>*</i></span>
+              <select class="select select-bordered" name="conditions_paiement_id">
+                <option value="">—</option>
+                {% for c in conditions %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="form-control">
+              <span class="u-lbl">TVA par défaut des nouvelles lignes</span>
+              <select class="select select-bordered" name="taux_tva_id">
+                <option value="">—</option>
+                {% for t in taux_tva %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
+              </select>
+            </label>
+          </div>
+          <div class="u-col">
+            <label class="form-control">
+              <span class="u-lbl">Remarque (imprimée sur la facture)</span>
+              <textarea class="textarea textarea-bordered" name="remarque" rows="4" maxlength="2000">{{ form.remarque }}</textarea>
+            </label>
+            <button class="btn self-end" type="submit">Enregistrer les informations</button>
+          </div>
+        </div>
       </form>
+      {% else %}
+      <div class="u-deux">
+        <div class="u-col">
+          <h3>Détails de la facture</h3>
+          <div><span class="u-cle">Numéro</span><span class="mono font-semibold">{{ numero }}</span></div>
+          <div><span class="u-cle">Date</span>{{ date }}</div>
+          <div><span class="u-cle">Référence</span>{{ form.reference }}</div>
+          <div><span class="u-cle">Responsable</span>{{ form.responsable }}</div>
+        </div>
+        <div class="u-col">
+          <h3>Coordonnées du client</h3>
+          <div><span class="u-cle">Client facturé</span>{{ client }}</div>
+          <div><span class="u-cle">Conditions de paiement</span>{{ conditions_texte }}</div>
+          {% if !form.remarque.is_empty() %}<div><span class="u-cle">Remarque</span><span class="whitespace-pre-line">{{ form.remarque }}</span></div>{% endif %}
+        </div>
+      </div>
       {% endif %}
-      {% if peut_crediter %}
-      <form method="post" action="/factures/{{ id }}/crediter">
-        <button class="btn btn-sm btn-ghost" type="submit" title="Crée une note de crédit en brouillon qui reprend les lignes de la facture">Créditer (note de crédit)</button>
-      </form>
-      {% endif %}
-    </div>
+    </section>
 
-    {% if brouillon && !a_completer.is_empty() %}
-    <div class="mt-3 text-sm">
-      <p class="font-semibold">À compléter avant de valider :</p>
-      <ul class="list-disc ml-6">{% for m in a_completer %}<li>{{ m }}</li>{% endfor %}</ul>
-    </div>
+    {% if !liens.is_empty() %}
+    <section class="u-card">
+      <div class="u-card-h"><h2>Lié à</h2></div>
+      <div class="u-card-b">
+        {% for l in liens %}<a href="{{ l.adresse }}">{{ l.texte }}</a>{% endfor %}
+      </div>
+    </section>
     {% endif %}
-  </div>
-</div>
 
-{% include "_facture_lignes.html" %}
+    {% include "_facture_lignes.html" %}
+  </div>
+
+  <aside class="flex flex-col gap-4">
+    {% if brouillon %}
+    <section class="u-card">
+      <div class="u-card-h"><h2>Avant de valider</h2>
+        {% if a_completer.is_empty() %}<span class="u-pastille s-accepte">prête</span>{% else %}<span class="u-pastille s-a-envoyer">{{ a_completer.len() }} point(s)</span>{% endif %}
+      </div>
+      <div class="u-card-b">
+        {% if a_completer.is_empty() %}
+        <p class="u-petit">Tout est complet. « Valider et numéroter » donne le numéro définitif.</p>
+        {% else %}
+        <p class="u-petit font-semibold">À compléter avant de valider :</p>
+        {% for m in a_completer %}
+        <div class="flex gap-2 items-start text-[13.5px]"><span class="text-[#953A0A] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </section>
+    {% else %}
+    <section class="u-card">
+      <div class="u-card-h"><h2>Paiement</h2></div>
+      <div class="u-card-b">
+        {% if !echeance.is_empty() %}<div><span class="u-cle">Échéance</span>{{ echeance }}</div>{% endif %}
+        {% if !vcs.is_empty() %}<div><span class="u-cle">Communication structurée</span><span class="mono">{{ vcs }}</span></div>{% endif %}
+        <div class="u-petit u-muet">Paiements, payé et reste à recevoir : étape 8.</div>
+      </div>
+    </section>
+    {% endif %}
+    <section class="u-card">
+      <div class="u-card-h" style="border-bottom:0"><h2 class="u-muet">Facturation électronique</h2><span class="u-bientot-note">phase 2</span></div>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  {% if brouillon %}
+  <details class="u-menu mr-auto">
+    <summary class="btn btn-danger">Supprimer…</summary>
+    <form method="post" action="/factures/{{ id }}/supprimer" class="u-menu-liste gauche u-menu-form">
+      <span class="u-petit">Supprimer ce brouillon ? Il n'a pas de numéro : la numérotation ne garde pas de trou.</span>
+      <button class="btn btn-danger btn-sm" type="submit">Confirmer la suppression</button>
+    </form>
+  </details>
+  {% endif %}
+  <a class="btn" href="/factures">Fermer</a>
+  <a class="btn{% if !brouillon && !peut_marquer_envoyee %} btn-primary{% endif %}" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
+  {% if brouillon && a_completer.is_empty() %}
+  <details class="u-menu">
+    <summary class="btn btn-primary">Valider…</summary>
+    <form method="post" action="/factures/{{ id }}/valider" class="u-menu-liste u-menu-form">
+      <span class="u-petit">La facture reçoit son numéro définitif. Elle ne pourra plus être modifiée ni supprimée : seule une note de crédit pourra la corriger.</span>
+      <button class="btn btn-primary btn-sm" type="submit">Valider et numéroter</button>
+    </form>
+  </details>
+  {% endif %}
+  {% if peut_marquer_envoyee %}
+  <form method="post" action="/factures/{{ id }}/envoyee">
+    <button class="btn btn-primary" type="submit">Marquer comme envoyée</button>
+  </form>
+  {% endif %}
+</div>
 {% endblock %}

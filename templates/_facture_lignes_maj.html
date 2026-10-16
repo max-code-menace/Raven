@@ -3,6 +3,6 @@
 {% for l in lignes.lignes %}
 {% if l.est_poste %}<span id="total-{{ l.id }}" hx-swap-oob="true">{{ l.total }}</span>{% endif %}
 {% endfor %}
-<div id="totaux-facture" class="card bg-base-100 shadow" hx-swap-oob="true">
-  <div class="card-body">{% include "_facture_lignes_totaux.html" %}</div>
+<div id="totaux-facture" hx-swap-oob="true">
+  {% include "_facture_lignes_totaux.html" %}
 </div>

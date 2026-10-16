@@ -1,10 +1,8 @@
-<table class="table table-sm max-w-md ml-auto">
-  <tbody>
-    <tr><td>Total HT</td><td class="text-right whitespace-nowrap">{{ lignes.totaux.ht }}</td></tr>
-    {% for t in lignes.totaux.tva %}
-    <tr class="opacity-80"><td>TVA {{ t.taux }} (sur {{ t.base }})</td><td class="text-right whitespace-nowrap">{{ t.montant }}</td></tr>
-    {% endfor %}
-    <tr class="font-bold"><td>Total TTC</td><td class="text-right whitespace-nowrap">{{ lignes.totaux.ttc }}</td></tr>
-  </tbody>
-</table>
-{% if lignes.totaux.autoliquidation %}<p class="text-sm text-right">Mention sur la facture : « TVA acquittée par autoliquidation ».</p>{% endif %}
+<div class="flex flex-col items-end gap-1 text-[13.5px]">
+  <div class="flex gap-8"><span>Total HT</span><strong class="w-32 text-right whitespace-nowrap">{{ lignes.totaux.ht }}</strong></div>
+  {% for t in lignes.totaux.tva %}
+  <div class="flex gap-8 u-muet"><span>TVA {{ t.taux }} (sur {{ t.base }})</span><span class="w-32 text-right whitespace-nowrap">{{ t.montant }}</span></div>
+  {% endfor %}
+  <div class="flex gap-8 text-[15px]"><span>Total TTC</span><strong class="w-32 text-right whitespace-nowrap">{{ lignes.totaux.ttc }}</strong></div>
+  {% if lignes.totaux.autoliquidation %}<p class="u-petit">Mention sur la facture : « TVA acquittée par autoliquidation ».</p>{% endif %}
+</div>

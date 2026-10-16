@@ -1,122 +1,129 @@
+{# L'encodage d'un devis : une carte avec le tableau des lignes, l'ajout de lignes et les totaux.
+   Chaque champ s'enregistre quand on le quitte ; le serveur renvoie les totaux (voir _encodage_maj.html). #}
 <div id="encodage" class="flex flex-col gap-4">
   <div id="encodage-erreur">{% if !enc.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ enc.message }}</span></div>{% endif %}</div>
 
-  {# L'option est enregistrée dans le devis ; éteinte, les prix d'achat déjà encodés sont gardés. #}
-  <label class="flex items-center gap-2">
-    <input type="checkbox" class="toggle toggle-sm" name="marge_activee" value="on"{% if enc.marge_activee %} checked{% endif %}
-           {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/marge" hx-target="#encodage" hx-swap="outerHTML"{% else %} disabled{% endif %}>
-    <span>Prix d'achat, marge et frais généraux</span>
-  </label>
-
-  <div class="card bg-base-100 shadow">
+  <section class="u-card">
+    <div class="u-outils" style="justify-content:space-between">
+      <span class="u-petit u-muet">{% if enc.modifiable %}Chaque champ s'enregistre quand tu le quittes.{% else %}Lecture seule.{% endif %}</span>
+      {# L'option est enregistrée dans le devis ; éteinte, les prix d'achat déjà encodés sont gardés. #}
+      <label class="flex items-center gap-2 u-petit">
+        <input type="checkbox" class="toggle toggle-sm" name="marge_activee" value="on"{% if enc.marge_activee %} checked{% endif %}
+               {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/marge" hx-target="#encodage" hx-swap="outerHTML"{% else %} disabled{% endif %}>
+        <span>Prix d'achat, marge et frais généraux</span>
+      </label>
+    </div>
     <div class="overflow-x-auto">
-      <table class="table">
+      <table class="u-table u-encodage">
         <thead>
           <tr>
+            {% if enc.modifiable %}<th><span class="sr-only">Ordre</span></th>{% endif %}
             <th>N°</th>
             <th>Type</th>
-            <th class="w-full">Description</th>
-            <th>Qté</th>
+            <th class="w-full">Description <i class="not-italic text-[#B4471C]">*</i></th>
+            <th class="n">Quantité</th>
             <th>Unité</th>
-            <th>Prix U. (€)</th>
-            {% if enc.marge_activee %}<th>Achat U. (€)</th>{% endif %}
+            <th class="n">Prix U. (€)</th>
+            {% if enc.marge_activee %}<th class="n u-achat">Achat U. (€)</th>{% endif %}
             <th>TVA</th>
-            <th class="text-right">Total</th>
-            {% if enc.marge_activee %}<th class="text-right">Marge</th>{% endif %}
-            {% if enc.modifiable %}<th></th>{% endif %}
+            <th class="n">Total HT</th>
+            {% if enc.marge_activee %}<th class="n u-achat">Marge</th>{% endif %}
+            {% if enc.modifiable %}<th><span class="sr-only">Actions</span></th>{% endif %}
           </tr>
         </thead>
         <tbody>
           {% for l in enc.lignes %}
-          <tr class="align-top{% if l.est_titre %} bg-base-200 font-semibold{% endif %}"
+          <tr class="align-top{% if l.est_titre %} lot{% endif %}"
               {% if enc.modifiable && !l.est_saut %}hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}" hx-trigger="change" hx-include="this" hx-swap="none"{% endif %}>
+            {% if enc.modifiable %}
+            <td class="u-ordre">
+              <button type="button" title="Monter" aria-label="Monter"{% if l.premiere %} disabled{% endif %}
+                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/monter" hx-target="#encodage" hx-swap="outerHTML">▲</button>
+              <button type="button" title="Descendre" aria-label="Descendre"{% if l.derniere %} disabled{% endif %}
+                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/descendre" hx-target="#encodage" hx-swap="outerHTML">▼</button>
+            </td>
+            {% endif %}
             <td class="whitespace-nowrap">{{ l.numero }}</td>
-            <td class="whitespace-nowrap text-sm opacity-70">{{ l.libelle_genre }}</td>
+            <td class="whitespace-nowrap"><span class="u-type u-type-{{ l.genre }}">{{ l.libelle_genre }}</span></td>
             {% if l.est_chiffre %}
             <td>
               <textarea class="textarea textarea-bordered textarea-sm w-full min-w-48" rows="1" name="description"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
-              <input class="input input-ghost input-xs w-full mt-1" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Remarque (facultatif)"{% if !enc.modifiable %} disabled{% endif %}>
+              <input class="input input-bordered input-xs w-full mt-1 u-remarque" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Entrer une remarque"{% if !enc.modifiable %} disabled{% endif %}>
             </td>
-            <td><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"{% if !enc.modifiable %} disabled{% endif %}></td>
-            <td><input class="input input-bordered input-sm w-20" type="text" name="unite" value="{{ l.unite }}"{% if !enc.modifiable %} disabled{% endif %}></td>
-            <td><input class="input input-bordered input-sm w-28 text-right" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"{% if !enc.modifiable %} disabled{% endif %}></td>
+            <td><input class="input input-bordered input-sm w-20 text-right" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"{% if !enc.modifiable %} disabled{% endif %}></td>
+            <td><input class="input input-bordered input-sm w-16" type="text" name="unite" value="{{ l.unite }}"{% if !enc.modifiable %} disabled{% endif %}></td>
+            <td><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"{% if !enc.modifiable %} disabled{% endif %}></td>
             {% if enc.marge_activee %}
-            <td><input class="input input-bordered input-sm w-28 text-right" type="text" inputmode="decimal" name="prix_achat" value="{{ l.prix_achat }}"{% if !enc.modifiable %} disabled{% endif %}></td>
+            <td class="u-achat"><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="prix_achat" value="{{ l.prix_achat }}"{% if !enc.modifiable %} disabled{% endif %}></td>
             {% endif %}
             <td>
-              <select class="select select-bordered select-sm" name="taux_tva_id"{% if !enc.modifiable %} disabled{% endif %}>
+              <select class="select select-bordered select-sm w-32" name="taux_tva_id"{% if !enc.modifiable %} disabled{% endif %}>
                 {% for t in l.taux %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
               </select>
             </td>
-            <td class="text-right whitespace-nowrap"><span id="total-{{ l.id }}">{{ l.total }}</span></td>
-            {% if enc.marge_activee %}<td class="text-right whitespace-nowrap text-sm"><span id="marge-{{ l.id }}">{{ l.marge }}</span></td>{% endif %}
+            <td class="n"><span id="total-{{ l.id }}">{{ l.total }}</span></td>
+            {% if enc.marge_activee %}<td class="text-right u-achat u-petit leading-tight min-w-[84px]"><span id="marge-{{ l.id }}">{{ l.marge }}</span></td>{% endif %}
             {% else if l.est_saut %}
             <td colspan="{{ enc.colonnes_description + 1 }}" class="text-center text-sm italic opacity-60">— Saut de page —</td>
             {% if enc.marge_activee %}<td></td>{% endif %}
             {% else %}
             <td colspan="{{ enc.colonnes_description }}">
               <textarea class="textarea textarea-bordered textarea-sm w-full" rows="1" name="description"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
-              <input class="input input-ghost input-xs w-full mt-1" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Remarque (facultatif)"{% if !enc.modifiable %} disabled{% endif %}>
+              <input class="input input-bordered input-xs w-full mt-1 u-remarque" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Entrer une remarque"{% if !enc.modifiable %} disabled{% endif %}>
             </td>
-            <td class="text-right whitespace-nowrap">{% if l.est_titre %}<span id="soustotal-{{ l.id }}">{{ l.sous_total }}</span>{% endif %}</td>
+            <td class="n">{% if l.est_titre %}<span id="soustotal-{{ l.id }}">{{ l.sous_total }}</span>{% endif %}</td>
             {% if enc.marge_activee %}<td></td>{% endif %}
             {% endif %}
             {% if enc.modifiable %}
             <td class="whitespace-nowrap">
-              <button type="button" class="btn btn-ghost btn-xs" title="Monter"{% if l.premiere %} disabled{% endif %}
-                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/monter" hx-target="#encodage" hx-swap="outerHTML">↑</button>
-              <button type="button" class="btn btn-ghost btn-xs" title="Descendre"{% if l.derniere %} disabled{% endif %}
-                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/descendre" hx-target="#encodage" hx-swap="outerHTML">↓</button>
-              <button type="button" class="btn btn-ghost btn-xs text-error" title="Supprimer"
+              <button type="button" class="btn u-ib" title="Supprimer" aria-label="Supprimer"
                       hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/supprimer" hx-target="#encodage" hx-swap="outerHTML"
                       hx-confirm="Supprimer cette ligne ?">✕</button>
             </td>
             {% endif %}
           </tr>
           {% else %}
-          <tr>
-            <td colspan="12" class="text-center opacity-70 py-8">Aucune ligne. Ajoute un titre, puis des lignes chiffrées.</td>
+          <tr class="vide">
+            <td colspan="13">Aucune ligne. Ajoute un titre (lot), puis des lignes chiffrées.</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-  </div>
 
-  {% if enc.modifiable %}
-  <div class="flex flex-wrap gap-2">
-    <button type="button" class="btn btn-primary btn-sm" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "poste_libre"}' hx-target="#encodage" hx-swap="outerHTML">+ Poste libre</button>
-    <button type="button" class="btn btn-outline btn-sm" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "titre"}' hx-target="#encodage" hx-swap="outerHTML">+ Titre</button>
-    <details class="dropdown">
-      <summary class="btn btn-outline btn-sm">Autres types ▾</summary>
-      <ul class="dropdown-content menu z-10 mt-1 w-52 rounded-box bg-base-100 p-2 shadow">
-        {% for t in enc.types %}
-        <li><button type="button" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "{{ t.0 }}"}' hx-target="#encodage" hx-swap="outerHTML">{{ t.1 }}</button></li>
-        {% endfor %}
-      </ul>
-    </details>
-  </div>
-  {% endif %}
-
-  {% if enc.marge_activee %}
-  <div class="card bg-base-100 shadow">
-    <div class="card-body flex-row flex-wrap items-end justify-between gap-4">
-      <label class="form-control">
-        <span class="label-text mb-1">Frais généraux (% des achats)</span>
-        <input class="input input-bordered input-sm w-28 text-right" type="text" inputmode="decimal" name="frais_generaux" value="{{ enc.frais_generaux }}"
-               {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/frais-generaux" hx-trigger="change" hx-target="#encodage" hx-swap="outerHTML"{% else %} disabled{% endif %}>
-      </label>
-      {% if let Some(r) = enc.rentabilite %}
-      <div class="text-right">
-        <div class="text-sm opacity-70">Marge bénéficiaire</div>
-        <div class="text-lg font-semibold"><span id="marge-totale">{{ r.total.marge }} ({{ r.total.taux_marge }})</span></div>
+    <div class="u-pied" style="align-items:flex-start">
+      <div class="flex flex-wrap items-center gap-2">
+        {% if enc.modifiable %}
+        <details class="u-menu">
+          <summary class="btn">+ Ajouter ▾</summary>
+          <div class="u-menu-liste gauche" style="top:auto;bottom:calc(100% + 4px)">
+            {% for t in enc.types %}
+            <button type="button" class="u-mi" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "{{ t.0 }}"}' hx-target="#encodage" hx-swap="outerHTML"><span class="u-type u-type-{{ t.0 }}">{{ t.1 }}</span></button>
+            {% endfor %}
+            <div class="u-sep"></div>
+            <span class="u-mi u-off" aria-disabled="true">Ouvrage depuis la bibliothèque <small>bientôt</small></span>
+          </div>
+        </details>
+        <button type="button" class="btn btn-sm btn-ghost" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "poste_libre"}' hx-target="#encodage" hx-swap="outerHTML">+ Poste libre</button>
+        <button type="button" class="btn btn-sm btn-ghost" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "titre"}' hx-target="#encodage" hx-swap="outerHTML">+ Titre</button>
+        {% endif %}
       </div>
-      {% endif %}
+      <div class="flex flex-wrap items-start gap-8">
+        {% if enc.marge_activee %}
+        <label class="form-control">
+          <span class="u-lbl">Frais généraux (% des achats)</span>
+          <input class="input input-bordered input-sm w-28 text-right" type="text" inputmode="decimal" name="frais_generaux" value="{{ enc.frais_generaux }}"
+                 {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/frais-generaux" hx-trigger="change" hx-target="#encodage" hx-swap="outerHTML"{% else %} disabled{% endif %}>
+        </label>
+        {% if let Some(r) = enc.rentabilite %}
+        <div class="text-right">
+          <div class="u-petit u-muet">Marge bénéficiaire</div>
+          <div class="font-semibold text-[#1C6B3C]"><span id="marge-totale">{{ r.total.marge }} ({{ r.total.taux_marge }})</span></div>
+        </div>
+        {% endif %}
+        {% endif %}
+        <div id="totaux">{% include "_encodage_totaux.html" %}</div>
+      </div>
     </div>
-  </div>
-  {% endif %}
-
-  <div id="totaux" class="card bg-base-100 shadow">
-    <div class="card-body">{% include "_encodage_totaux.html" %}</div>
-  </div>
+  </section>
 </div>

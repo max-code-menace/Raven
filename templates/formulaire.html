@@ -1,46 +1,57 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
+{% import "_ui.html" as ui %}
 
 {% block title %}{{ titre }} · Ubifacture{% endblock %}
+{% block nav_entreprises %}{% if !est_contact %}actif{% endif %}{% endblock %}
+{% block nav_contacts %}{% if est_contact %}actif{% endif %}{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="{{ retour }}" aria-label="Retour à la liste" title="Retour à la liste">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>{{ titre }}</h1>
+        <div class="u-sous-titre">{% if est_contact %}Fiche d'une personne{% else %}Fiche d'une société{% endif %}</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-4">
-  <h1 class="text-2xl font-bold">{{ titre }}</h1>
-  <a class="btn btn-ghost" href="{{ retour }}">Retour à la liste</a>
-</div>
-
 {% if !erreurs.is_empty() %}
-<div role="alert" class="alert alert-error mb-4">
+<div role="alert" class="u-bandeau erreur">
+  {% call ui::icone("attention", 18) %}{% endcall %}
   <ul class="list-disc pl-5">
     {% for e in erreurs %}<li>{{ e }}</li>{% endfor %}
   </ul>
 </div>
 {% endif %}
 
-<form method="post" action="{{ action }}" class="flex flex-col gap-6">
+<form id="fiche" method="post" action="{{ action }}" class="flex flex-col gap-4">
 
-  <section class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">Informations générales</h2>
-      <div class="grid gap-4 md:grid-cols-2">
+  <details class="u-card" open>
+    <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Informations générales</h2></summary>
+    <div class="u-deux">
+      <div class="u-col">
+        <h3>Identité</h3>
         {% if est_contact %}
           {% call m::liste_deroulante("Civilité", "civilite", civilites) %}{% endcall %}
-          <div></div>
-          {% call m::champ("Nom *", "nom", form.nom, "text") %}{% endcall %}
-          {% call m::champ("Prénom", "prenom", form.prenom, "text") %}{% endcall %}
+          <div class="grid gap-3 sm:grid-cols-2">
+            {% call m::champ("Nom *", "nom", form.nom, "text") %}{% endcall %}
+            {% call m::champ("Prénom", "prenom", form.prenom, "text") %}{% endcall %}
+          </div>
           {% call m::liste_deroulante("Entreprise", "entreprise_id", entreprises) %}{% endcall %}
-        {% endif %}
-        {% if !est_contact %}
-          {% call m::champ("Nom *", "nom", form.nom, "text") %}{% endcall %}
+        {% else %}
+          {% call m::champ("Nom de l'entreprise *", "nom", form.nom, "text") %}{% endcall %}
         {% endif %}
         {% call m::champ("Numéro de TVA", "numero_tva", form.numero_tva, "text") %}{% endcall %}
-        {% call m::champ("Identifiant comptable", "identifiant_comptable", form.identifiant_comptable, "text") %}{% endcall %}
-        {% call m::champ("Franco (€)", "franco", form.franco, "text") %}{% endcall %}
       </div>
-
-      <div class="mt-2">
-        <span class="label-text">Profils</span>
-        <div class="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+      <div class="u-col">
+        <h3>Profils</h3>
+        <div class="grid gap-2 sm:grid-cols-2">
           {% for p in profils %}
           <label class="flex items-center gap-2">
             <input type="checkbox" class="checkbox checkbox-sm" name="profils" value="{{ p.valeur }}"{% if p.choisi %} checked{% endif %}>
@@ -48,82 +59,105 @@
           </label>
           {% endfor %}
         </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          {% call m::champ("Identifiant comptable", "identifiant_comptable", form.identifiant_comptable, "text") %}{% endcall %}
+          {% call m::champ("Franco (€)", "franco", form.franco, "text") %}{% endcall %}
+        </div>
       </div>
     </div>
-  </section>
+  </details>
 
-  <section class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">Adresse</h2>
-      <div class="grid gap-4 md:grid-cols-2">
-        {% call m::champ("Rue", "rue", form.rue, "text") %}{% endcall %}
-        {% call m::champ("Numéro", "numero", form.numero, "text") %}{% endcall %}
-        {% call m::champ("Code postal", "code_postal", form.code_postal, "text") %}{% endcall %}
-        {% call m::champ("Ville", "ville", form.ville, "text") %}{% endcall %}
+  <details class="u-card" open>
+    <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Adresse</h2></summary>
+    <div class="u-deux">
+      <div class="u-col">
+        <h3>Adresse</h3>
+        <div class="grid gap-3 sm:grid-cols-[1fr_120px]">
+          {% call m::champ("Rue", "rue", form.rue, "text") %}{% endcall %}
+          {% call m::champ("Numéro", "numero", form.numero, "text") %}{% endcall %}
+        </div>
+        <div class="grid gap-3 sm:grid-cols-[120px_1fr]">
+          {% call m::champ("Code postal", "code_postal", form.code_postal, "text") %}{% endcall %}
+          {% call m::champ("Ville", "ville", form.ville, "text") %}{% endcall %}
+        </div>
         {% call m::pays("Pays", "pays", pays) %}{% endcall %}
       </div>
-
       {# Quand la case est cochée, les champs de la seconde adresse sont masqués (sans JavaScript). #}
-      <div class="group flex flex-col gap-4 mt-4">
+      <div class="u-col group">
+        <h3>Coordonnées de facturation</h3>
         <label class="flex items-center gap-2">
-          <input type="checkbox" class="checkbox checkbox-sm" name="facturation_identique" value="on"{% if form.facturation_identique.is_some() %} checked{% endif %}>
+          <input type="checkbox" class="toggle toggle-sm" name="facturation_identique" value="on"{% if form.facturation_identique.is_some() %} checked{% endif %}>
           <span>Adresse de facturation identique</span>
         </label>
-        <div class="grid gap-4 md:grid-cols-2 group-has-[input:checked]:hidden">
-          {% call m::champ("Rue (facturation)", "facturation_rue", form.facturation_rue, "text") %}{% endcall %}
-          {% call m::champ("Numéro (facturation)", "facturation_numero", form.facturation_numero, "text") %}{% endcall %}
-          {% call m::champ("Code postal (facturation)", "facturation_code_postal", form.facturation_code_postal, "text") %}{% endcall %}
-          {% call m::champ("Ville (facturation)", "facturation_ville", form.facturation_ville, "text") %}{% endcall %}
+        <div class="flex flex-col gap-3 group-has-[input:checked]:hidden">
+          <div class="grid gap-3 sm:grid-cols-[1fr_120px]">
+            {% call m::champ("Rue (facturation)", "facturation_rue", form.facturation_rue, "text") %}{% endcall %}
+            {% call m::champ("Numéro (facturation)", "facturation_numero", form.facturation_numero, "text") %}{% endcall %}
+          </div>
+          <div class="grid gap-3 sm:grid-cols-[120px_1fr]">
+            {% call m::champ("Code postal (facturation)", "facturation_code_postal", form.facturation_code_postal, "text") %}{% endcall %}
+            {% call m::champ("Ville (facturation)", "facturation_ville", form.facturation_ville, "text") %}{% endcall %}
+          </div>
           {% call m::pays("Pays (facturation)", "facturation_pays", pays_facturation) %}{% endcall %}
         </div>
       </div>
     </div>
-  </section>
+  </details>
 
-  <section class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">Coordonnées</h2>
-      <div class="grid gap-4 md:grid-cols-2">
+  <details class="u-card" open>
+    <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Coordonnées</h2></summary>
+    <div class="u-deux">
+      <div class="u-col">
         {% call m::champ("E-mail", "email", form.email, "email") %}{% endcall %}
         {% call m::champ("E-mail (bis)", "email_bis", form.email_bis, "email") %}{% endcall %}
+        {% call m::champ("Site web", "site_web", form.site_web, "text") %}{% endcall %}
+      </div>
+      <div class="u-col">
         {% call m::champ("Téléphone", "telephone", form.telephone, "tel") %}{% endcall %}
         {% if est_contact %}
           {% call m::champ("Téléphone secondaire", "telephone_secondaire", form.telephone_secondaire, "tel") %}{% endcall %}
         {% endif %}
-        {% call m::champ("Site web", "site_web", form.site_web, "text") %}{% endcall %}
       </div>
     </div>
-  </section>
+  </details>
 
-  <section class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">Facturation</h2>
-      <div class="grid gap-4 md:grid-cols-2">
+  <details class="u-card" open>
+    <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Valeurs par défaut et banque</h2></summary>
+    <div class="u-deux">
+      <div class="u-col">
+        <h3>Facturation</h3>
         {% call m::liste_deroulante("Conditions de paiement", "conditions_paiement_id", conditions) %}{% endcall %}
         {% call m::liste_deroulante("Taux de TVA par défaut", "taux_tva_id", taux_tva) %}{% endcall %}
+      </div>
+      <div class="u-col">
+        <h3>Compte bancaire</h3>
         {% call m::champ("IBAN", "iban", form.iban, "text") %}{% endcall %}
         {% call m::champ("BIC", "bic", form.bic, "text") %}{% endcall %}
       </div>
     </div>
-  </section>
+  </details>
 
-  <section class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">Autres informations</h2>
-      <div class="grid gap-4 md:grid-cols-2">
+  <details class="u-card" open>
+    <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Autres informations</h2></summary>
+    <div class="u-deux">
+      <div class="u-col">
         {% call m::liste_deroulante("Source", "source", sources) %}{% endcall %}
         {% call m::pays("Langue", "langue", langues) %}{% endcall %}
       </div>
-      <label class="form-control w-full mt-2">
-        <span class="label-text mb-1">Description</span>
-        <textarea class="textarea textarea-bordered w-full" rows="3" name="description">{{ form.description }}</textarea>
-      </label>
+      <div class="u-col">
+        <label class="form-control w-full">
+          <span class="u-lbl">Description</span>
+          <textarea class="textarea textarea-bordered w-full" rows="4" name="description">{{ form.description }}</textarea>
+        </label>
+      </div>
     </div>
-  </section>
-
-  <div class="flex justify-end gap-2">
-    <a class="btn btn-ghost" href="{{ retour }}">Annuler</a>
-    <button class="btn btn-primary" type="submit">Enregistrer</button>
-  </div>
+  </details>
 </form>
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  <a class="btn" href="{{ retour }}">Annuler</a>
+  <button class="btn btn-primary" type="submit" form="fiche">Enregistrer</button>
+</div>
 {% endblock %}

@@ -1,159 +1,164 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
 {% block title %}{{ barre.titre }} · Totaux · Ubifacture{% endblock %}
+{% block nav_devis %}{% if !barre.avenant %}actif{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if barre.avenant %}actif{% endif %}{% endblock %}
+
+{% block entete %}{% include "_devis_entete.html" %}{% endblock %}
 
 {% block content %}
-{% include "_devis_entete.html" %}
-
 {% if !modifiable %}
-<div role="alert" class="alert alert-info mb-4">
+<div role="status" class="u-bandeau">
+  {% call ui::icone("cadenas", 18) %}{% endcall %}
   <span>Ce devis n'est plus un brouillon : il n'est plus modifiable.</span>
 </div>
 {% endif %}
 
-<div class="flex flex-col gap-6">
-  <section class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">Totaux</h2>
-      <table class="table">
-        <tbody>
-          <tr><td>Sous-total HT</td><td class="text-right whitespace-nowrap">{{ totaux.sous_total }}</td></tr>
-          {% if totaux.a_ajustement %}
-          <tr><td>{{ totaux.libelle_ajustement }}</td><td class="text-right whitespace-nowrap">{{ totaux.ajustement }}</td></tr>
+<div class="grid gap-4 lg:grid-cols-2 items-start">
+  <section class="u-card">
+    <div class="u-card-h"><h2>TVA</h2></div>
+    <table class="u-table">
+      <thead>
+        <tr><th>Taux</th><th class="n">Base HT</th><th class="n">TVA</th></tr>
+      </thead>
+      <tbody>
+        {% for t in totaux.tva %}
+        <tr><td>TVA {{ t.taux }}</td><td class="n">{{ t.base }}</td><td class="n">{{ t.montant }}</td></tr>
+        {% else %}
+        <tr class="vide"><td colspan="3">Aucune ligne chiffrée pour l'instant.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="u-card">
+    <div class="u-card-h"><h2>Totaux</h2></div>
+    <div class="u-ligne-montant"><span>Sous-total HT</span><span class="nw">{{ totaux.sous_total }}</span></div>
+    {% if totaux.a_ajustement %}
+    <div class="u-ligne-montant"><span>{{ totaux.libelle_ajustement }}</span><span class="nw">{{ totaux.ajustement }}</span></div>
+    {% endif %}
+    <div class="u-ligne-montant"><span>Total HT</span><strong class="nw">{{ totaux.ht }}</strong></div>
+    {% for t in totaux.tva %}
+    <div class="u-ligne-montant u-muet"><span>TVA {{ t.taux }} (sur {{ t.base }})</span><span class="nw">{{ t.montant }}</span></div>
+    {% endfor %}
+    <div class="u-ligne-montant" style="font-size:15px"><span class="font-semibold">Total TTC à payer</span><strong class="nw">{{ totaux.ttc }}</strong></div>
+  </section>
+</div>
+
+<details class="u-card"{% if a_un_ajustement || !erreur.is_empty() %} open{% endif %}>
+  <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Ajustement (remise ou majoration)</h2>
+    <span class="u-petit u-muet font-normal">réparti entre les taux de TVA au prorata de leurs bases</span></summary>
+  <div class="u-card-b">
+    {% if !erreur.is_empty() %}
+    <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
+    {% endif %}
+    <form method="post" action="/devis/{{ id }}/ajustement">
+      <fieldset class="flex flex-col gap-4"{% if !modifiable %} disabled{% endif %}>
+        <div class="grid gap-3 md:grid-cols-[2fr_1fr_1fr_1fr] items-end">
+          <label class="form-control w-full">
+            <span class="u-lbl">Libellé (affiché sur le devis)</span>
+            <input class="input input-bordered w-full" type="text" name="libelle" value="{{ form.libelle }}" placeholder="Remise commerciale">
+          </label>
+          <label class="form-control w-full">
+            <span class="u-lbl">Sens</span>
+            <select class="select select-bordered w-full" name="sens">
+              <option value="remise"{% if form.sens == "remise" %} selected{% endif %}>Remise (en moins)</option>
+              <option value="majoration"{% if form.sens == "majoration" %} selected{% endif %}>Majoration (en plus)</option>
+            </select>
+          </label>
+          <label class="form-control w-full">
+            <span class="u-lbl">Type</span>
+            <select class="select select-bordered w-full" name="mode">
+              <option value="pourcentage"{% if form.mode == "pourcentage" %} selected{% endif %}>Pourcentage (%)</option>
+              <option value="montant"{% if form.mode == "montant" %} selected{% endif %}>Montant HT (€)</option>
+            </select>
+          </label>
+          <label class="form-control w-full">
+            <span class="u-lbl">Valeur</span>
+            <input class="input input-bordered w-full text-right" type="text" inputmode="decimal" name="valeur" value="{{ form.valeur }}">
+          </label>
+        </div>
+        {% if modifiable %}
+        <div class="flex justify-end gap-2">
+          {% if a_un_ajustement %}
+          <button class="btn btn-ghost" type="submit" formaction="/devis/{{ id }}/ajustement/retirer" formnovalidate>Retirer l'ajustement</button>
           {% endif %}
-          <tr class="font-semibold"><td>Total HT</td><td class="text-right whitespace-nowrap">{{ totaux.ht }}</td></tr>
-        </tbody>
-      </table>
+          <button class="btn" type="submit">Enregistrer l'ajustement</button>
+        </div>
+        {% endif %}
+      </fieldset>
+    </form>
+  </div>
+</details>
 
-      <table class="table">
-        <thead>
-          <tr><th>TVA</th><th class="text-right">Base HT</th><th class="text-right">Montant TVA</th></tr>
-        </thead>
-        <tbody>
-          {% for t in totaux.tva %}
-          <tr><td>{{ t.taux }}</td><td class="text-right whitespace-nowrap">{{ t.base }}</td><td class="text-right whitespace-nowrap">{{ t.montant }}</td></tr>
-          {% else %}
-          <tr><td colspan="3" class="text-center opacity-70">Aucune ligne chiffrée pour l'instant.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+{% if let Some(r) = rentabilite %}
+<section class="u-card">
+  <div class="u-card-h"><h2>Rentabilité par type de poste</h2><span class="u-petit u-muet">Interne : jamais sur le PDF</span></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr>
+          <th>Type de poste</th>
+          <th class="n">Achats HT</th>
+          <th class="n">Frais généraux</th>
+          <th class="n">Marge</th>
+          <th class="n">Taux</th>
+          <th class="n">Ventes HT</th>
+          <th class="n">Temps</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in r.categories %}
+        <tr>
+          <td>{{ c.libelle }}</td>
+          <td class="n">{{ c.achats }}</td>
+          <td class="n">{{ c.frais }}</td>
+          <td class="n text-[#1C6B3C]">{{ c.marge }}</td>
+          <td class="n text-[#1C6B3C]">{{ c.taux_marge }}</td>
+          <td class="n">{{ c.ventes }}</td>
+          <td class="n">{{ c.heures }}</td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="7">Aucune ligne chiffrée pour l'instant.</td></tr>
+        {% endfor %}
+        {% if r.a_ajustement %}
+        <tr>
+          <td>{{ totaux.libelle_ajustement }}</td>
+          <td></td><td></td>
+          <td class="n">{{ r.ajustement }}</td>
+          <td></td>
+          <td class="n">{{ r.ajustement }}</td>
+          <td></td>
+        </tr>
+        {% endif %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>{{ r.total.libelle }}</td>
+          <td class="n">{{ r.total.achats }}</td>
+          <td class="n">{{ r.total.frais }}</td>
+          <td class="n text-[#1C6B3C]">{{ r.total.marge }}</td>
+          <td class="n text-[#1C6B3C]">{{ r.total.taux_marge }}</td>
+          <td class="n">{{ r.total.ventes }}</td>
+          <td class="n">{{ r.total.heures }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <div class="u-card-b">
+    <p class="u-petit u-muet">Marge = ventes − achats − frais généraux ; le taux est calculé sur achats + frais généraux.</p>
+    {% if r.lignes_sans_achat > 0 %}
+    <div role="alert" class="u-bandeau alerte">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ r.lignes_sans_achat }} ligne(s) chiffrée(s) sans prix d'achat : leur marge est comptée en entier.</span></div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
 
-      <div class="flex justify-between text-xl font-bold mt-2">
-        <span>Total TTC à payer</span>
-        <span class="whitespace-nowrap">{{ totaux.ttc }}</span>
-      </div>
-    </div>
-  </section>
-
-  {% if let Some(r) = rentabilite %}
-  <section class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">Rentabilité</h2>
-      <p class="text-sm opacity-70">Pour toi seulement : ces montants ne figurent pas sur le devis du client. Marge = ventes − achats − frais généraux ; le taux est calculé sur achats + frais généraux.</p>
-      <div class="overflow-x-auto">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Type de poste</th>
-              <th class="text-right">Achats HT</th>
-              <th class="text-right">Frais généraux</th>
-              <th class="text-right">Marge</th>
-              <th class="text-right">Taux</th>
-              <th class="text-right">Ventes HT</th>
-              <th class="text-right">Temps</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for c in r.categories %}
-            <tr>
-              <td>{{ c.libelle }}</td>
-              <td class="text-right whitespace-nowrap">{{ c.achats }}</td>
-              <td class="text-right whitespace-nowrap">{{ c.frais }}</td>
-              <td class="text-right whitespace-nowrap">{{ c.marge }}</td>
-              <td class="text-right whitespace-nowrap">{{ c.taux_marge }}</td>
-              <td class="text-right whitespace-nowrap">{{ c.ventes }}</td>
-              <td class="text-right whitespace-nowrap">{{ c.heures }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="7" class="text-center opacity-70">Aucune ligne chiffrée pour l'instant.</td></tr>
-            {% endfor %}
-            {% if r.a_ajustement %}
-            <tr>
-              <td>{{ totaux.libelle_ajustement }}</td>
-              <td></td><td></td>
-              <td class="text-right whitespace-nowrap">{{ r.ajustement }}</td>
-              <td></td>
-              <td class="text-right whitespace-nowrap">{{ r.ajustement }}</td>
-              <td></td>
-            </tr>
-            {% endif %}
-            <tr class="font-semibold">
-              <td>{{ r.total.libelle }}</td>
-              <td class="text-right whitespace-nowrap">{{ r.total.achats }}</td>
-              <td class="text-right whitespace-nowrap">{{ r.total.frais }}</td>
-              <td class="text-right whitespace-nowrap">{{ r.total.marge }}</td>
-              <td class="text-right whitespace-nowrap">{{ r.total.taux_marge }}</td>
-              <td class="text-right whitespace-nowrap">{{ r.total.ventes }}</td>
-              <td class="text-right whitespace-nowrap">{{ r.total.heures }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      {% if r.lignes_sans_achat > 0 %}
-      <div role="alert" class="alert alert-warning">
-        <span>{{ r.lignes_sans_achat }} ligne(s) chiffrée(s) sans prix d'achat : leur marge est comptée en entier.</span>
-      </div>
-      {% endif %}
-    </div>
-  </section>
-  {% endif %}
-
-  <section class="card bg-base-100 shadow">
-    <div class="card-body">
-      <h2 class="card-title">Ajustement</h2>
-      <p class="text-sm opacity-70">Une remise ou une majoration sur le total HT. Elle est répartie entre les taux de TVA au prorata de leurs bases.</p>
-
-      {% if !erreur.is_empty() %}
-      <div role="alert" class="alert alert-error"><span>{{ erreur }}</span></div>
-      {% endif %}
-
-      <form method="post" action="/devis/{{ id }}/ajustement">
-        <fieldset class="flex flex-col gap-4"{% if !modifiable %} disabled{% endif %}>
-          <div class="grid gap-4 md:grid-cols-2">
-            <label class="form-control w-full md:col-span-2">
-              <span class="label-text mb-1">Libellé (affiché sur le devis)</span>
-              <input class="input input-bordered w-full" type="text" name="libelle" value="{{ form.libelle }}" placeholder="Remise commerciale">
-            </label>
-            <label class="form-control w-full">
-              <span class="label-text mb-1">Sens</span>
-              <select class="select select-bordered w-full" name="sens">
-                <option value="remise"{% if form.sens == "remise" %} selected{% endif %}>Remise (en moins)</option>
-                <option value="majoration"{% if form.sens == "majoration" %} selected{% endif %}>Majoration (en plus)</option>
-              </select>
-            </label>
-            <label class="form-control w-full">
-              <span class="label-text mb-1">Type</span>
-              <select class="select select-bordered w-full" name="mode">
-                <option value="pourcentage"{% if form.mode == "pourcentage" %} selected{% endif %}>Pourcentage (%)</option>
-                <option value="montant"{% if form.mode == "montant" %} selected{% endif %}>Montant HT (€)</option>
-              </select>
-            </label>
-            <label class="form-control w-full">
-              <span class="label-text mb-1">Valeur</span>
-              <input class="input input-bordered w-full" type="text" inputmode="decimal" name="valeur" value="{{ form.valeur }}">
-            </label>
-          </div>
-          {% if modifiable %}
-          <div class="flex justify-end gap-2">
-            {% if a_un_ajustement %}
-            <button class="btn btn-ghost" type="submit" formaction="/devis/{{ id }}/ajustement/retirer" formnovalidate>Retirer l'ajustement</button>
-            {% endif %}
-            <button class="btn btn-primary" type="submit">Enregistrer l'ajustement</button>
-          </div>
-          {% endif %}
-        </fieldset>
-      </form>
-    </div>
-  </section>
+{% block barre %}
+<div class="u-barre">
+  <a class="btn" href="{{ barre.retour }}">Fermer</a>
+  <a class="btn btn-primary" href="/devis/{{ id }}/apercu">Aperçu et PDF</a>
 </div>
 {% endblock %}
