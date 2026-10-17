@@ -6,6 +6,7 @@ pub mod avenants;
 pub mod chantiers;
 pub mod commun;
 pub mod connexion;
+pub mod contacts_import;
 pub mod db;
 pub mod calcul;
 pub mod devis;
@@ -134,6 +135,7 @@ pub fn app(state: AppState) -> Router {
         .merge(bibliotheque_import::routes())
         .merge(statistiques::routes())
         .merge(import_devis::routes())
+        .merge(contacts_import::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)
