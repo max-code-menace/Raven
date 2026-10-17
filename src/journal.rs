@@ -14,6 +14,7 @@ pub enum Genre {
     Chantier,
     Email,
     Client,
+    Import,
 }
 
 impl Genre {
@@ -26,6 +27,7 @@ impl Genre {
             Genre::Chantier => "chantier",
             Genre::Email => "email",
             Genre::Client => "client",
+            Genre::Import => "import",
         }
     }
 
@@ -39,6 +41,7 @@ impl Genre {
             "chantier" => "Chantier",
             "email" => "E-mail",
             "client" => "Client",
+            "import" => "Import Excel",
             _ => "Événement",
         }
     }
@@ -60,7 +63,7 @@ mod tests {
 
     #[test]
     fn les_genres_ont_un_code_et_un_libelle() {
-        for g in [Genre::Creation, Genre::Statut, Genre::Pdf, Genre::Duplication, Genre::Chantier, Genre::Email, Genre::Client] {
+        for g in [Genre::Creation, Genre::Statut, Genre::Pdf, Genre::Duplication, Genre::Chantier, Genre::Email, Genre::Client, Genre::Import] {
             assert_ne!(Genre::libelle(g.code()), "Événement", "{g:?}");
         }
         assert_eq!(Genre::libelle("inconnu"), "Événement");

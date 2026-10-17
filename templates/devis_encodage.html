@@ -8,6 +8,9 @@
 {% block entete %}{% include "_devis_entete.html" %}{% endblock %}
 
 {% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
 {% if !enc.modifiable %}
 <div role="status" class="u-bandeau">
   {% call ui::icone("cadenas", 18) %}{% endcall %}

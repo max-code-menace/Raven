@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Importer depuis Excel · {{ titre }} · Ubifacture{% endblock %}
+{% block nav_devis %}{% if !avenant %}actif{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if avenant %}actif{% endif %}{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="/devis/{{ id }}/encodage" aria-label="Retour à l'encodage" title="Retour à l'encodage">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>Importer depuis Excel - {{ titre }}</h1>
+        <div class="u-sous-titre">Le modèle Excel de devis (celui utilisé pour Vertuoza) : lots, sous-titres, textes et postes deviennent les lignes {% if avenant %}de l'avenant{% else %}du devis{% endif %}.</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
+{% endif %}
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] items-start">
+  <form id="envoi" class="u-card" method="post" action="/devis/{{ id }}/import" enctype="multipart/form-data">
+    <div class="u-card-h"><h2>{% call ui::icone("pdf", 17) %}{% endcall %}Fichier Excel</h2></div>
+    <div class="u-card-b">
+      <label class="form-control">
+        <span class="u-lbl">Le fichier rempli (.xlsx, 10 Mo au maximum) <i>*</i></span>
+        <input class="file-input file-input-bordered w-full" type="file" name="fichier" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+      </label>
+      <p class="u-petit u-muet" style="margin:0">Rien n'est encore ajouté : la lecture montre d'abord un aperçu à vérifier.</p>
+    </div>
+  </form>
+  <aside class="u-card">
+    <div class="u-card-h"><h2>Ce qui est repris</h2></div>
+    <div class="u-card-b text-[13.5px]">
+      <span>La ligne d'en-tête <b>POSTE · DESCRIPTION · Qté · UNITE · PRIX</b> est retrouvée toute seule.</span>
+      <span>« LOT n » → un <b>titre</b> (lot) ; un numéro (2.1) ou un texte en MAJUSCULES → un <b>sous-titre</b> ; un autre texte → une ligne de <b>texte</b> ; une quantité → un <b>poste</b>.</span>
+      <span>« option » → la description commence par « Option : ». Un poste sans description reprend les textes juste au-dessus.</span>
+      <span>Les montants négatifs (avenant en moins) passent tels quels. Les sous-totaux et le récapitulatif sont recalculés par l'application.</span>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  <a class="btn" href="/devis/{{ id }}/encodage">Annuler</a>
+  <button class="btn btn-primary" type="submit" form="envoi">Lire le fichier</button>
+</div>
+{% endblock %}

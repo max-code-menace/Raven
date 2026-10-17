@@ -28,7 +28,14 @@ pub async fn prochain_numero(tx: &mut Transaction<'_, Postgres>, chantier_id: i6
 
 /// Crée un avenant en brouillon : il reprend l'en-tête du devis de base (client, facturation, adresse,
 /// TVA, conditions…), sans ses lignes. On l'ouvre ensuite dans l'éditeur, comme un devis.
-async fn creer(State(state): State<AppState>, Path(chantier_id): Path<i64>) -> Result<Redirect, Erreur> {
+#[derive(serde::Deserialize, Default)]
+#[serde(default)]
+struct Creation {
+    /// « 1 » : ouvrir ensuite l'import d'un fichier Excel (« Nouvel avenant depuis Excel »).
+    import: String,
+}
+
+async fn creer(State(state): State<AppState>, Path(chantier_id): Path<i64>, axum::extract::Form(c): axum::extract::Form<Creation>) -> Result<Redirect, Erreur> {
     let mut tx = state.db.begin().await?;
     let chantier: Option<(i64, i64)> = sqlx::query_as("SELECT numero, devis_id FROM chantiers WHERE id = $1")
         .bind(chantier_id)
@@ -55,6 +62,9 @@ async fn creer(State(state): State<AppState>, Path(chantier_id): Path<i64>) -> R
     .await?;
     journal::noter(&mut tx, id, Genre::Creation, &format!("Avenant créé pour le chantier n° {numero_chantier}")).await?;
     tx.commit().await?;
+    if c.import == "1" {
+        return Ok(Redirect::to(&format!("/devis/{id}/import")));
+    }
     Ok(Redirect::to(&format!("/devis/{id}?ok=avenant")))
 }
 

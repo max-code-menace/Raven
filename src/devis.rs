@@ -43,7 +43,7 @@ pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
 
 /// Crée un devis brouillon avec le prochain numéro. Le compteur et le devis sont dans la même
 /// transaction : pas de doublon si deux personnes créent en même temps, pas de trou si ça échoue.
-async fn creer_brouillon(db: &PgPool) -> Result<i64, sqlx::Error> {
+pub(crate) async fn creer_brouillon(db: &PgPool) -> Result<i64, sqlx::Error> {
     let mut tx = db.begin().await?;
     let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'devis' RETURNING valeur")
         .fetch_one(&mut *tx)

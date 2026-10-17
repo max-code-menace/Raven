@@ -21,6 +21,10 @@
       <form method="post" action="/chantiers/{{ id }}/avenants">
         <button class="btn" type="submit" title="Crée un avenant en brouillon qui reprend l'en-tête du devis">Nouvel avenant</button>
       </form>
+      <form method="post" action="/chantiers/{{ id }}/avenants">
+        <input type="hidden" name="import" value="1">
+        <button class="btn" type="submit" title="Crée un avenant en brouillon et importe le modèle Excel (montants positifs ou négatifs)">Avenant depuis Excel</button>
+      </form>
       {% if let Some(brouillon) = finances.brouillon %}
       <a class="btn btn-primary" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Reprendre le brouillon</a>
       {% else if !finances.finale %}

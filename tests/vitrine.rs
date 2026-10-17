@@ -250,6 +250,41 @@ async fn vitrine(pool: PgPool) {
     ] {
         poster(&s, "/bibliotheque", corps).await;
     }
+    // Import Excel : un aperçu prêt pour le devis brouillon (lignes lues depuis un tableau sur le modèle).
+    {
+        use ubifacture::import_excel::{Cellule::{self, Nombre as N, Texte}, lire_grille};
+        let t = |s: &str| Texte(s.to_string());
+        let v = Cellule::Vide;
+        let grille = vec![
+            vec![t("POSTE"), v.clone(), t("DESCRIPTION"), v.clone(), v.clone(), v.clone(), v.clone(), t("Qté"), t("UNITE"), t("PRIX"), t("PRIX")],
+            vec![v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), t("PREVUE"), v.clone(), t("UNITAIRE"), t("H.T.V.A.")],
+            vec![t("LOT 0"), v.clone(), t("ENTREPRISE - CHANTIER")],
+            vec![v.clone(), v.clone(), t("INSTALLATION DE CHANTIER")],
+            vec![v.clone(), v.clone(), t("Évacuation des déchets inertes"), v.clone(), v.clone(), v.clone(), v.clone(), N(1.0), t("QP"), N(140.0), N(140.0)],
+            vec![v.clone(), v.clone(), t("Déplacement"), v.clone(), v.clone(), v.clone(), v.clone(), N(4.0), t("QP"), N(50.0), N(200.0)],
+            vec![t("LOT 1"), v.clone(), t("PARACHEVEMENT INTERIEUR")],
+            vec![v.clone(), t("1.1"), t("ENDUITS INTERIEURS")],
+            vec![v.clone(), v.clone(), t("Les enduits comprennent la préparation du support.")],
+            vec![v.clone(), v.clone(), t("Enduisage et réparation des murs"), v.clone(), v.clone(), v.clone(), v.clone(), N(1.0), t("fft"), N(540.0), N(540.0)],
+            vec![v.clone(), t("option"), t("Plafonnage des pignons"), v.clone(), v.clone(), v.clone(), v.clone(), N(1.0), t("fft"), N(3570.0), N(3570.0)],
+            vec![v.clone(), v.clone(), t("Chape pour passages techniques")],
+            vec![v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), N(60.0), t("M2"), N(47.0), N(2820.0)],
+            vec![v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), t("TOTAL H.T.V.A."), v.clone(), N(7270.0)],
+            vec![v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), v.clone(), t("T.V.A. 6%"), v.clone(), N(436.2)],
+        ];
+        let r = lire_grille(&grille).unwrap();
+        let import: i64 = sqlx::query_scalar(
+            "INSERT INTO imports_excel (devis_id, nom_fichier, lignes, total_fichier_cents, taux_fichier, alertes) VALUES ($1, 'Devis BS14.xlsx', $2, $3, $4, '') RETURNING id",
+        )
+        .bind(devis_ids[6])
+        .bind(serde_json::to_string(&r.lignes).unwrap())
+        .bind(r.total_fichier_cents)
+        .bind(r.taux_fichier)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        println!("Aperçu d'import : http://127.0.0.1:3002/devis/{}/import/{import}", devis_ids[6]);
+    }
     // Étape 8-4 : un dossier d'export du jour, et l'adresse du comptable.
     poster(&s, "/exports/comptable", "email=compta%40fiduciaire.example").await;
     poster(&s, "/exports", &format!("debut={aujourdhui}&fin={aujourdhui}&format=les_deux&contenu=toutes")).await;

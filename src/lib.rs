@@ -23,6 +23,8 @@ pub mod factures;
 pub mod factures_chantier;
 pub mod facture_pdf;
 pub mod fiches;
+pub mod import_devis;
+pub mod import_excel;
 pub mod journal;
 pub mod page_client;
 pub mod paiements;
@@ -126,6 +128,7 @@ pub fn app(state: AppState) -> Router {
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
         .merge(statistiques::routes())
+        .merge(import_devis::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)

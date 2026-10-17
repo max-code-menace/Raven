@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Aperçu de l'import · {{ titre }} · Ubifacture{% endblock %}
+{% block nav_devis %}{% if !avenant %}actif{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if avenant %}actif{% endif %}{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="/devis/{{ id }}/import" aria-label="Choisir un autre fichier" title="Choisir un autre fichier">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>Aperçu de l'import - {{ titre }}</h1>
+        <div class="u-sous-titre">{{ nom_fichier }} · {{ nombre_lots }} lot(s), {{ nombre_postes }} poste(s) · rien n'est encore ajouté</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if totaux_egaux %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span><strong>Même total que le fichier : {{ total }} HT.</strong></span></div>
+{% else if !total_fichier.is_empty() %}
+<div role="alert" class="u-bandeau alerte">{% call ui::icone("attention", 18) %}{% endcall %}<span><strong>Total différent du fichier.</strong> Lignes lues : {{ total }} HT ; « TOTAL H.T.V.A. » du fichier : {{ total_fichier }}. Vérifie les lignes ci-dessous avant d'importer.</span></div>
+{% endif %}
+{% if taux_manquant %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>Aucun taux de TVA : choisis d'abord le taux de TVA par défaut dans l'onglet Informations du devis.</span></div>
+{% endif %}
+{% if !alertes.is_empty() %}
+<div role="status" class="u-bandeau alerte">
+  {% call ui::icone("info", 18) %}{% endcall %}
+  <ul class="list-disc pl-5">{% for a in alertes %}<li>{{ a }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Lignes lues</h2><span class="u-petit u-muet">TVA des postes : {% if taux_manquant %}—{% else %}{{ taux }}{% endif %}</span></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>N°</th><th>Type</th><th class="w-full">Description</th><th class="n">Qté</th><th>Unité</th><th class="n">Prix U.</th><th class="n">Total HT</th><th class="n">Ligne Excel</th></tr></thead>
+      <tbody>
+        {% for l in lignes %}
+        <tr{% if l.est_titre %} class="lot"{% endif %}>
+          <td class="nw">{{ l.numero }}</td>
+          <td class="nw"><span class="u-type {{ l.classe }}">{{ l.genre }}</span></td>
+          <td class="whitespace-pre-line{% if l.genre == "Texte" %} italic u-muet{% else if l.genre == "Sous-titre" %} font-semibold{% endif %}">{{ l.description }}</td>
+          <td class="n">{{ l.quantite }}</td>
+          <td class="nw">{{ l.unite }}</td>
+          <td class="n">{% if l.est_poste %}{{ l.prix }}{% endif %}</td>
+          <td class="n">{{ l.total }}</td>
+          <td class="n u-muet">{{ l.ligne_excel }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td colspan="6">Total HT</td><td class="n">{{ total }}</td><td></td></tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<form id="importer" class="u-card" method="post" action="/devis/{{ id }}/import/{{ import }}">
+  <div class="u-card-h"><h2>Importer</h2></div>
+  <div class="u-card-b">
+    {% if lignes_existantes > 0 %}
+    <span class="text-[13.5px]">{% if avenant %}L'avenant{% else %}Le devis{% endif %} a déjà {{ lignes_existantes }} ligne(s).</span>
+    <label class="flex gap-2 items-center text-[13.5px]"><input class="radio radio-sm" type="radio" name="mode" value="ajouter" checked> Ajouter les lignes à la suite</label>
+    <label class="flex gap-2 items-center text-[13.5px]"><input class="radio radio-sm" type="radio" name="mode" value="remplacer"> Remplacer les lignes existantes</label>
+    {% else %}
+    <input type="hidden" name="mode" value="ajouter">
+    <span class="text-[13.5px]">Les {{ lignes.len() }} lignes seront ajoutées {% if avenant %}à l'avenant{% else %}au devis{% endif %}. Tu pourras tout modifier ensuite dans l'Encodage.</span>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  <form class="mr-auto" method="post" action="/devis/{{ id }}/import/{{ import }}/abandonner"><button class="btn" type="submit">Abandonner</button></form>
+  <a class="btn" href="/devis/{{ id }}/import">Choisir un autre fichier</a>
+  <button class="btn btn-primary" type="submit" form="importer"{% if taux_manquant %} disabled{% endif %}>Importer {{ lignes.len() }} ligne(s)</button>
+</div>
+{% endblock %}

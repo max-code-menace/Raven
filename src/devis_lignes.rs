@@ -417,6 +417,8 @@ struct Page {
     onglet: &'static str,
     barre: Barre,
     enc: Encodage,
+    /// Après un import Excel : « 24 ligne(s) ajoutée(s)… ».
+    message_ok: String,
 }
 
 /// Tout le bloc d'encodage : renvoyé à htmx après un ajout, une suppression ou un déplacement.
@@ -468,11 +470,26 @@ pub(crate) async fn recalculer(tx: &mut Transaction<'_, Postgres>, devis_id: i64
     Ok(())
 }
 
-async fn page(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct RetourEncodage {
+    /// Le nombre de lignes importées depuis Excel.
+    import: String,
+}
+
+async fn page(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    axum::extract::Query(r): axum::extract::Query<RetourEncodage>,
+) -> Result<Html<String>, Erreur> {
     let entete = charger_entete(&state.db, id).await?;
     let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
     let barre = charger_barre(&state.db, id).await?;
-    let page = Page { id, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", barre, enc };
+    let message_ok = match r.import.parse::<u32>() {
+        Ok(n) => format!("Import Excel terminé : {n} ligne(s) ajoutée(s). Vérifie les totaux ci-dessous."),
+        Err(_) => String::new(),
+    };
+    let page = Page { id, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", barre, enc, message_ok };
     Ok(Html(page.render()?))
 }
 
