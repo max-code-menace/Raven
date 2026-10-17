@@ -34,6 +34,7 @@ pub mod paiements;
 pub mod pdf;
 pub mod rappels;
 pub mod recurrences;
+pub mod reprise;
 pub mod societe;
 pub mod statistiques;
 pub mod suivi_chantier;

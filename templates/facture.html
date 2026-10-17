@@ -64,6 +64,12 @@
 {% if !message_erreur.is_empty() %}
 <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
 {% endif %}
+{% if reprise %}
+<div role="status" class="u-bandeau">
+  {% call ui::icone("info", 18) %}{% endcall %}
+  <span><strong>Facture reprise de Vertuoza.</strong> Son numéro, ses montants et son PDF d'origine (dans Vertuoza) font foi ; elle n'est pas dans l'export pour le comptable, qui l'a déjà reçue.</span>
+</div>
+{% endif %}
 {% if !brouillon %}
 {% if etat == "en_retard" %}
 <div role="status" class="u-bandeau alerte">

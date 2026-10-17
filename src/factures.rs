@@ -321,6 +321,8 @@ pub(crate) struct Facture {
     pub(crate) avancement_id: Option<i64>,
     pub(crate) facture_origine_id: Option<i64>,
     pub(crate) vcs: Option<String>,
+    /// Facture reprise de Vertuoza : son PDF d'origine fait foi.
+    pub(crate) reprise: bool,
 }
 
 impl Facture {
@@ -343,7 +345,7 @@ pub(crate) async fn charger<'e>(db: impl sqlx::PgExecutor<'e>, id: i64) -> Resul
     sqlx::query_as(
         "SELECT id, genre::text AS genre, numero, statut::text AS statut, date_facture, date_echeance, reference, responsable,
                 client_entreprise_id, client_contact_id, conditions_paiement_id, taux_tva_id, remarque, chantier_id,
-                avancement_id, facture_origine_id, vcs
+                avancement_id, facture_origine_id, vcs, reprise
          FROM factures WHERE id = $1",
     )
     .bind(id)
@@ -687,6 +689,8 @@ struct Page {
     peut_crediter: bool,
     /// Facture simple ou récurrente : modèle possible d'une récurrence.
     peut_recurrer: bool,
+    /// Reprise de Vertuoza.
+    reprise: bool,
     numero: String,
     date: String,
     echeance: String,
@@ -824,6 +828,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         peut_marquer_envoyee: f.statut == "a_envoyer",
         peut_crediter: f.numero.is_some() && f.genre != "note_credit",
         peut_recurrer: f.peut_recurrer(),
+        reprise: f.reprise,
         numero: f.numero.map(|n| n.to_string()).unwrap_or_default(),
         date: date_belge(f.date_facture),
         echeance: f.date_echeance.map(date_belge).unwrap_or_default(),

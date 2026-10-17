@@ -10,7 +10,7 @@ axum = { version = "0.8.9", features = ["multipart"] }
 axum-extra = { version = "0.12.6", features = ["form", "query", "cookie"] }
 base64 = "0.22"
 calamine = "0.28"
-chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "serde"] }
 dotenvy = "0.15.7"
 getrandom = "0.3"
 hex = "0.4.3"
@@ -34,3 +34,11 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 [dev-dependencies]
 http-body-util = "0.1.5"
 tower = { version = "0.5.3", features = ["util"] }
+
+# Moins d'informations de débogage : la compilation (dossier target) prend beaucoup moins de place sur le disque.
+# Sans effet sur le fonctionnement de l'application.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

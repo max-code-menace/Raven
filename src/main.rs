@@ -17,6 +17,31 @@ async fn main() {
     if arguments.first().map(String::as_str) == Some("utilisateur") {
         std::process::exit(utilisateurs(&pool, &arguments[1..]).await);
     }
+    // `cargo run -- reprise <fichier.json> [--enregistrer]` : reprise des factures de Vertuoza (essai par défaut).
+    if arguments.first().map(String::as_str) == Some("reprise") {
+        let Some(chemin) = arguments.get(1).filter(|a| !a.starts_with("--")) else {
+            eprintln!("Commande : reprise <fichier.json> [--enregistrer]");
+            std::process::exit(1);
+        };
+        let enregistrer = arguments.iter().any(|a| a == "--enregistrer");
+        let code = match std::fs::read_to_string(chemin) {
+            Err(e) => {
+                eprintln!("Lecture de {chemin} impossible : {e}");
+                1
+            }
+            Ok(texte) => match ubifacture::reprise::importer(&pool, &texte, enregistrer).await {
+                Ok(rapport) => {
+                    println!("{rapport}");
+                    0
+                }
+                Err(message) => {
+                    eprintln!("Reprise refusée, rien n'est enregistré : {message}");
+                    1
+                }
+            },
+        };
+        std::process::exit(code);
+    }
 
     let comptes = connexion::liste_utilisateurs(&pool).await.unwrap_or_default();
     if comptes.is_empty() {

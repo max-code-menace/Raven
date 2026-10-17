@@ -80,7 +80,7 @@ async fn pieces(db: &PgPool, debut: NaiveDate, fin: NaiveDate, seulement_nouvell
          JOIN factures_etats et ON et.facture_id = f.id
          LEFT JOIN entreprises e ON e.id = f.client_entreprise_id
          LEFT JOIN contacts c ON c.id = f.client_contact_id
-         WHERE f.numero IS NOT NULL AND f.date_facture BETWEEN $1 AND $2
+         WHERE f.numero IS NOT NULL AND NOT f.reprise AND f.date_facture BETWEEN $1 AND $2
            AND (NOT $3 OR NOT EXISTS (SELECT 1 FROM export_pieces p WHERE p.facture_id = f.id))
          ORDER BY f.genre = 'note_credit', f.date_facture, f.numero",
     )
