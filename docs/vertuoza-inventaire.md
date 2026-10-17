@@ -56,6 +56,6 @@ Preuve de la numérotation annuelle : facture n° 106 du 02/12/2025, puis la num
 | Modèle de mail « Avancement » (état d'avancement envoyé seul) | Non | Pas fait : chez Ubifacture l'avancement part avec sa facture |
 
 ## 3. À confirmer par Mahx
-- Le numéro affiché sur le PDF des factures de Vertuoza : « 124 » ou « 2026-124 » (le PDF du devis affiche « DEVIS N° 2026-57 ») ? Ubifacture affiche « Facture N° 125 ».
+- ~~Format du numéro sur le PDF~~ : réglé, « N° 2026-114 » sous le type en titre (« FACTURE FINALE »), comme Vertuoza ; Ubifacture fait pareil (titre = type, « N° 2026-125 », échéance du paiement, devis et adresse du chantier).
 - La communication structurée de Vertuoza (non lisible dans le relevé) : Ubifacture met l'année devant le numéro (2026 + 000125) pour qu'elle reste unique d'une année à l'autre.
 - Les deux locations : faut-il créer la récurrence dans Ubifacture dès la mise en service (une facture modèle par lot) ?

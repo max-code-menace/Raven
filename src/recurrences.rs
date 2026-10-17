@@ -401,7 +401,7 @@ async fn page(db: &PgPool, f: &factures::Facture, saisie: Option<Saisie>, erreur
     let delai_choisi = saisie.jours_avance.trim().to_string();
     let page = PageRecurrence {
         id: f.id,
-        titre: factures::titre(&f.genre, f.numero),
+        titre: factures::titre(&f.genre, f.numero, f.date_facture),
         client: factures::nom_client(db, f.client_entreprise_id, f.client_contact_id).await?,
         montant_ttc: format_euros(ttc),
         existe: existante.is_some(),

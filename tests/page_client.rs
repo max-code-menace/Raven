@@ -141,7 +141,9 @@ async fn le_client_paie_la_facture_par_qr_code(pool: PgPool) {
     let (code, page) = lire(&s, &chemin).await;
     assert_eq!(code, StatusCode::OK);
     let vcs = vcs_125(&pool).await;
-    for attendu in ["Facture N° 125", "À payer", "Reste à payer", "121,00\u{a0}€", "<div class=\"c-qr\"><svg", "BE68 5390 0754 7034", vcs.as_str(), "Scannez ce QR code"] {
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
+    let titre = format!("Facture N° {annee}-125");
+    for attendu in [titre.as_str(), "À payer", "Reste à payer", "121,00\u{a0}€", "<div class=\"c-qr\"><svg", "BE68 5390 0754 7034", vcs.as_str(), "Scannez ce QR code"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     let (code, _, pdf) = envoyer(&s, Request::builder().uri(format!("{chemin}/pdf")).body(Body::empty()).unwrap()).await;

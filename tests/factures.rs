@@ -137,7 +137,9 @@ async fn une_facture_simple_de_bout_en_bout(pool: PgPool) {
 
     let (_, page) = lire(&s, &format!("/factures/{id}?ok=validee")).await;
     let vcs = vcs_125(&pool).await;
-    for attendu in ["Facture N° 125", vcs.as_str(), "Marquer comme envoyée", "Client SA"] {
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
+    let titre = format!("Facture N° {annee}-125");
+    for attendu in [titre.as_str(), vcs.as_str(), "Marquer comme envoyée", "Client SA"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     assert!(!page.contains("name=\"quantite\""), "plus de champ de saisie");

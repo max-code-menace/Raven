@@ -69,7 +69,7 @@
 }
 
 #let facture(d) = {
-  set document(title: d.titre, author: if d.societe != none { d.societe.nom } else { "" })
+  set document(title: if d.numero != "" { d.titre + " " + d.numero } else { d.titre }, author: if d.societe != none { d.societe.nom } else { "" })
   set page(
     paper: "a4",
     margin: (top: 1.8cm, bottom: 2.3cm, x: 1.8cm),
@@ -106,23 +106,24 @@
     },
   )
 
+  // Comme dans Vertuoza : le type en titre (« FACTURE FINALE »), puis « N° 2026-114 », référence, date,
+  // responsable et échéance du paiement ; le devis et l'adresse du chantier en dessous.
   v(0.9cm)
   text(size: 17pt, weight: "bold", fill: accent, upper(d.titre))
-  if d.genre != "" {
-    linebreak()
-    text(size: 9pt, fill: gris, d.genre)
-  }
   v(4pt)
   grid(
     columns: (auto, 1fr),
     column-gutter: 10pt,
     row-gutter: 4pt,
+    ..if d.numero != "" { (text(fill: gris)[N°], text(weight: "bold", d.numero)) } else { () },
     ..if d.corrige != "" { (text(fill: gris)[Corrige], d.corrige) } else { () },
-    text(fill: gris)[Date], d.date,
-    ..if d.echeance != "" { (text(fill: gris)[Échéance], d.echeance) } else { () },
     ..if d.reference != "" { (text(fill: gris)[Référence], d.reference) } else { () },
+    text(fill: gris)[Date], d.date,
     ..if d.responsable != "" { (text(fill: gris)[Responsable], d.responsable) } else { () },
+    ..if d.echeance != "" { (text(fill: gris)[Échéance du paiement], d.echeance) } else { () },
+    ..if d.devis != "" { (text(fill: gris)[Devis N°], d.devis) } else { () },
     ..if d.chantier != "" { (text(fill: gris)[Chantier], d.chantier) } else { () },
+    ..if d.adresse_chantier != "" { (text(fill: gris)[Adresse du chantier], d.adresse_chantier) } else { () },
   )
   v(0.6cm)
 

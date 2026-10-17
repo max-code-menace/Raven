@@ -123,7 +123,8 @@ async fn un_rappel_relu_avant_l_envoi(pool: PgPool) {
 
     let (code, page) = lire(&s, &format!("/factures/{id}/rappel")).await;
     assert_eq!(code, StatusCode::OK);
-    assert!(page.contains("Oubli de paiement ? Facture n° 125") && page.contains("compta@alpha.be") && page.contains("121,00\u{a0}€"));
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
+    assert!(page.contains(&format!("Oubli de paiement ? Facture n° {annee}-125")) && page.contains("compta@alpha.be") && page.contains("121,00\u{a0}€"));
     let (_, lieu, _) = poster(&s, &format!("/factures/{id}/rappel"), "destinataires=compta%40alpha.be&objet=Oubli+de+paiement&corps=Bonjour").await;
     assert_eq!(lieu.as_deref(), Some(format!("/factures/{id}?ok=email_enregistre").as_str()));
     assert_eq!(rappels(&pool, id).await, vec![("rappel_doux".to_string(), "enregistre".to_string())]);

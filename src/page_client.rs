@@ -298,7 +298,7 @@ async fn page_facture(State(state): State<AppState>, Path(jeton): Path<String>) 
     let qr = texte_epc(&entreprise.nom, &iban, &bic, reste, &vcs).and_then(|t| qr_svg(&t)).unwrap_or_default();
     let client = factures::nom_client(&state.db, f.client_entreprise_id, f.client_contact_id).await?;
     let page = PageFacture {
-        titre: factures::titre(&f.genre, f.numero),
+        titre: factures::titre(&f.genre, f.numero, f.date_facture),
         note_credit,
         date: date_belge(f.date_facture),
         echeance: f.date_echeance.map(date_belge).unwrap_or_default(),

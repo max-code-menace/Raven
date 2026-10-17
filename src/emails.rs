@@ -54,7 +54,7 @@ pub const VARIABLES: [(&str, &str); 19] = [
     ("[NUMBER_QUOTE]", "Numéro du devis (2026-57) ou de l'avenant"),
     ("[DATE_DEVIS]", "Date du devis"),
     ("[LINK_DEVIS]", "Lien vers la page en ligne du devis (consulter, signer)"),
-    ("[NO_FACTURE]", "Numéro de la facture ou de la note de crédit"),
+    ("[NO_FACTURE]", "Numéro de la facture ou de la note de crédit (2026-125)"),
     ("[DATE_FACTURE]", "Date de la facture"),
     ("[MONTANT_TTC]", "Montant TTC de la pièce"),
     ("[RESTE_A_PAYER]", "Reste à payer TTC"),
@@ -243,7 +243,7 @@ pub(crate) async fn variables_facture(db: &PgPool, id: i64) -> Result<(Vec<(&'st
         vec![
             ("[CIVILITE_CLIENT]", civilite),
             ("[NOM_CLIENT]", nom_client),
-            ("[NO_FACTURE]", numero.map(|n| n.to_string()).unwrap_or_default()),
+            ("[NO_FACTURE]", numero.map(|n| crate::factures::numero_affiche(date, n)).unwrap_or_default()),
             ("[DATE_FACTURE]", date_belge(date)),
             ("[MONTANT_TTC]", format_euros(ttc)),
             ("[RESTE_A_PAYER]", format_euros(reste)),

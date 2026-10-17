@@ -256,7 +256,7 @@ async fn envoyer_selection(State(state): State<AppState>, Form(s): Form<Selectio
 }
 
 async fn page_rappel(db: &PgPool, f: &factures::Facture, saisie: Saisie, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
-    let titre = factures::titre(&f.genre, f.numero);
+    let titre = factures::titre(&f.genre, f.numero, f.date_facture);
     let page = envoi::Page {
         titre: format!("Envoyer un rappel - {titre}"),
         retour: format!("/factures/{}", f.id),

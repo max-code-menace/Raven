@@ -155,7 +155,10 @@ async fn envoyer_une_facture(pool: PgPool) {
     let vcs = vcs_125(&pool).await;
     sqlx::query("UPDATE modeles_email SET corps = corps || E'\\n[COMMUNICATION] [IBAN]' WHERE code = 'facture'").execute(&pool).await.unwrap();
     let (_, page) = lire(&s, &format!("/factures/{id}/email")).await;
-    for attendu in ["compta@hotel.be", "Facture 125 – chantier", "la facture n° 125 du", "(« HP1 »)", vcs.as_str(), "BE68 5390 0754 7034", "/client/facture/", "Bonjour Hôtel du Parc SA,"] {
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
+    let objet = format!("Facture {annee}-125 – chantier");
+    let phrase = format!("la facture n° {annee}-125 du");
+    for attendu in ["compta@hotel.be", objet.as_str(), phrase.as_str(), "(« HP1 »)", vcs.as_str(), "BE68 5390 0754 7034", "/client/facture/", "Bonjour Hôtel du Parc SA,"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     let (code, lieu, _) = poster(&s, &format!("/factures/{id}/email"), "destinataires=compta%40hotel.be&objet=Facture+125&corps=Bonjour").await;

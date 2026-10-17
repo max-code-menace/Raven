@@ -70,7 +70,7 @@ pub async fn recap(db: &PgPool, chantier_id: i64, total_cents: i64) -> Result<Re
             let (libelle, classe) = factures::statut(&statut);
             LigneFacture {
                 id,
-                titre: factures::titre(&genre, numero),
+                titre: factures::titre(&genre, numero, date),
                 genre: factures::libelle_genre(&genre),
                 date: date.format("%d/%m/%Y").to_string(),
                 montant_ht: format_euros(montant_ht),

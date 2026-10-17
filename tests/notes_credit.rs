@@ -118,7 +118,9 @@ async fn crediter_entierement_une_facture(pool: PgPool) {
     assert_eq!(compteur, 125, "une note de crédit ne consomme pas de numéro de facture");
 
     let (_, page) = lire(&s, &format!("/factures/{note}")).await;
-    for attendu in ["Note de crédit N° 6", "Note de crédit pour la facture n° 125"] {
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
+    let titre = format!("Note de crédit N° {annee}-6");
+    for attendu in [titre.as_str(), "Note de crédit pour la facture n° 125"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     assert!(!page.contains("Créditer (note de crédit)"), "une note de crédit ne se crédite pas");

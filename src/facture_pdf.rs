@@ -15,7 +15,7 @@ use sqlx::PgPool;
 
 use crate::calcul;
 use crate::commun::format_euros;
-use crate::devis_pdf::{Bloc, Societe, bloc_typst, charger_bloc, charger_societe, dictionnaire, litteral, option_litteral, tableau};
+use crate::devis_pdf::{Bloc, Societe, bloc_typst, charger_bloc, charger_societe, dictionnaire, lignes_adresse, litteral, option_litteral, tableau};
 use crate::factures::{self, Facture, LigneBase};
 use crate::fiches::{Genre, Options};
 use crate::{AppState, Erreur, pdf};
@@ -23,9 +23,13 @@ use crate::{AppState, Erreur, pdf};
 const MODELE: &str = include_str!("../assets/facture.typ");
 
 pub(crate) struct Donnees {
+    /// Le type, comme titre (« Facture finale », « Facture », « Note de crédit »), comme dans Vertuoza.
     pub titre: String,
-    /// « Facture d'acompte », « Facture finale »… (vide pour une facture simple).
-    pub genre: String,
+    /// « 2026-114 » (vide pour un brouillon).
+    pub numero: String,
+    /// Le devis de base du chantier (« 2026-13 ») et l'adresse du chantier.
+    pub devis: String,
+    pub adresse_chantier: String,
     pub brouillon: bool,
     pub note_credit: bool,
     pub date: String,
@@ -62,10 +66,35 @@ pub(crate) async fn charger_donnees(db: &PgPool, f: &Facture) -> Result<Donnees,
     .bind(f.facture_origine_id)
     .fetch_optional(db)
     .await?;
+    // Le devis de base du chantier et l'adresse du chantier (sous la société, comme dans Vertuoza).
+    let base: Option<(i32, i64, bool, String, String, String, String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "SELECT extract(year FROM d.date_devis)::int, d.numero, d.chantier_identique, d.chantier_rue, d.chantier_numero,
+                d.chantier_code_postal, d.chantier_ville, d.chantier_pays, d.client_entreprise_id, d.client_contact_id
+         FROM chantiers ch JOIN devis d ON d.id = ch.devis_id WHERE ch.id = $1",
+    )
+    .bind(f.chantier_id)
+    .fetch_optional(db)
+    .await?;
+    let (devis, adresse_chantier) = match base {
+        None => (String::new(), String::new()),
+        Some((annee, numero, identique, rue, num, cp, ville, pays, entreprise, contact)) => {
+            let lignes = if identique {
+                charger_bloc(db, entreprise, contact, false).await?.map(|b| b.adresse).unwrap_or_default()
+            } else {
+                lignes_adresse(&rue, &num, &cp, &ville, &pays)
+            };
+            (format!("{annee}-{numero}"), lignes.join(", "))
+        }
+    };
     let note_credit = f.genre == "note_credit";
     Ok(Donnees {
-        titre: factures::titre(&f.genre, f.numero).replace(" (brouillon)", ""),
-        genre: if matches!(f.genre.as_str(), "simple" | "recurrente" | "note_credit") { String::new() } else { factures::libelle_genre(&f.genre).to_string() },
+        titre: match f.genre.as_str() {
+            "simple" | "recurrente" => "Facture".to_string(),
+            g => factures::libelle_genre(g).to_string(),
+        },
+        numero: f.numero.map(|n| factures::numero_affiche(f.date_facture, n)).unwrap_or_default(),
+        devis,
+        adresse_chantier,
         brouillon: f.brouillon(),
         note_credit,
         date: f.date_facture.format("%d/%m/%Y").to_string(),
@@ -147,7 +176,9 @@ pub(crate) fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
 
     let donnees = dictionnaire(&[
         ("titre", litteral(&d.titre)),
-        ("genre", litteral(&d.genre)),
+        ("numero", litteral(&d.numero)),
+        ("devis", litteral(&d.devis)),
+        ("adresse_chantier", litteral(&d.adresse_chantier)),
         ("brouillon", d.brouillon.to_string()),
         ("date", litteral(&d.date)),
         ("echeance", litteral(&d.echeance)),

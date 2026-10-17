@@ -211,7 +211,7 @@ async fn facture_validee(db: &PgPool, id: i64) -> Result<factures::Facture, Erre
 }
 
 async fn page_facture(db: &PgPool, f: &factures::Facture, saisie: Option<Saisie>, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
-    let titre = factures::titre(&f.genre, f.numero);
+    let titre = factures::titre(&f.genre, f.numero, f.date_facture);
     let saisie = match saisie {
         Some(s) => s,
         None => {

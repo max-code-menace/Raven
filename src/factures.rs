@@ -59,11 +59,17 @@ fn date_belge(d: NaiveDate) -> String {
     d.format("%d/%m/%Y").to_string()
 }
 
-/// « Facture N° 125 », « Note de crédit N° 6 », « Facture d'acompte (brouillon) ».
-pub(crate) fn titre(genre: &str, numero: Option<i64>) -> String {
+/// Le numéro tel qu'il est imprimé, comme dans Vertuoza : l'année puis le numéro (« 2026-125 ») ; la numérotation
+/// repart à 1 chaque année. Les listes montrent le numéro seul.
+pub(crate) fn numero_affiche(date: NaiveDate, numero: i64) -> String {
+    format!("{}-{numero}", date.year())
+}
+
+/// « Facture N° 2026-125 », « Note de crédit N° 2026-6 », « Facture d'acompte (brouillon) ».
+pub(crate) fn titre(genre: &str, numero: Option<i64>, date: NaiveDate) -> String {
     match (genre, numero) {
-        ("note_credit", Some(n)) => format!("Note de crédit N° {n}"),
-        (_, Some(n)) => format!("Facture N° {n}"),
+        ("note_credit", Some(n)) => format!("Note de crédit N° {}", numero_affiche(date, n)),
+        (_, Some(n)) => format!("Facture N° {}", numero_affiche(date, n)),
         (g, None) => format!("{} (brouillon)", libelle_genre(g)),
     }
 }
@@ -810,7 +816,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         .unwrap_or_default();
     let page = Page {
         id,
-        titre: titre(&f.genre, f.numero),
+        titre: titre(&f.genre, f.numero, f.date_facture),
         genre: libelle_genre(&f.genre),
         statut: libelle,
         classe_statut: classe,
@@ -1185,7 +1191,7 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>) -> Result<R
     .bind(id)
     .execute(&mut *tx)
     .await?;
-    paiements::noter(&mut tx, id, "validation", &format!("Validée : {}", titre(&f.genre, Some(numero)))).await?;
+    paiements::noter(&mut tx, id, "validation", &format!("Validée : {}", titre(&f.genre, Some(numero), f.date_facture))).await?;
     tx.commit().await?;
     Ok(Redirect::to(&format!("/factures/{id}?ok=validee")))
 }
@@ -1315,10 +1321,11 @@ mod tests {
 
     #[test]
     fn les_titres() {
-        assert_eq!(titre("simple", Some(125)), "Facture N° 125");
-        assert_eq!(titre("acompte", Some(126)), "Facture N° 126");
-        assert_eq!(titre("note_credit", Some(6)), "Note de crédit N° 6");
-        assert_eq!(titre("finale", None), "Facture finale (brouillon)");
+        let jour = NaiveDate::from_ymd_opt(2026, 10, 17).unwrap();
+        assert_eq!(titre("simple", Some(125), jour), "Facture N° 2026-125");
+        assert_eq!(titre("acompte", Some(126), jour), "Facture N° 2026-126");
+        assert_eq!(titre("note_credit", Some(6), jour), "Note de crédit N° 2026-6");
+        assert_eq!(titre("finale", None, jour), "Facture finale (brouillon)");
     }
 
     #[test]
