@@ -156,6 +156,14 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés.
   - **Ouvertures par vos clients** (tableau de bord) : chaque ouverture d'un devis ou d'une facture en ligne (table `consultations_client`).
   - **Import de la bibliothèque** (`src/bibliotheque_import.rs`, `/bibliotheque/import`) : Excel (.xlsx) ou CSV, colonnes retrouvées par leur titre, sans doublons. Les 209 ouvrages relevés : `docs/vertuoza/captures/inventaire/bibliotheque-vertuoza.csv` (à importer dans la vraie base).
   - Liste des factures : colonne **Chantier**.
+- [x] Lisibilité et habitudes de Vertuoza (17/10/2026, retours de Mahx) : 350 tests.
+  - **Contraste** (`_styles.html`) : menu latéral foncé comme Vertuoza, fond gris plus soutenu, cartes à bord et ombre nets, en-têtes de tableaux en gras, textes secondaires plus foncés, statuts plus colorés. Aucun écran déplacé.
+  - **Acomptes dans l'onglet Informations du devis** (comme Vertuoza) : lien « Ajouter un acompte » dans Informations de facturation et bloc « Acomptes » (liste des factures d'acompte du chantier, ajout en % ou en € HT) dès que le devis est accepté.
+  - **Valider et envoyer par e-mail** en un clic sur une facture brouillon (`/factures/{id}/valider` avec `puis=email`).
+  - **Facture verrouillée** : bouton « Corriger (note de crédit) » directement dans le bandeau.
+  - **Onglets de la facture** (Informations, Encodage, Totaux, Visualisation, Historique) qui mènent aux parties de la page.
+  - **Factures fournisseurs** (`/achats`, menu Finances) : tous les achats saisis des chantiers, recherche, total, « Nouveau » avec le choix du chantier, en attendant Peppol (phase 2).
+  - Pas de glisser-déposer des lignes : il demanderait du JavaScript écrit à la main (interdit) ; les flèches restent.
 - [ ] Phases 2 et 3.
 
 ## Fichiers de documentation

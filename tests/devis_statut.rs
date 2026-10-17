@@ -104,7 +104,7 @@ async fn accepter_enregistre_la_date_et_verrouille(pool: PgPool) {
     assert!(page.contains("Le devis est accepté et son chantier est créé.") && page.contains("Accepté le 05/10/2026"));
     assert!(page.contains("Chantier n° 1"));
     // Plus aucune décision possible ; seulement dupliquer.
-    for absent in ["Marquer comme envoyé</button>", "Accepter…", "Refuser…", "Remettre en brouillon"] {
+    for absent in ["Marquer comme envoyé</button>", "Accepter le devis…", "Refuser…", "Remettre en brouillon"] {
         assert!(!page.contains(absent), "{absent}");
     }
     assert!(page.contains("Dupliquer"));
@@ -219,7 +219,7 @@ async fn les_messages_de_l_adresse_ne_sont_pas_affiches_tels_quels(pool: PgPool)
 async fn les_boutons_d_un_brouillon(pool: PgPool) {
     let d = devis(&pool, 1, "brouillon").await;
     let (_, page) = lire(&site(&pool), &format!("/devis/{d}")).await;
-    for present in ["Marquer comme envoyé", "Accepter…", "Refuser…", "Dupliquer"] {
+    for present in ["Marquer comme envoyé", "Accepter le devis…", "Refuser…", "Dupliquer"] {
         assert!(page.contains(present), "{present}");
     }
     assert!(!page.contains("Remettre en brouillon"));

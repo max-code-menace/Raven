@@ -1132,7 +1132,14 @@ pub(crate) async fn reste_a_crediter(db: &PgPool, facture_id: i64, sauf: Option<
     .await
 }
 
-async fn valider(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ApresValidation {
+    /// « email » : ouvrir l'envoi par e-mail juste après (un seul clic, comme l'envoi dans Vertuoza).
+    puis: String,
+}
+
+async fn valider(State(state): State<AppState>, Path(id): Path<i64>, Form(apres): Form<ApresValidation>) -> Result<Redirect, Erreur> {
     let note_credit = {
         let f = charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
         if !f.brouillon() {
@@ -1193,6 +1200,9 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>) -> Result<R
     .await?;
     paiements::noter(&mut tx, id, "validation", &format!("Validée : {}", titre(&f.genre, Some(numero), f.date_facture))).await?;
     tx.commit().await?;
+    if apres.puis == "email" {
+        return Ok(Redirect::to(&format!("/factures/{id}/email")));
+    }
     Ok(Redirect::to(&format!("/factures/{id}?ok=validee")))
 }
 

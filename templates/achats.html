@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Factures fournisseurs · Ubifacture{% endblock %}
+{% block nav_achats %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("finances", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Factures fournisseurs</h1>
+        <div class="u-sous-titre">Les achats de tous les chantiers, saisis à la main en attendant la réception par Peppol (phase 2). Ils comptent dans le budget d'achat et la rentabilité du chantier.</div>
+      </div>
+    </div>
+    <div class="u-actions">
+      <details class="u-menu">
+        <summary class="btn btn-primary">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</summary>
+        <form method="post" action="/achats" class="u-menu-liste u-menu-form" style="min-width:340px">
+          <label class="form-control">
+            <span class="u-lbl">Chantier <i>*</i></span>
+            <select class="select select-bordered select-sm" name="chantier" required>
+              <option value="">—</option>
+              {% for c in chantiers %}<option value="{{ c.valeur }}">{{ c.libelle }}</option>{% endfor %}
+            </select>
+          </label>
+          <div class="grid gap-3 grid-cols-2">
+            <label class="form-control">
+              <span class="u-lbl">Date <i>*</i></span>
+              <input class="input input-bordered input-sm" type="date" name="date" value="{{ aujourdhui }}" required>
+            </label>
+            <label class="form-control">
+              <span class="u-lbl">Montant HT <i>*</i></span>
+              <input class="input input-bordered input-sm text-right" type="text" inputmode="decimal" name="montant" placeholder="1250,00" required>
+            </label>
+          </div>
+          <label class="form-control">
+            <span class="u-lbl">Type</span>
+            <select class="select select-bordered select-sm" name="categorie">
+              {% for c in categories %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="form-control">
+            <span class="u-lbl">Fournisseur</span>
+            <input class="input input-bordered input-sm" type="text" name="fournisseur" maxlength="300">
+          </label>
+          <label class="form-control">
+            <span class="u-lbl">Référence / description</span>
+            <input class="input input-bordered input-sm" type="text" name="description" maxlength="300" placeholder="N° de la facture du fournisseur">
+          </label>
+          <span class="u-petit u-muet">Un avoir du fournisseur : montant négatif (« -50 »).</span>
+          <button class="btn btn-primary btn-sm" type="submit">Enregistrer l'achat</button>
+        </form>
+      </details>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message }}</span></div>
+{% endif %}
+{% if !erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
+{% endif %}
+<section class="u-card">
+  <form class="u-outils" method="get" action="/achats">
+    <label class="u-recherche">
+      {% call ui::icone("recherche", 16) %}{% endcall %}
+      <input class="input input-bordered w-full" type="search" name="q" value="{{ q }}" placeholder="Rechercher (fournisseur, référence, chantier)" aria-label="Rechercher">
+    </label>
+    <button class="btn" type="submit">Rechercher</button>
+  </form>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>Référence</th><th class="n">Montant HT</th><th>Chantier</th></tr></thead>
+      <tbody>
+        {% for a in lignes %}
+        <tr>
+          <td class="nw">{{ a.date }}</td>
+          <td class="nw">{{ a.categorie }}</td>
+          <td>{{ a.fournisseur }}</td>
+          <td>{{ a.description }}</td>
+          <td class="n">{{ a.montant }}</td>
+          <td class="nw"><a href="/chantiers/{{ a.chantier_id }}/finances#achats">{{ a.chantier }}</a></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="6">Aucun achat saisi. « Nouveau » en haut à droite, ou depuis l'onglet Finances d'un chantier.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="u-pied">
+    <span>{{ nombre }} achat(s){% if nombre > 200 %} · les 200 plus récents affichés{% endif %}</span>
+    <div class="u-totaux"><div><small>Total HT</small><b>{{ total }}</b></div></div>
+  </div>
+</section>
+{% endblock %}

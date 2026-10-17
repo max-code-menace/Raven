@@ -77,6 +77,12 @@
           <h3>Détails de facturation</h3>
           {% call m::liste_deroulante("Taux de TVA par défaut *", "taux_tva_id", taux_tva) %}{% endcall %}
           {% call m::liste_deroulante("Conditions de paiement *", "conditions_paiement_id", conditions) %}{% endcall %}
+          {% if acomptes.visible %}
+          <div>
+            <span class="u-lbl">Acomptes</span>
+            <a class="u-lien" href="#acomptes">{% call ui::icone("plus", 14) %}{% endcall %}{% if acomptes.factures.is_empty() %}Ajouter un acompte{% else %}{{ acomptes.factures.len() }} acompte(s) · en ajouter un{% endif %}</a>
+          </div>
+          {% endif %}
         </div>
         {# Quand la case est cochée, le choix d'un autre client est masqué (sans JavaScript). #}
         <div class="u-col group">
@@ -150,6 +156,46 @@
     </section>
   </fieldset>
 </form>
+
+{% if acomptes.visible %}
+{# Comme dans Vertuoza : les acomptes se demandent depuis l'onglet Informations du devis. Ils sont facturés sur le
+   chantier, créé quand le devis est accepté (même calcul que l'onglet Finances du chantier). #}
+<section class="u-card" id="acomptes">
+  <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Acomptes</h2>{% if let Some(ch) = acomptes.chantier %}<a class="u-petit" href="/chantiers/{{ ch }}/finances">Finances du chantier</a>{% endif %}</div>
+  <div class="u-card-b">
+    {% for a in acomptes.factures %}
+    <div class="flex flex-wrap items-center gap-3">
+      <a class="font-semibold" href="/factures/{{ a.id }}">{{ a.titre }}</a>
+      <span class="u-muet">{{ a.date }}</span>
+      <span>{{ a.montant_ht }} HT</span>
+      <span class="u-pastille {{ a.classe }}">{{ a.statut }}</span>
+    </div>
+    {% endfor %}
+    {% if let Some(ch) = acomptes.chantier %}
+      {% if acomptes.finale %}
+      <span class="u-muet">La facture finale du chantier est faite : plus d'acompte possible.</span>
+      {% else %}
+      <form method="post" action="/chantiers/{{ ch }}/factures/acompte" class="flex flex-wrap items-end gap-2">
+        <label class="form-control">
+          <span class="u-lbl">Montant de l'acompte</span>
+          <div class="flex gap-2">
+            <input class="input input-bordered w-32 text-right" type="text" inputmode="decimal" name="valeur" placeholder="30" required aria-label="Montant de l'acompte">
+            <select class="select select-bordered" name="mode" aria-label="Unité">
+              <option value="pourcentage">% du devis</option>
+              <option value="montant">€ HT</option>
+            </select>
+          </div>
+        </label>
+        <button class="btn btn-primary" type="submit">{% call ui::icone("plus", 16) %}{% endcall %}Ajouter un acompte</button>
+      </form>
+      <span class="u-petit u-muet">Crée la facture d'acompte en brouillon : tu la relis, tu la valides, tu l'envoies.</span>
+      {% endif %}
+    {% else %}
+    <span class="u-muet">Les acomptes se facturent une fois le devis accepté (Actions › Accepter le devis).</span>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
 {% endblock %}
 
 {% block barre %}

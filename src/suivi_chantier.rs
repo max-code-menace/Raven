@@ -8,18 +8,19 @@
 //! Les achats réels se saisissent à la main dans l'onglet Finances (« Achats du chantier ») en attendant la réception
 //! des factures fournisseurs par Peppol (phase 2).
 
+use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, State},
-    response::Redirect,
-    routing::post,
+    extract::{Form, Path, Query, State},
+    response::{Html, Redirect},
+    routing::{get, post},
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::calcul;
-use crate::commun::{Choix, format_euros};
+use crate::commun::{Choix, echapper_like, format_euros};
 use crate::fiches::euros_vers_centimes;
 use crate::{AppState, Erreur};
 
@@ -229,6 +230,7 @@ async fn supprimer(State(state): State<AppState>, Path((chantier_id, achat)): Pa
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/achats", get(liste_achats).post(ajouter_depuis_liste))
         .route("/chantiers/{id}/achats", post(ajouter))
         .route("/chantiers/{id}/achats/{achat}/supprimer", post(supprimer))
 }
@@ -259,4 +261,131 @@ mod tests {
         assert_eq!(part_du_budget(10, 0), 100);
         assert_eq!(part_du_budget(-10, 1_000), 0);
     }
+}
+
+// ─── Factures fournisseurs (achats de tous les chantiers) ───────────────────
+// L'entrée « Factures fournisseurs » du menu, comme dans Vertuoza : en attendant Peppol (phase 2), la liste de tous
+// les achats saisis, chantier par chantier, avec l'ajout direct d'un achat (on choisit son chantier).
+
+pub struct AchatListe {
+    pub chantier_id: i64,
+    pub chantier: String,
+    pub date: String,
+    pub categorie: &'static str,
+    pub fournisseur: String,
+    pub description: String,
+    pub montant: String,
+}
+
+#[derive(Template)]
+#[template(path = "achats.html")]
+struct PageAchats {
+    q: String,
+    lignes: Vec<AchatListe>,
+    total: String,
+    nombre: i64,
+    chantiers: Vec<Choix>,
+    categories: Vec<Choix>,
+    aujourdhui: String,
+    message: &'static str,
+    erreur: &'static str,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct RechercheAchats {
+    q: String,
+    ok: String,
+    erreur: String,
+}
+
+async fn liste_achats(State(state): State<AppState>, Query(r): Query<RechercheAchats>) -> Result<Html<String>, Erreur> {
+    let db = &state.db;
+    let q = r.q.trim().to_string();
+    let motif = format!("%{}%", echapper_like(&q));
+    const FILTRE: &str = "FROM chantier_achats a JOIN chantiers ch ON ch.id = a.chantier_id JOIN devis d ON d.id = ch.devis_id
+         WHERE ($1 = '' OR a.fournisseur ILIKE $2 OR a.description ILIKE $2 OR d.reference ILIKE $2)";
+    let (nombre, total): (i64, i64) =
+        sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT count(*), COALESCE(sum(a.montant_ht_cents), 0)::bigint {FILTRE}")))
+            .bind(&q)
+            .bind(&motif)
+            .fetch_one(db)
+            .await?;
+    let lignes: Vec<(i64, String, NaiveDate, String, String, String, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT ch.id, CASE WHEN d.reference <> '' THEN d.reference ELSE 'n° ' || ch.numero END, a.date_achat, a.categorie::text,
+                a.fournisseur, a.description, a.montant_ht_cents
+         {FILTRE} ORDER BY a.date_achat DESC, a.id DESC LIMIT 200"
+    )))
+    .bind(&q)
+    .bind(&motif)
+    .fetch_all(db)
+    .await?;
+    let chantiers: Vec<(i64, i64, String)> = sqlx::query_as(
+        "SELECT ch.id, ch.numero, d.reference FROM chantiers ch JOIN devis d ON d.id = ch.devis_id
+         ORDER BY ch.statut = 'en_cours' DESC, ch.numero DESC",
+    )
+    .fetch_all(db)
+    .await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(db).await?;
+    let page = PageAchats {
+        q,
+        lignes: lignes
+            .into_iter()
+            .map(|(chantier_id, chantier, date, categorie, fournisseur, description, montant)| AchatListe {
+                chantier_id,
+                chantier,
+                date: date.format("%d/%m/%Y").to_string(),
+                categorie: libelle_categorie(&categorie),
+                fournisseur,
+                description,
+                montant: format_euros(montant),
+            })
+            .collect(),
+        total: format_euros(total),
+        nombre,
+        chantiers: chantiers
+            .into_iter()
+            .map(|(id, numero, reference)| Choix {
+                valeur: id.to_string(),
+                libelle: if reference.is_empty() { format!("Chantier n° {numero}") } else { format!("{reference} (n° {numero})") },
+                choisi: false,
+            })
+            .collect(),
+        categories: CATEGORIES.iter().enumerate().map(|(i, (v, l))| Choix { valeur: (*v).into(), libelle: (*l).into(), choisi: i == 0 }).collect(),
+        aujourdhui: aujourdhui.to_string(),
+        message: if r.ok == "achat" { "L'achat est enregistré sur son chantier." } else { "" },
+        erreur: if r.erreur == "achat" { "L'achat n'est pas enregistré : choisis le chantier, la date et un montant HT (un avoir : « -50 »)." } else { "" },
+    };
+    Ok(Html(page.render()?))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct AchatDepuisListe {
+    chantier: String,
+    #[serde(flatten)]
+    achat: NouvelAchat,
+}
+
+async fn ajouter_depuis_liste(State(state): State<AppState>, Form(f): Form<AchatDepuisListe>) -> Result<Redirect, Erreur> {
+    let chantier: Option<i64> = match f.chantier.trim().parse::<i64>() {
+        Ok(id) => sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1").bind(id).fetch_optional(&state.db).await?,
+        Err(_) => None,
+    };
+    let (Some(chantier_id), Some((date, categorie, fournisseur, description, montant))) = (chantier, lire(&f.achat)) else {
+        return Ok(Redirect::to("/achats?erreur=achat"));
+    };
+    sqlx::query(
+        "INSERT INTO chantier_achats (chantier_id, date_achat, categorie, fournisseur, description, montant_ht_cents)
+         VALUES ($1, $2, $3::text::categorie_achat, $4, $5, $6)",
+    )
+    .bind(chantier_id)
+    .bind(date)
+    .bind(categorie)
+    .bind(&fournisseur)
+    .bind(&description)
+    .bind(montant)
+    .execute(&state.db)
+    .await?;
+    Ok(Redirect::to("/achats?ok=achat"))
 }

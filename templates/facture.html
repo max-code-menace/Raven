@@ -6,7 +6,7 @@
 {% block nav_notes %}{% if genre == "Note de crédit" %}actif{% endif %}{% endblock %}
 
 {% block entete %}
-<header class="u-top">
+<header class="u-top avec-onglets">
   <div class="u-top-ligne">
     <div class="u-titre">
       <a class="u-retour" href="/factures" aria-label="Retour aux factures" title="Retour aux factures">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
@@ -46,6 +46,14 @@
       </details>
     </div>
   </div>
+  {# Les parties de la facture, comme les onglets de Vertuoza (ici sur une seule page : chaque onglet y mène). #}
+  <nav class="u-onglets" aria-label="Parties de la facture">
+    <a class="tab tab-active" href="#informations">Informations</a>
+    <a class="tab" href="#lignes">Encodage</a>
+    <a class="tab" href="#totaux-facture">Totaux</a>
+    <a class="tab" href="/factures/{{ id }}/pdf" target="_blank">Visualisation</a>
+    {% if !brouillon %}<a class="tab" href="#historique">Historique</a>{% endif %}
+  </nav>
 </header>
 {% endblock %}
 
@@ -60,25 +68,25 @@
 {% if etat == "en_retard" %}
 <div role="status" class="u-bandeau alerte">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
-  <span class="flex-1"><strong>En retard de {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %}.</strong> Reste à recevoir : {{ montants.reste }}.{% if let Some((texte, _)) = rappel %} {{ texte }}{% endif %} On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
+  <span class="flex-1"><strong>En retard de {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %}.</strong> Reste à recevoir : {{ montants.reste }}.{% if let Some((texte, _)) = rappel %} {{ texte }}{% endif %} On ne modifie pas une pièce validée.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
   <a class="btn btn-sm{% if let Some((_, du)) = rappel %}{% if *du %} btn-primary{% endif %}{% endif %}" href="/factures/{{ id }}/rappel">{% call ui::icone("cloche", 14) %}{% endcall %}Envoyer un rappel</a>
 </div>
 {% else if etat == "payee" %}
 <div role="status" class="u-bandeau ok">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
-  <span><strong>Payée.</strong> On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
+  <span class="flex-1"><strong>Payée.</strong> On ne modifie pas une pièce validée.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
 </div>
 {% else %}
 <div role="status" class="u-bandeau">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
-  <span><strong>Pièce verrouillée.</strong> On ne modifie pas une pièce validée.{% if peut_crediter %} Une erreur ? Actions › Créditer.{% endif %}</span>
+  <span class="flex-1"><strong>Pièce verrouillée.</strong> On ne modifie pas une pièce validée.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
 </div>
 {% endif %}
 {% endif %}
 
 <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
   <div class="flex flex-col gap-4 min-w-0">
-    <section class="u-card">
+    <section class="u-card" id="informations">
       <div class="u-card-h"><h2>Informations générales</h2></div>
       {% if brouillon %}
       <form id="facture-infos" method="post" action="/factures/{{ id }}">
@@ -177,7 +185,7 @@
       </div>
       <div class="u-card-b">
         {% if a_completer.is_empty() %}
-        <p class="u-petit">Tout est complet. « Valider et numéroter » donne le numéro définitif.</p>
+        <p class="u-petit">Tout est complet. « Valider » donne le numéro définitif ; « Valider et envoyer par e-mail » ouvre aussitôt l'envoi au client.</p>
         {% else %}
         <p class="u-petit font-semibold">À compléter avant de valider :</p>
         {% for m in a_completer %}
@@ -304,7 +312,8 @@
     <summary class="btn btn-primary">Valider…</summary>
     <form method="post" action="/factures/{{ id }}/valider" class="u-menu-liste u-menu-form">
       <span class="u-petit">La facture reçoit son numéro définitif. Elle ne pourra plus être modifiée ni supprimée : seule une note de crédit pourra la corriger.</span>
-      <button class="btn btn-primary btn-sm" type="submit">Valider et numéroter</button>
+      <button class="btn btn-primary btn-sm" type="submit" name="puis" value="email">Valider et envoyer par e-mail</button>
+      <button class="btn btn-sm" type="submit">Valider et numéroter seulement</button>
     </form>
   </details>
   {% endif %}

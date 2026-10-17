@@ -414,6 +414,59 @@ struct Page {
     architectes: Vec<Choix>,
     gestionnaires: Vec<Choix>,
     form: DevisForm,
+    /// Le bloc « Acomptes » (comme dans Vertuoza, onglet Informations).
+    acomptes: Acomptes,
+}
+
+/// Les acomptes du devis : facturés sur son chantier, dès que le devis est accepté.
+#[derive(Default)]
+pub struct Acomptes {
+    /// Un avenant n'a pas d'acompte.
+    pub visible: bool,
+    /// Le chantier du devis accepté (sinon on ne peut pas encore facturer d'acompte).
+    pub chantier: Option<i64>,
+    /// La facture finale existe : plus d'acompte possible.
+    pub finale: bool,
+    pub factures: Vec<AcompteVue>,
+}
+
+pub struct AcompteVue {
+    pub id: i64,
+    pub titre: String,
+    pub date: String,
+    pub montant_ht: String,
+    pub statut: &'static str,
+    pub classe: &'static str,
+}
+
+async fn charger_acomptes(db: &PgPool, devis_id: i64, avenant: bool) -> Result<Acomptes, sqlx::Error> {
+    if avenant {
+        return Ok(Acomptes::default());
+    }
+    let chantier: Option<i64> = sqlx::query_scalar("SELECT id FROM chantiers WHERE devis_id = $1").bind(devis_id).fetch_optional(db).await?;
+    let mut a = Acomptes { visible: true, chantier, ..Default::default() };
+    if let Some(ch) = chantier {
+        a.finale = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM factures WHERE chantier_id = $1 AND genre = 'finale')").bind(ch).fetch_one(db).await?;
+        let lignes: Vec<(i64, Option<i64>, chrono::NaiveDate, i64, String)> = sqlx::query_as(
+            "SELECT f.id, f.numero, f.date_facture, f.montant_ht_cents, et.etat FROM factures f JOIN factures_etats et ON et.facture_id = f.id
+             WHERE f.chantier_id = $1 AND f.genre = 'acompte' ORDER BY f.date_facture, f.id",
+        )
+        .bind(ch)
+        .fetch_all(db)
+        .await?;
+        for (id, numero, date, ht, etat) in lignes {
+            let (statut, classe) = crate::factures::statut(&etat);
+            a.factures.push(AcompteVue {
+                id,
+                titre: crate::factures::titre("acompte", numero, date),
+                date: date.format("%d/%m/%Y").to_string(),
+                montant_ht: crate::commun::format_euros(ht),
+                statut,
+                classe,
+            });
+        }
+    }
+    Ok(a)
 }
 
 fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, retour: &Retour, barre: Barre, r: &Referentiel) -> Page {
@@ -440,6 +493,7 @@ fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, re
         architectes: choix_base(&contacts, &form.architecte_id),
         gestionnaires: choix_base(&contacts, &form.gestionnaire_id),
         form,
+        acomptes: Acomptes::default(),
     }
 }
 
@@ -486,7 +540,8 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
     let referentiel = Referentiel::charger(&state.db).await?;
     let form = DevisForm::from(&devis);
     let barre = charger_barre(&state.db, id).await?;
-    let page = construire_page(id, &devis, form, Vec::new(), &retour, barre, &referentiel);
+    let mut page = construire_page(id, &devis, form, Vec::new(), &retour, barre, &referentiel);
+    page.acomptes = charger_acomptes(&state.db, id, devis.chantier_id.is_some()).await?;
     Ok(Html(page.render()?))
 }
 
@@ -506,7 +561,8 @@ async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(fo
         }
         Err(erreurs) => {
             let barre = charger_barre(&state.db, id).await?;
-            let page = construire_page(id, &devis, form, erreurs, &Retour::default(), barre, &referentiel);
+            let mut page = construire_page(id, &devis, form, erreurs, &Retour::default(), barre, &referentiel);
+            page.acomptes = charger_acomptes(&state.db, id, devis.chantier_id.is_some()).await?;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
         }
     }
