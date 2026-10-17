@@ -1,5 +1,6 @@
 pub mod avancement_calcul;
 pub mod bibliotheque;
+pub mod bibliotheque_import;
 pub mod avancements;
 pub mod avenants;
 pub mod chantiers;
@@ -30,6 +31,7 @@ pub mod page_client;
 pub mod paiements;
 pub mod pdf;
 pub mod rappels;
+pub mod recurrences;
 pub mod societe;
 pub mod statistiques;
 pub mod suivi_chantier;
@@ -123,10 +125,12 @@ pub fn app(state: AppState) -> Router {
         .merge(paiements::routes())
         .merge(envoi::routes())
         .merge(rappels::routes())
+        .merge(recurrences::routes())
         .merge(exports::routes())
         .merge(page_client::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
+        .merge(bibliotheque_import::routes())
         .merge(statistiques::routes())
         .merge(import_devis::routes())
         .merge(fiches::routes())

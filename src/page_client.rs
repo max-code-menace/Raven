@@ -165,6 +165,8 @@ struct Retour {
 async fn page_devis(State(state): State<AppState>, Path(jeton): Path<String>, Query(r): Query<Retour>) -> Result<Html<String>, Erreur> {
     let d = devis_du_jeton(&state.db, &jeton).await?;
     // La première consultation est notée dans l'historique du devis.
+    // Chaque ouverture est notée (tableau de bord : « Ouvertures par vos clients »).
+    sqlx::query("INSERT INTO consultations_client (devis_id) VALUES ($1)").bind(d.id).execute(&state.db).await?;
     let premiere = sqlx::query("UPDATE devis SET consulte_le = now() WHERE id = $1 AND consulte_le IS NULL").bind(d.id).execute(&state.db).await?;
     if premiere.rows_affected() == 1 {
         let mut tx = state.db.begin().await?;
@@ -276,6 +278,7 @@ async fn facture_du_jeton(db: &PgPool, jeton: &str) -> Result<factures::Facture,
 
 async fn page_facture(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Html<String>, Erreur> {
     let f = facture_du_jeton(&state.db, &jeton).await?;
+    sqlx::query("INSERT INTO consultations_client (facture_id) VALUES ($1)").bind(f.id).execute(&state.db).await?;
     let premiere = sqlx::query("UPDATE factures SET consulte_le = now() WHERE id = $1 AND consulte_le IS NULL").bind(f.id).execute(&state.db).await?;
     if premiere.rows_affected() == 1 {
         let mut tx = state.db.begin().await?;

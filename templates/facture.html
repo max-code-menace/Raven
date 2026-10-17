@@ -34,6 +34,7 @@
             <button class="u-mi" type="submit">Créditer (note de crédit)</button>
           </form>
           {% endif %}
+          {% if peut_recurrer %}<a class="u-mi" href="/factures/{{ id }}/recurrence">Créer/voir la récurrence</a>{% endif %}
           <a class="u-mi" href="#historique">Afficher l'historique</a>
           <div class="u-sep"></div>
           {% if !brouillon %}<a class="u-mi" href="/factures/{{ id }}/email">Envoyer par e-mail</a>{% endif %}

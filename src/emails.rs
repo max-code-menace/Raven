@@ -63,7 +63,7 @@ pub const VARIABLES: [(&str, &str); 19] = [
     ("[IBAN]", "IBAN par défaut de la société"),
     ("[LINK_FACTURE]", "Lien vers la page en ligne de la facture (consulter, payer par QR code)"),
     ("[REFERENCE]", "Référence de la pièce"),
-    ("[NOM_CHANTIER]", "Chantier (numéro et référence)"),
+    ("[NOM_CHANTIER]", "Chantier (sa référence, sinon son numéro)"),
     ("[NOM_GESTIONNAIRE]", "Responsable de la pièce (sinon le nom de la société)"),
     ("[MAIL_GESTIONNAIRE]", "E-mail de la société"),
     ("[NOM_SOCIETE]", "Nom de la société"),
@@ -178,7 +178,7 @@ pub(crate) async fn variables_devis(db: &PgPool, id: i64) -> Result<(Vec<(&'stat
     .fetch_one(db)
     .await?;
     let nom_chantier: Option<String> = sqlx::query_scalar(
-        "SELECT 'n° ' || ch.numero || CASE WHEN d.reference <> '' THEN ' · ' || d.reference ELSE '' END
+        "SELECT CASE WHEN d.reference <> '' THEN d.reference ELSE 'n° ' || ch.numero END
          FROM chantiers ch JOIN devis d ON d.id = ch.devis_id WHERE ch.id = $1 OR ch.devis_id = $2",
     )
     .bind(chantier)
@@ -229,7 +229,7 @@ pub(crate) async fn variables_facture(db: &PgPool, id: i64) -> Result<(Vec<(&'st
     .await?;
     let reste: i64 = sqlx::query_scalar("SELECT GREATEST(reste_cents, 0) FROM factures_etats WHERE facture_id = $1").bind(id).fetch_one(db).await?;
     let nom_chantier: Option<String> = sqlx::query_scalar(
-        "SELECT 'n° ' || ch.numero || CASE WHEN d.reference <> '' THEN ' · ' || d.reference ELSE '' END
+        "SELECT CASE WHEN d.reference <> '' THEN d.reference ELSE 'n° ' || ch.numero END
          FROM chantiers ch JOIN devis d ON d.id = ch.devis_id WHERE ch.id = $1",
     )
     .bind(chantier)

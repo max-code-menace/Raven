@@ -83,8 +83,8 @@ struct Base {
     categorie: String,
     fournisseur: String,
     unite: String,
-    prix_achat_e5: Option<i64>,
-    prix_vente_e5: i64,
+    pub(crate) prix_achat_e5: Option<i64>,
+    pub(crate) prix_vente_e5: i64,
 }
 
 pub struct Ligne {
@@ -235,26 +235,27 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
 #[derive(Deserialize, Default, Clone)]
 #[serde(default)]
 pub(crate) struct Saisie {
-    description: String,
-    genre: String,
-    categorie: String,
-    fournisseur: String,
-    unite: String,
-    prix_achat: String,
-    marge: String,
-    prix_vente: String,
-    remarque: String,
+    pub(crate) description: String,
+    pub(crate) genre: String,
+    pub(crate) categorie: String,
+    pub(crate) fournisseur: String,
+    pub(crate) unite: String,
+    pub(crate) prix_achat: String,
+    pub(crate) marge: String,
+    pub(crate) prix_vente: String,
+    pub(crate) remarque: String,
 }
 
+#[derive(Debug)]
 pub(crate) struct Valeurs {
-    description: String,
-    genre: &'static str,
-    categorie: String,
-    fournisseur: String,
-    unite: String,
-    prix_achat_e5: Option<i64>,
-    prix_vente_e5: i64,
-    remarque: String,
+    pub(crate) description: String,
+    pub(crate) genre: &'static str,
+    pub(crate) categorie: String,
+    pub(crate) fournisseur: String,
+    pub(crate) unite: String,
+    pub(crate) prix_achat_e5: Option<i64>,
+    pub(crate) prix_vente_e5: i64,
+    pub(crate) remarque: String,
 }
 
 /// Vérifie la saisie ; renvoie toutes les erreurs d'un coup.
@@ -385,6 +386,24 @@ async fn enregistrer(db: &PgPool, id: Option<i64>, v: &Valeurs) -> Result<i64, s
         .bind(id)
         .fetch_one(db)
         .await
+}
+
+/// Ajoute un ouvrage (import d'un fichier, `bibliotheque_import`).
+pub(crate) async fn inserer<'e>(db: impl sqlx::PgExecutor<'e>, v: &Valeurs) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar(
+        "INSERT INTO ouvrages (description, genre, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5, remarque)
+         VALUES ($1, $2::text::genre_ligne, $3, $4, $5, $6, $7, $8) RETURNING id",
+    )
+    .bind(&v.description)
+    .bind(v.genre)
+    .bind(&v.categorie)
+    .bind(&v.fournisseur)
+    .bind(&v.unite)
+    .bind(v.prix_achat_e5)
+    .bind(v.prix_vente_e5)
+    .bind(&v.remarque)
+    .fetch_one(db)
+    .await
 }
 
 async fn creer(State(state): State<AppState>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {

@@ -65,7 +65,7 @@ pub(crate) async fn charger_donnees(db: &PgPool, f: &Facture) -> Result<Donnees,
     let note_credit = f.genre == "note_credit";
     Ok(Donnees {
         titre: factures::titre(&f.genre, f.numero).replace(" (brouillon)", ""),
-        genre: if matches!(f.genre.as_str(), "simple" | "note_credit") { String::new() } else { factures::libelle_genre(&f.genre).to_string() },
+        genre: if matches!(f.genre.as_str(), "simple" | "recurrente" | "note_credit") { String::new() } else { factures::libelle_genre(&f.genre).to_string() },
         brouillon: f.brouillon(),
         note_credit,
         date: f.date_facture.format("%d/%m/%Y").to_string(),

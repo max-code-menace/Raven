@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Importer des ouvrages · Bibliothèque · Ubifacture{% endblock %}
+{% block nav_bibliotheque %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="/bibliotheque" aria-label="Retour à la bibliothèque" title="Retour à la bibliothèque">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>Importer des ouvrages</h1>
+        <div class="u-sous-titre">Depuis l'export de Vertuoza (Bibliothèque › « ⋯ » › Exporter ouvrages simples) ou tout fichier Excel / CSV avec une colonne Description et une colonne de prix.</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if let Some((ajoutes, deja)) = resultat %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span><strong>{{ ajoutes }} ouvrage(s) ajouté(s)</strong> à la bibliothèque{% if *deja > 0 %} · {{ deja }} déjà présent(s), non ajouté(s) une seconde fois{% endif %}. <a href="/bibliotheque">Voir la bibliothèque</a></span></div>
+{% endif %}
+{% if !erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
+{% endif %}
+{% if !ecartees.is_empty() %}
+<section class="u-card">
+  <div class="u-card-h"><h2>{% call ui::icone("attention", 17) %}{% endcall %}Lignes écartées <span class="u-compte">{{ ecartees.len() }}</span></h2></div>
+  <div class="u-card-b text-[13.5px]">
+    {% for e in ecartees %}<span>{{ e }}</span>{% endfor %}
+  </div>
+</section>
+{% endif %}
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] items-start">
+  <form id="envoi" class="u-card" method="post" action="/bibliotheque/import" enctype="multipart/form-data">
+    <div class="u-card-h"><h2>{% call ui::icone("bibliotheque", 17) %}{% endcall %}Fichier</h2></div>
+    <div class="u-card-b">
+      <label class="form-control">
+        <span class="u-lbl">Fichier Excel (.xlsx) ou CSV, 10 Mo au maximum <i>*</i></span>
+        <input class="file-input file-input-bordered w-full" type="file" name="fichier" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+      </label>
+      <p class="u-petit u-muet" style="margin:0">Un ouvrage déjà présent (même description, même unité) n'est pas ajouté une seconde fois : tu peux relancer l'import sans risque.</p>
+    </div>
+  </form>
+  <aside class="u-card">
+    <div class="u-card-h"><h2>Colonnes reconnues</h2></div>
+    <div class="u-card-b text-[13.5px]">
+      <span><b>Description</b> (obligatoire), <b>Type</b>, <b>Catégorie</b>, <b>Fournisseur</b>, <b>Unité</b>, <b>Prix d'achat</b>, <b>Marge</b>, <b>Prix de vente</b> : la ligne d'en-tête est retrouvée par le titre des colonnes.</span>
+      <span>Sans prix de vente, il est calculé depuis le prix d'achat et la marge (marge vide = 0 %).</span>
+      <span>Type : Fourniture, Main d'œuvre, Sous-traitant, Équipements, Poste libre ; sinon Ouvrage.</span>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+
+{% block barre %}
+<div class="u-barre">
+  <a class="btn" href="/bibliotheque">Annuler</a>
+  <button class="btn btn-primary" type="submit" form="envoi">Importer</button>
+</div>
+{% endblock %}

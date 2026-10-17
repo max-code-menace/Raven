@@ -87,11 +87,12 @@ async fn envoyer_un_devis_sans_cle_l_enregistre_seulement(pool: PgPool) {
     assert_eq!(code, StatusCode::OK);
     for attendu in [
         "anne@exemple.be",
-        &format!("Devis n° {numero} - PL46 Salle de bain"),
+        &format!("Votre devis {numero} – PL46 Salle de bain"),
+        "nous avons le plaisir de vous transmettre le devis n°",
         "Bonjour Madame Anne Claes,",
         "/client/devis/",
         "Mode test",
-        "Ubique SRL · info@ubique.be",
+        "Max\ninfo@ubique.be",
     ] {
         assert!(page.contains(attendu), "{attendu}");
     }
@@ -148,9 +149,13 @@ async fn envoyer_une_facture(pool: PgPool) {
     poster(&s, &format!("/factures/{id}/lignes/{ligne}"), &format!("description=Travaux&quantite=1&prix_unitaire=100&taux_tva_id={taux}")).await;
     poster(&s, &format!("/factures/{id}/valider"), "").await;
 
-    let (code, page) = lire(&s, &format!("/factures/{id}/email")).await;
+    let (code, _) = lire(&s, &format!("/factures/{id}/email")).await;
     assert_eq!(code, StatusCode::OK);
-    for attendu in ["compta@hotel.be", "Facture n° 125 - HP1", "121,00\u{a0}€", "+++000/0000/12528+++", "BE68 5390 0754 7034", "/client/facture/", "Bonjour Hôtel du Parc SA,"] {
+    // Le modèle « Facture » d'Ubique (repris de Vertuoza) ; la communication structurée suit la numérotation annuelle.
+    let vcs = vcs_125(&pool).await;
+    sqlx::query("UPDATE modeles_email SET corps = corps || E'\\n[COMMUNICATION] [IBAN]' WHERE code = 'facture'").execute(&pool).await.unwrap();
+    let (_, page) = lire(&s, &format!("/factures/{id}/email")).await;
+    for attendu in ["compta@hotel.be", "Facture 125 – chantier", "la facture n° 125 du", "(« HP1 »)", vcs.as_str(), "BE68 5390 0754 7034", "/client/facture/", "Bonjour Hôtel du Parc SA,"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     let (code, lieu, _) = poster(&s, &format!("/factures/{id}/email"), "destinataires=compta%40hotel.be&objet=Facture+125&corps=Bonjour").await;
@@ -194,4 +199,10 @@ async fn les_modeles_se_modifient(pool: PgPool) {
     poster(&s, &format!("/devis/{id}/email"), "destinataires=anne%40exemple.be&objet=Votre+devis&corps=Bonjour").await;
     let (_, page) = lire(&s, "/parametres/emails").await;
     assert!(page.contains("Votre devis") && page.contains("Enregistré (non envoyé)"));
+}
+
+/// La communication structurée de la facture n° 125 de l'année en cours (numérotation annuelle).
+async fn vcs_125(pool: &PgPool) -> String {
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(pool).await.unwrap();
+    ubifacture::facture_calcul::vcs_annuelle(annee, 125)
 }

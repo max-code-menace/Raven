@@ -26,7 +26,7 @@ pub enum Cellule {
 }
 
 impl Cellule {
-    fn texte(&self) -> String {
+    pub(crate) fn texte(&self) -> String {
         match self {
             Cellule::Texte(t) => propre(t),
             Cellule::Nombre(n) => {
@@ -37,7 +37,7 @@ impl Cellule {
     }
 
     /// Un nombre, écrit comme nombre ou comme texte (« 1 250,50 »). En 1/100 000.
-    fn nombre_e5(&self) -> Option<i64> {
+    pub(crate) fn nombre_e5(&self) -> Option<i64> {
         match self {
             Cellule::Nombre(n) if n.is_finite() => Some((n * 100_000.0).round() as i64),
             Cellule::Texte(t) => calcul::lire_decimal_e5(&t.replace(['\u{a0}', ' '], "").replace('€', "")),
@@ -52,7 +52,7 @@ fn propre(t: &str) -> String {
 }
 
 /// Pour comparer les titres : minuscules, sans accents ni points.
-fn cle(t: &str) -> String {
+pub(crate) fn cle(t: &str) -> String {
     propre(t)
         .to_lowercase()
         .chars()
@@ -279,12 +279,12 @@ pub fn lire_grille(grille: &[Vec<Cellule>]) -> Result<Resultat, String> {
     Ok(r)
 }
 
-/// Ouvre le fichier Excel (.xlsx) et renvoie le tableau de la feuille qui contient l'en-tête du modèle.
-pub fn lire_xlsx(octets: &[u8]) -> Result<Resultat, String> {
+/// Les feuilles d'un classeur Excel (.xlsx), chacune en tableau de cases (ligne 1 du tableur = indice 0).
+pub fn feuilles_xlsx(octets: &[u8]) -> Result<Vec<Vec<Vec<Cellule>>>, String> {
     use calamine::{Data, Reader, Xlsx};
     let mut classeur: Xlsx<_> = Xlsx::new(std::io::Cursor::new(octets.to_vec()))
         .map_err(|_| "Ce fichier n'est pas un classeur Excel (.xlsx) lisible.".to_string())?;
-    let mut derniere_erreur = "Le classeur ne contient aucune feuille.".to_string();
+    let mut feuilles = Vec::new();
     for nom in classeur.sheet_names() {
         let Ok(plage) = classeur.worksheet_range(&nom) else { continue };
         let (debut_ligne, debut_col) = plage.start().map(|(l, c)| (l as usize, c as usize)).unwrap_or((0, 0));
@@ -299,6 +299,15 @@ pub fn lire_xlsx(octets: &[u8]) -> Result<Resultat, String> {
             }));
             grille.push(cases);
         }
+        feuilles.push(grille);
+    }
+    Ok(feuilles)
+}
+
+/// Ouvre le fichier Excel (.xlsx) et renvoie le tableau de la feuille qui contient l'en-tête du modèle.
+pub fn lire_xlsx(octets: &[u8]) -> Result<Resultat, String> {
+    let mut derniere_erreur = "Le classeur ne contient aucune feuille.".to_string();
+    for grille in feuilles_xlsx(octets)? {
         match lire_grille(&grille) {
             Ok(r) => return Ok(r),
             Err(e) => derniere_erreur = e,

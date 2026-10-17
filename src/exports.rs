@@ -82,7 +82,7 @@ async fn pieces(db: &PgPool, debut: NaiveDate, fin: NaiveDate, seulement_nouvell
          LEFT JOIN contacts c ON c.id = f.client_contact_id
          WHERE f.numero IS NOT NULL AND f.date_facture BETWEEN $1 AND $2
            AND (NOT $3 OR NOT EXISTS (SELECT 1 FROM export_pieces p WHERE p.facture_id = f.id))
-         ORDER BY f.genre = 'note_credit', f.numero",
+         ORDER BY f.genre = 'note_credit', f.date_facture, f.numero",
     )
     .bind(debut)
     .bind(fin)
@@ -128,15 +128,22 @@ fn recapitulatif(pieces: &[Piece]) -> String {
     csv
 }
 
-fn nom_piece(genre: &str, numero: i64) -> String {
+/// « Facture-125 » ; « Facture-2026-125 » quand le dossier couvre plusieurs années (la numérotation repart à 1
+/// chaque année : deux pièces de deux années peuvent avoir le même numéro).
+fn nom_piece(genre: &str, numero: i64, annee: Option<i32>) -> String {
+    let numero = match annee {
+        Some(a) => format!("{a}-{numero}"),
+        None => numero.to_string(),
+    };
     if genre == "note_credit" { format!("Note-de-credit-{numero}") } else { format!("Facture-{numero}") }
 }
 
 /// Construit le ZIP du dossier d'export.
 async fn construire_zip(db: &PgPool, pieces: &[Piece], format: &str) -> Result<Vec<u8>, Erreur> {
     let mut fichiers: Vec<(String, Vec<u8>)> = vec![("recapitulatif.csv".to_string(), recapitulatif(pieces).into_bytes())];
+    let plusieurs_annees = pieces.iter().any(|p| p.date_facture.year() != pieces[0].date_facture.year());
     for p in pieces {
-        let nom = nom_piece(&p.genre, p.numero);
+        let nom = nom_piece(&p.genre, p.numero, plusieurs_annees.then(|| p.date_facture.year()));
         if format != "ubl" {
             let f = factures::charger(db, p.id).await?.ok_or_else(Erreur::introuvable)?;
             let (_, pdf) = crate::facture_pdf::pdf_de_la_facture(db, &f).await?;

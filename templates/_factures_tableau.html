@@ -3,7 +3,7 @@
   <table class="u-table">
     <thead>
       <tr>
-        <th>N°</th><th>Date</th><th>Type</th><th>Client</th><th>Référence</th>
+        <th>N°</th><th>Date</th><th>Type</th><th>Client</th><th>Référence</th><th>Chantier</th>
         <th class="n">Montant HT</th><th class="n">Montant TTC</th><th>Statut</th><th class="n"><span class="sr-only">Actions</span></th>
       </tr>
     </thead>
@@ -15,6 +15,7 @@
         <td class="nw">{{ l.genre }}</td>
         <td>{{ l.client }}</td>
         <td>{{ l.reference }}</td>
+        <td class="nw">{{ l.chantier }}</td>
         <td class="n">{{ l.montant_ht }}</td>
         <td class="n">{{ l.montant_ttc }}</td>
         <td>
@@ -37,6 +38,7 @@
                   <button class="u-mi" type="submit">Créditer (note de crédit)</button>
                 </form>
                 {% endif %}
+                {% if l.peut_recurrer %}<a class="u-mi" href="/factures/{{ l.id }}/recurrence">Créer/voir la récurrence</a>{% endif %}
                 {% if !l.brouillon %}<a class="u-mi" href="/factures/{{ l.id }}#historique">Afficher l'historique</a>{% endif %}
                 <div class="u-sep"></div>
                 {% if !l.brouillon %}<a class="u-mi" href="/factures/{{ l.id }}/email">Envoyer par e-mail</a>{% endif %}
@@ -54,7 +56,7 @@
         </td>
       </tr>
       {% else %}
-      <tr class="vide"><td colspan="9">Aucune facture trouvée.</td></tr>
+      <tr class="vide"><td colspan="10">Aucune facture trouvée.</td></tr>
       {% endfor %}
     </tbody>
   </table>

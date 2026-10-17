@@ -31,6 +31,13 @@ pub struct Alerte {
     pub action: &'static str,
 }
 
+/// Une ouverture d'un devis ou d'une facture par le client (page client en ligne), comme les notifications de Vertuoza.
+pub struct Ouverture {
+    pub texte: String,
+    pub quand: String,
+    pub lien: String,
+}
+
 #[derive(Template)]
 #[template(path = "home.html")]
 struct Page {
@@ -53,6 +60,7 @@ struct Page {
     mois_devis_acceptes: i64,
     mois_conversion: String,
     alertes: Vec<Alerte>,
+    ouvertures: Vec<Ouverture>,
 }
 
 const MOIS: [&str; 12] = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -138,6 +146,7 @@ pub async fn afficher(State(state): State<AppState>) -> Result<Html<String>, Err
         mois_devis_acceptes,
         mois_conversion: crate::statistiques::part(mois_devis_acceptes, mois_devis_envoyes),
         alertes: alertes(db).await?,
+        ouvertures: ouvertures(db).await?,
     };
     Ok(Html(page.render()?))
 }
@@ -182,6 +191,15 @@ async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
             action: "Ouvrir",
         });
     }
+    let recurrentes = crate::recurrences::nombre_a_preparer(db).await?;
+    if recurrentes > 0 {
+        alertes.push(Alerte {
+            couleur: "#0B6371",
+            texte: format!("{recurrentes} facture(s) récurrente(s) à préparer (location…)."),
+            lien: "/factures/recurrences".to_string(),
+            action: "Préparer",
+        });
+    }
     let a_envoyer: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE statut = 'a_envoyer'").fetch_one(db).await?;
     if a_envoyer > 0 {
         alertes.push(Alerte {
@@ -205,4 +223,44 @@ async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
         });
     }
     Ok(alertes)
+}
+
+/// Les 8 dernières ouvertures par les clients (30 derniers jours) : « La facture n° 120 a été ouverte. »
+async fn ouvertures(db: &PgPool) -> Result<Vec<Ouverture>, sqlx::Error> {
+    let lignes: Vec<(Option<i64>, Option<i64>, String, String)> = sqlx::query_as(
+        "SELECT o.devis_id, o.facture_id,
+                CASE WHEN o.devis_id IS NOT NULL THEN
+                         'Le devis ' || extract(year FROM d.date_devis)::int || '-' || d.numero
+                         || CASE WHEN d.reference <> '' THEN ' (' || d.reference || ')' ELSE '' END || ' a été ouvert par '
+                         || COALESCE(ed.nom, NULLIF(trim(concat_ws(' ', cd.prenom, cd.nom)), ''), 'le client') || '.'
+                     ELSE
+                         CASE WHEN f.genre = 'note_credit' THEN 'La note de crédit n° ' ELSE 'La facture n° ' END || f.numero
+                         || CASE WHEN f.reference <> '' THEN ' (' || f.reference || ')' ELSE '' END || ' a été ouverte par '
+                         || COALESCE(ef.nom, NULLIF(trim(concat_ws(' ', cf.prenom, cf.nom)), ''), 'le client') || '.'
+                END,
+                to_char(o.created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI')
+         FROM consultations_client o
+         LEFT JOIN devis d ON d.id = o.devis_id
+         LEFT JOIN entreprises ed ON ed.id = d.client_entreprise_id
+         LEFT JOIN contacts cd ON cd.id = d.client_contact_id
+         LEFT JOIN factures f ON f.id = o.facture_id
+         LEFT JOIN entreprises ef ON ef.id = f.client_entreprise_id
+         LEFT JOIN contacts cf ON cf.id = f.client_contact_id
+         WHERE o.created_at > now() - interval '30 days'
+         ORDER BY o.created_at DESC, o.id DESC LIMIT 8",
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(lignes
+        .into_iter()
+        .map(|(devis, facture, texte, quand)| Ouverture {
+            texte,
+            quand,
+            lien: match (devis, facture) {
+                (Some(d), _) => format!("/devis/{d}"),
+                (_, Some(f)) => format!("/factures/{f}"),
+                _ => "/".to_string(),
+            },
+        })
+        .collect())
 }

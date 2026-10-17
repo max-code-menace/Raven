@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Récurrence · {{ titre }} · Ubifacture{% endblock %}
+{% block nav_recurrences %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="u-retour" href="/factures/{{ id }}" aria-label="Retour à la facture" title="Retour à la facture">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <div>
+        <h1>{% if existe %}Récurrence{% else %}Création d'une récurrence{% endif %} - {{ titre }}</h1>
+        <div class="u-sous-titre"><span>{{ client }}</span><span>{{ montant_ttc }} TTC</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !erreurs.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{% for e in erreurs %}{{ e }}{% if !loop.last %}<br>{% endif %}{% endfor %}</span></div>
+{% endif %}
+
+<section class="u-card">
+  <div class="u-card-h"><h2>{% call ui::icone("horloge", 17) %}{% endcall %}Récurrence</h2></div>
+  <form method="post" action="/factures/{{ id }}/recurrence"
+        hx-get="/factures/recurrences/apercu" hx-trigger="change, input delay:400ms" hx-target="#apercu" hx-swap="outerHTML">
+    <div class="u-deux">
+      <div class="u-col">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="form-control">
+            <span class="u-lbl">Date de début (incl.) <i>*</i></span>
+            <input class="input input-bordered" type="date" name="date_debut" value="{{ saisie.date_debut }}" required>
+          </label>
+          <label class="form-control">
+            <span class="u-lbl">Date de fin (incl.) <i>*</i></span>
+            <input class="input input-bordered" type="date" name="date_fin" value="{{ saisie.date_fin }}" required>
+          </label>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="form-control">
+            <span class="u-lbl">Type de récurrence</span>
+            <select class="select select-bordered" name="frequence">
+              {% for f in frequences %}<option value="{{ f.valeur }}"{% if f.choisi %} selected{% endif %}>{{ f.libelle }}</option>{% endfor %}
+            </select>
+          </label>
+          <label class="form-control">
+            <span class="u-lbl">Tous les (jours, semaines, mois ou ans)</span>
+            <input class="input input-bordered" type="number" name="intervalle" value="{{ saisie.intervalle }}" min="1" max="365" required>
+          </label>
+        </div>
+        <label class="form-control">
+          <span class="u-lbl">Créer la facture</span>
+          <select class="select select-bordered" name="jours_avance">
+            {% for d in delais %}<option value="{{ d.valeur }}"{% if d.choisi %} selected{% endif %}>{{ d.libelle }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="u-col">
+        {% include "_recurrence_apercu.html" %}
+        <p class="u-petit u-muet">À chaque date prévue, la facture est proposée dans Finances › Factures récurrentes (et dans « À surveiller »). Un clic sur « Préparer les factures » crée un brouillon qui reprend l'en-tête et les lignes de cette facture. Tu le relis, tu le valides (il reçoit alors son numéro) et tu l'envoies : rien ne part tout seul.</p>
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2 justify-end px-[18px] pb-4">
+      <button class="btn btn-primary" type="submit">Enregistrer la récurrence</button>
+    </div>
+  </form>
+  {% if existe %}
+  <form class="flex justify-end px-[18px] pb-4" method="post" action="/factures/{{ id }}/recurrence/supprimer">
+    <button class="btn btn-ghost text-[#953A0A]" type="submit">Arrêter la récurrence (les factures déjà créées restent)</button>
+  </form>
+  {% endif %}
+</section>
+
+{% if existe %}
+<section class="u-card">
+  <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Factures créées par la récurrence <span class="u-compte">{{ creees.len() }}</span></h2></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>Date prévue</th><th>N°</th><th>Statut</th></tr></thead>
+      <tbody>
+        {% for c in creees %}
+        <tr>
+          <td class="nw"><a href="/factures/{{ c.id }}">{{ c.prevue }}</a></td>
+          <td class="mono nw">{{ c.numero }}</td>
+          <td><span class="u-pastille {{ c.classe }}">{{ c.statut }}</span></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="3">Aucune facture créée pour l'instant.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -133,10 +133,11 @@ async fn une_facture_simple_de_bout_en_bout(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .unwrap();
-    assert_eq!((numero, statut.as_str(), vcs.as_deref(), echeance_ok), (Some(125), "a_envoyer", Some("+++000/0000/12528+++"), true));
+    assert_eq!((numero, statut.as_str(), vcs.as_deref(), echeance_ok), (Some(125), "a_envoyer", Some(vcs_125(&pool).await.as_str()), true));
 
     let (_, page) = lire(&s, &format!("/factures/{id}?ok=validee")).await;
-    for attendu in ["Facture N° 125", "+++000/0000/12528+++", "Marquer comme envoyée", "Client SA"] {
+    let vcs = vcs_125(&pool).await;
+    for attendu in ["Facture N° 125", vcs.as_str(), "Marquer comme envoyée", "Client SA"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     assert!(!page.contains("name=\"quantite\""), "plus de champ de saisie");
@@ -280,4 +281,10 @@ async fn la_liste_filtre_et_totalise(pool: PgPool) {
     assert!(!tableau.contains("<html") && tableau.contains("1 pièce(s)") && !tableau.contains("Client SA"));
     let (_, page) = lire(&s, "/factures?q=Client").await;
     assert!(page.contains("1 pièce(s)"));
+}
+
+/// La communication structurée de la facture n° 125 de l'année en cours (numérotation annuelle).
+async fn vcs_125(pool: &PgPool) -> String {
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(pool).await.unwrap();
+    ubifacture::facture_calcul::vcs_annuelle(annee, 125)
 }

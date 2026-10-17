@@ -15,6 +15,13 @@ pub fn vcs(numero: i64) -> String {
     format!("+++{}/{}/{}+++", &chiffres[0..3], &chiffres[3..7], &chiffres[7..12])
 }
 
+/// La communication structurée d'une facture numérotée par année (la numérotation repart à 1 chaque année) :
+/// l'année puis le numéro sur 6 chiffres, pour qu'elle reste unique d'une année à l'autre.
+/// 2026, n° 125 → base 2026000125 → « +++202/6000/12522+++ ».
+pub fn vcs_annuelle(annee: i32, numero: i64) -> String {
+    vcs(i64::from(annee) * 1_000_000 + numero.rem_euclid(1_000_000))
+}
+
 /// Vérifie une communication structurée (avec ou sans les +++ et les /).
 pub fn vcs_valide(texte: &str) -> bool {
     let chiffres: String = texte.chars().filter(char::is_ascii_digit).collect();
@@ -97,6 +104,9 @@ mod tests {
         assert_eq!(vcs(97), "+++000/0000/09797+++");
         assert_eq!(vcs(1_234_567_890), "+++123/4567/89002+++");
         assert!(vcs_valide(&vcs(125)) && vcs_valide(&vcs(97)) && vcs_valide("123456789002"));
+        assert_eq!(vcs_annuelle(2026, 125), "+++202/6000/12522+++");
+        assert_eq!(vcs_annuelle(2027, 1), "+++202/7000/00122+++");
+        assert!(vcs_valide(&vcs_annuelle(2027, 1)));
         assert!(!vcs_valide("+++000/0000/12527+++") && !vcs_valide("123") && !vcs_valide(""));
     }
 

@@ -15,7 +15,7 @@ use axum::{
     response::{Html, Redirect},
     routing::{get, post},
 };
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use serde::Deserialize;
 use sqlx::{FromRow, PgPool, Postgres, Transaction};
 
@@ -34,11 +34,12 @@ const LONGUEUR_MAX_DESCRIPTION: usize = 5_000;
 const LONGUEUR_MAX_UNITE: usize = 20;
 
 /// Valeur en base et libellé.
-pub(crate) const GENRES: [(&str, &str); 5] = [
+pub(crate) const GENRES: [(&str, &str); 6] = [
     ("simple", "Facture simple"),
     ("acompte", "Facture d'acompte"),
     ("avancement", "Facture d'avancement"),
     ("finale", "Facture finale"),
+    ("recurrente", "Facture récurrente"),
     ("note_credit", "Note de crédit"),
 ];
 
@@ -321,9 +322,14 @@ impl Facture {
         self.statut == "brouillon"
     }
 
-    /// Les lignes d'une facture simple ou d'une note de crédit se saisissent à la main.
+    /// Les lignes d'une facture simple, récurrente ou d'une note de crédit se saisissent à la main.
     pub(crate) fn lignes_libres(&self) -> bool {
-        matches!(self.genre.as_str(), "simple" | "note_credit")
+        matches!(self.genre.as_str(), "simple" | "recurrente" | "note_credit")
+    }
+
+    /// Une facture saisie à la main (pas calculée depuis un chantier) peut servir de modèle à une récurrence.
+    pub(crate) fn peut_recurrer(&self) -> bool {
+        matches!(self.genre.as_str(), "simple" | "recurrente")
     }
 }
 
@@ -359,6 +365,7 @@ struct LigneListeBase {
     date_echeance: Option<NaiveDate>,
     client: String,
     reference: String,
+    chantier: String,
     montant_ht_cents: i64,
     montant_ttc_cents: i64,
     #[sqlx(flatten)]
@@ -371,12 +378,16 @@ pub struct LigneListe {
     pub brouillon: bool,
     /// Facture validée (pas une note de crédit) : le menu propose « Créditer ».
     pub peut_crediter: bool,
+    /// Facture simple ou récurrente : le menu propose « Créer/voir la récurrence ».
+    pub peut_recurrer: bool,
     pub numero: String,
     pub date: String,
     pub echeance: String,
     pub genre: &'static str,
     pub client: String,
     pub reference: String,
+    /// Le chantier de la facture (sa référence), comme la colonne « Chantier/Installation » de Vertuoza.
+    pub chantier: String,
     pub montant_ht: String,
     pub montant_ttc: String,
     pub statut: &'static str,
@@ -423,6 +434,8 @@ const DEPUIS: &str = "FROM factures f
     JOIN factures_etats et ON et.facture_id = f.id
     LEFT JOIN entreprises e ON e.id = f.client_entreprise_id
     LEFT JOIN contacts c ON c.id = f.client_contact_id
+    LEFT JOIN chantiers ch ON ch.id = f.chantier_id
+    LEFT JOIN devis dch ON dch.id = ch.devis_id
     WHERE ($1 = ''
            OR f.numero::text = $1
            OR f.reference ILIKE $2
@@ -457,7 +470,8 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     let lignes: Vec<LigneListeBase> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT f.id, f.genre::text AS genre, f.numero, f.date_facture, f.date_echeance,
                 COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), ''), '') AS client,
-                f.reference, {SIGNE} * f.montant_ht_cents AS montant_ht_cents, {SIGNE} * f.montant_ttc_cents AS montant_ttc_cents,
+                f.reference, COALESCE(NULLIF(dch.reference, ''), 'n° ' || ch.numero, '') AS chantier,
+                {SIGNE} * f.montant_ht_cents AS montant_ht_cents, {SIGNE} * f.montant_ttc_cents AS montant_ttc_cents,
                 et.paye_cents, et.credite_cents, et.reste_cents, et.dernier_paiement, et.etat, et.jours_retard
          {DEPUIS} ORDER BY f.numero IS NOT NULL, f.date_facture DESC, f.numero DESC NULLS FIRST, f.id DESC LIMIT $5 OFFSET $6"
     )))
@@ -481,6 +495,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
                     id: l.id,
                     brouillon: l.numero.is_none(),
                     peut_crediter: l.numero.is_some() && l.genre != "note_credit",
+                    peut_recurrer: matches!(l.genre.as_str(), "simple" | "recurrente"),
                     numero: match (l.genre.as_str(), l.numero) {
                         ("note_credit", Some(n)) => format!("NC {n}"),
                         (_, Some(n)) => n.to_string(),
@@ -491,6 +506,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
                     genre: libelle_genre(&l.genre),
                     client: l.client,
                     reference: l.reference,
+                    chantier: l.chantier,
                     montant_ht: format_euros(l.montant_ht_cents),
                     montant_ttc: format_euros(l.montant_ttc_cents),
                     statut: libelle,
@@ -663,6 +679,8 @@ struct Page {
     peut_marquer_envoyee: bool,
     /// Une facture numérotée (pas une note de crédit) peut être créditée.
     peut_crediter: bool,
+    /// Facture simple ou récurrente : modèle possible d'une récurrence.
+    peut_recurrer: bool,
     numero: String,
     date: String,
     echeance: String,
@@ -726,6 +744,20 @@ async fn liens(db: &PgPool, f: &Facture) -> Result<Vec<Lien>, sqlx::Error> {
             texte: format!("Note de crédit pour la facture n° {}", numero.map(|n| n.to_string()).unwrap_or_default()),
         });
     }
+    // Facture préparée par une récurrence, ou modèle d'une récurrence.
+    let recurrence: Option<(i64, NaiveDate)> = sqlx::query_as(
+        "SELECT r.modele_id, COALESCE(f.date_prevue, f.date_facture) FROM factures f JOIN recurrences r ON r.id = f.recurrence_id WHERE f.id = $1",
+    )
+    .bind(f.id)
+    .fetch_optional(db)
+    .await?;
+    if let Some((modele, prevue)) = recurrence {
+        liens.push(Lien { adresse: format!("/factures/{modele}/recurrence"), texte: format!("Facture récurrente prévue le {}", date_belge(prevue)) });
+    }
+    let modele: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM recurrences WHERE modele_id = $1)").bind(f.id).fetch_one(db).await?;
+    if modele {
+        liens.push(Lien { adresse: format!("/factures/{}/recurrence", f.id), texte: "Modèle d'une récurrence".to_string() });
+    }
     let notes: Vec<(i64, Option<i64>)> =
         sqlx::query_as("SELECT id, numero FROM factures WHERE facture_origine_id = $1 ORDER BY id").bind(f.id).fetch_all(db).await?;
     for (id, numero) in notes {
@@ -785,6 +817,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         brouillon: f.brouillon(),
         peut_marquer_envoyee: f.statut == "a_envoyer",
         peut_crediter: f.numero.is_some() && f.genre != "note_credit",
+        peut_recurrer: f.peut_recurrer(),
         numero: f.numero.map(|n| n.to_string()).unwrap_or_default(),
         date: date_belge(f.date_facture),
         echeance: f.date_echeance.map(date_belge).unwrap_or_default(),
@@ -1060,6 +1093,14 @@ pub(crate) async fn verifier(db: &PgPool, f: &Facture, lignes: &[LigneBase]) -> 
     {
         manques.push(format!("Une date au plus tôt le {} (date de la dernière pièce numérotée)", date_belge(derniere)));
     }
+    // La numérotation est annuelle : une année déjà close (une pièce de l'année suivante existe) ne se rouvre pas.
+    let compteur = if f.genre == "note_credit" { "note_credit" } else { "facture" };
+    let annee_compteur: Option<i32> = sqlx::query_scalar("SELECT annee FROM compteurs WHERE nom = $1").bind(compteur).fetch_one(db).await?;
+    if let Some(annee) = annee_compteur
+        && f.date_facture.year() < annee
+    {
+        manques.push(format!("Une date en {annee} au plus tôt (la numérotation de {annee} est commencée)"));
+    }
     Ok(manques)
 }
 
@@ -1109,10 +1150,20 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>) -> Result<R
     if !manques.is_empty() || derniere.is_some_and(|d| f.date_facture < d) {
         return Err(Erreur::conflit("Cette facture ne peut pas encore être validée : complète ce qui est indiqué sur la fiche."));
     }
-    let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = $1 RETURNING valeur")
-        .bind(compteur)
-        .fetch_one(&mut *tx)
-        .await?;
+    // Numérotation annuelle (réglage d'Ubique dans Vertuoza) : la première pièce d'une nouvelle année repart à 1.
+    let annee = f.date_facture.year();
+    let (numero, annee_compteur): (i64, Option<i32>) = sqlx::query_as(
+        "UPDATE compteurs SET valeur = CASE WHEN annee IS NULL OR annee < $2 THEN 1 ELSE valeur + 1 END,
+                              annee = GREATEST(COALESCE(annee, $2), $2)
+         WHERE nom = $1 RETURNING valeur, annee",
+    )
+    .bind(compteur)
+    .bind(annee)
+    .fetch_one(&mut *tx)
+    .await?;
+    if annee_compteur != Some(annee) {
+        return Err(Erreur::conflit("Cette facture ne peut pas encore être validée : complète ce qui est indiqué sur la fiche."));
+    }
     let (genre_condition, jours): (String, i32) = sqlx::query_as("SELECT \"type\"::text, jours FROM conditions_paiement WHERE id = $1")
         .bind(f.conditions_paiement_id)
         .fetch_one(&mut *tx)
@@ -1121,7 +1172,7 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>) -> Result<R
     let (echeance, vcs) = if note_credit {
         (None, None)
     } else {
-        (Some(facture_calcul::echeance(f.date_facture, &genre_condition, jours)), Some(facture_calcul::vcs(numero)))
+        (Some(facture_calcul::echeance(f.date_facture, &genre_condition, jours)), Some(facture_calcul::vcs_annuelle(annee, numero)))
     };
     recalculer(&mut tx, id).await?;
     sqlx::query(

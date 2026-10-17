@@ -67,6 +67,7 @@
     <div class="px-[18px] py-6 text-center u-muet text-[13.5px]">Rien à signaler : aucune facture à relancer, aucun devis en attente d'action.</div>
     {% endfor %}
   </section>
+  <div class="flex flex-col gap-4 min-w-0">
   <section class="u-card">
     <div class="u-card-h"><h2>{% call ui::icone("stats", 17) %}{% endcall %}Ce mois-ci</h2><span class="u-petit u-muet">{{ mois_texte }}</span></div>
     <div class="u-ligne-montant"><span>Facturé HT</span><b>{{ mois_facture }}</b></div>
@@ -74,5 +75,17 @@
     <div class="u-ligne-montant"><span>Devis envoyés</span><b>{{ mois_devis_envoyes }}</b></div>
     <div class="u-ligne-montant"><span>Devis acceptés</span><b>{{ mois_devis_acceptes }} · {{ mois_conversion }}</b></div>
   </section>
+  <section class="u-card">
+    <div class="u-card-h"><h2>{% call ui::icone("oeil", 17) %}{% endcall %}Ouvertures par vos clients</h2><span class="u-petit u-muet">30 derniers jours</span></div>
+    {% for o in ouvertures %}
+    <a class="flex gap-3 items-start px-[18px] py-2.5 border-b border-[#EEEFEC] no-underline text-[#17191C] hover:bg-[#F7F8F6]" href="{{ o.lien }}">
+      <span class="flex-1 text-[13.5px]">{{ o.texte }}</span>
+      <span class="u-petit u-muet nw">{{ o.quand }}</span>
+    </a>
+    {% else %}
+    <div class="px-[18px] py-5 text-center u-muet text-[13.5px]">Aucun devis ni aucune facture ouverts en ligne par un client.</div>
+    {% endfor %}
+  </section>
+  </div>
 </div>
 {% endblock %}

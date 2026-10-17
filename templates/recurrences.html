@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Factures récurrentes · Ubifacture{% endblock %}
+{% block nav_recurrences %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("horloge", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Factures récurrentes</h1>
+        <div class="u-sous-titre">Les factures qui reviennent (location mensuelle…). Une récurrence se crée depuis une facture : menu « ⋯ » › Créer/voir la récurrence. Rien n'est créé ni envoyé sans ton clic.</div>
+      </div>
+    </div>
+    <div class="u-actions">
+      <form method="post" action="/factures/recurrences/preparer">
+        <button class="btn btn-primary" type="submit"{% if total_a_preparer == 0 %} disabled{% endif %}>Préparer les factures ({{ total_a_preparer }})</button>
+      </form>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+<section class="u-card">
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead>
+        <tr>
+          <th>Client</th><th>Référence</th><th class="n">Montant TTC</th><th>Rythme</th><th>Période</th><th>Prochaine date</th>
+          <th class="n">Créées</th><th>À préparer</th><th class="n"><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lignes %}
+        <tr>
+          <td>{{ l.client }}</td>
+          <td>{{ l.reference }}</td>
+          <td class="n">{{ l.montant_ttc }}</td>
+          <td class="nw">{{ l.rythme }}</td>
+          <td class="nw">{{ l.periode }}</td>
+          <td class="nw">{{ l.prochaine }}</td>
+          <td class="n">{{ l.creees }}</td>
+          <td>{% if l.a_preparer > 0 %}<span class="u-pastille s-a-envoyer">{{ l.a_preparer }} à préparer</span>{% else %}<span class="u-muet">—</span>{% endif %}</td>
+          <td class="n"><a class="btn u-ib" href="/factures/{{ l.modele }}/recurrence" aria-label="Voir la récurrence" title="Voir la récurrence">{% call ui::icone("crayon", 16) %}{% endcall %}</a></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="9">Aucune récurrence. Ouvre une facture (par exemple la location du mois) et choisis « Créer/voir la récurrence ».</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
