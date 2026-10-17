@@ -40,9 +40,9 @@ Mahx dirige le produit, il n'est pas développeur. Claude code.
 - Rust, édition 2024. Axum 0.8 (routes en `Router`, `src/lib.rs` assemble les modules), Askama 0.16 (templates dans `templates/`), htmx (pas de JavaScript écrit à la main), Tailwind CSS + DaisyUI (via CDN pour l'instant ; installation locale avant la mise en ligne).
 - PostgreSQL + SQLx 0.9 (migrations numérotées dans `migrations/`, **montants en centimes**, enums Postgres pour les statuts). Requêtes SQLx à l'exécution (pas de `query!`).
 - Base `ubifacture`, utilisateur `ubifacture` (créés par `scripts/creer-base.sql`), `DATABASE_URL` dans `.env` (non versionné, modèle dans `.env.example`). Les tests créent leurs propres bases temporaires.
-- Lancement : `cargo run` (port 3001, voir `.claude/launch.json`).
+- Lancement : `cargo run` (port 3001, voir `.claude/launch.json`). Comptes : `cargo run -- utilisateur ajouter <e-mail> [nom]`, `cargo run -- utilisateur mot-de-passe <e-mail>`, `cargo run -- utilisateur liste` (le mot de passe est demandé sans s'afficher).
 - **Mise en page** : tout nouvel écran suit la mise en page commune (`templates/base.html`, `_styles.html`, `_ui.html`) et l'organisation de Vertuoza (planches : https://claude.ai/artifact/DjQgs5yMyDasRcuTwvfryC). Pas de JavaScript écrit à la main : menus, filtres et sections repliables passent par `<details>` ou htmx.
-- Déjà choisis : PDF avec Typst, e-mails par l'API de Brevo (`ureq`), signature en ligne simple (nom + bon pour accord), paiement par QR code EPC (`qrcode`), export ZIP (`zip`). Encore à confirmer avec Mahx : connexion (Argon2 + cookie de session, comme Nodimmo), hébergement en UE.
+- Déjà choisis : PDF avec Typst, e-mails par l'API de Brevo (`ureq`), signature en ligne simple (nom + bon pour accord), paiement par QR code EPC (`qrcode`), export ZIP (`zip`). Connexion : Argon2 + cookie de session, comme Nodimmo (fait le 17/10/2026). Encore à choisir : hébergement en UE.
 
 Machine de Mahx : Windows. Build Tools Visual Studio installés.
 
@@ -164,6 +164,7 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés.
   - **Onglets de la facture** (Informations, Encodage, Totaux, Visualisation, Historique) qui mènent aux parties de la page.
   - **Factures fournisseurs** (`/achats`, menu Finances) : tous les achats saisis des chantiers, recherche, total, « Nouveau » avec le choix du chantier, en attendant Peppol (phase 2).
   - Pas de glisser-déposer des lignes : il demanderait du JavaScript écrit à la main (interdit) ; les flèches restent.
+- [x] Connexion (17/10/2026, avant la mise en ligne) : migration `0023_connexion.sql` (utilisateurs, sessions, essais ratés), `src/connexion.rs`, page `/connexion` et « Se déconnecter » dans le menu. Toutes les pages demandent d'être connecté sauf `/connexion`, `/client/…` (page client, lien secret) et `/sante`. Mot de passe Argon2 (10 caractères au moins), session de 30 jours par cookie (HttpOnly, Secure, SameSite=Lax ; la base ne garde que l'empreinte du jeton), 5 essais ratés par quart d'heure et par e-mail. Comptes créés en ligne de commande seulement (pas d'inscription sur le site). `crate::application` = le site protégé (`main.rs`) ; `crate::app` = le site sans connexion, pour les tests des écrans. 355 tests.
 - [ ] Phases 2 et 3.
 
 ## Fichiers de documentation

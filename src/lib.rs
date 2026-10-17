@@ -5,6 +5,7 @@ pub mod avancements;
 pub mod avenants;
 pub mod chantiers;
 pub mod commun;
+pub mod connexion;
 pub mod db;
 pub mod calcul;
 pub mod devis;
@@ -136,4 +137,12 @@ pub fn app(state: AppState) -> Router {
         .merge(fiches::routes())
         .merge(societe::routes())
         .with_state(state)
+}
+
+/// Le site tel qu'il est servi (`main.rs`) : toutes les pages demandent d'être connecté, sauf la page de connexion,
+/// la page client en ligne et `/sante` (voir `connexion`). `app` reste le site sans connexion, pour les tests.
+pub fn application(state: AppState) -> Router {
+    app(state.clone())
+        .merge(connexion::routes().with_state(state.clone()))
+        .layer(axum::middleware::from_fn_with_state(state, connexion::exiger_connexion))
 }
