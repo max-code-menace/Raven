@@ -108,6 +108,32 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés.
 
 Après la V1, seulement si les utilisateurs le demandent : réception Peppol (factures fournisseurs à valider et rattacher), CodaBox (extraits CODA, rapprochement par la communication structurée), statistiques avancées.
 
+## Prochaine session (point de reprise, 19/10/2026)
+**Où on en est** : étapes 0 à 3 de la V1 de Raven faites, branche `claude/stoic-allen-z04f7l` (poussée, arbre propre), 387 tests réussis, 0 avertissement. Migrations jusqu'à `0029`.
+
+**D'abord, chez Mahx (rien n'est encore installé de la branche)** : la dernière tentative a échoué car PowerShell était ouvert en administrateur dans `C:\Windows\system32` (`cargo` introuvable, pas de dépôt git) et `pg_dump` n'était pas dans `C:\Program Files\PostgreSQL\16\bin`. Dans l'ordre :
+1. PowerShell **normal** (pas administrateur) : `cargo --version` (sinon `Test-Path "$HOME\.cargo\bin\cargo.exe"`).
+2. Aller dans le dossier du projet (le trouver : `Get-ChildItem -Path $HOME, "C:\" -Directory -Recurse -Depth 4 -Filter ubifacture -ErrorAction SilentlyContinue`).
+3. Trouver `pg_dump` (`Get-ChildItem "C:\Program Files\PostgreSQL" -Recurse -Filter pg_dump.exe`) et **sauvegarder la vraie base avant tout `cargo run`** (le premier `cargo run` applique 0025 à 0029 aux données d'Ubique).
+4. `git pull origin claude/stoic-allen-z04f7l`, `cargo build`, `cargo test`, `cargo run` ; vérifier à l'œil : devis, factures, société, logo, un lien de page client déjà envoyé, puis une inscription d'essai en navigation privée (le lien de confirmation s'affiche dans la console sans clé Brevo).
+
+**Questions ouvertes à Mahx** :
+- Étape 4, contenu de la bibliothèque par secteur : une liste type préparée par Claude (descriptions et unités, sans prix) ou la bibliothèque d'Ubique (209 ouvrages, `docs/vertuoza/captures/inventaire/bibliotheque-vertuoza.csv`) nettoyée et classée ?
+- À faire valider : mention de franchise « Régime particulier de franchise des petites entreprises. » (comptable) ; catégorie UBL « E » pour la franchise (prestataire Peppol, étape 5).
+- Choix de Claude à confirmer : un compte = une organisation ; import de métrés Excel éteint par défaut pour les nouvelles organisations (allumé pour Ubique).
+
+**Ensuite** : étape 4 (bibliothèque par secteur : catalogue commun en arborescence secteur › catégorie, copié dans l'organisation à la fin de l'assistant de démarrage selon `profil_metier`, sans prix imposés), puis 5 (Peppol), 6 (Mollie), 7 (production), 8 (bêta). Reprise des données de Vertuoza toujours en pause.
+
+**Relevé par le mini audit, à traiter à l'étape 7 (mise en production)** :
+- Réserve de connexions limitée à 5 (`db::options`) alors que chaque page garde sa connexion (`base::Base`) jusqu'à la fin, PDF et appel à Brevo compris : la rendre réglable (variable d'environnement) et plus grande.
+- Limiter les essais par adresse IP (inscription, connexion, mot de passe oublié) : aujourd'hui seulement par adresse e-mail et 30 inscriptions par heure sur tout le site.
+- `EMAIL_EXPEDITEUR` (validé chez Brevo) obligatoire en production ; case « J'accepte les conditions générales » à l'inscription (pages légales).
+- Tailwind et DaisyUI par CDN à installer localement ; journaux et alertes ; sauvegardes avec restauration testée ; l'utilisateur de la base ne doit être ni super-utilisateur ni BYPASSRLS (test `l_utilisateur_de_la_base_ne_contourne_pas_les_regles`).
+- Les tables de comptes (`membres`, `sessions`, `invitations`) n'ont pas de RLS : chaque écran qui les lit filtre explicitement sur l'organisation, et le test d'isolation le vérifie ; toute nouvelle page qui les lit doit faire de même.
+- Relecture de sécurité par un humain avant d'encaisser le premier client.
+
+**Tester dans un environnement neuf** : PostgreSQL 15 au moins, `scripts/creer-base.sql` (utilisateur `ubifacture` avec CREATEDB), `DATABASE_URL` dans `.env`, puis `cargo test` (chaque test crée sa base). Vitrine à l'œil : `cargo test --test vitrine -- --ignored --nocapture` (http://127.0.0.1:3002).
+
 ## Phases (plan d'origine pour Ubique, remplacé par le plan de la V1 de Raven)
 - **Phase 1** : contacts, devis (lots, lignes, TVA, option marge et prix d'achat, aperçu et export PDF), accepter / refuser, chantier, avancements, factures d'acompte / avancement / finale / simple, notes de crédit, numérotation, VCS, suivi des paiements et retards, export pour le comptable (PDF, UBL 2.1 si demandé), envoi par e-mail avec modèles et rappels, **page client en ligne** (consulter, signer, payer par QR), suivi de chantier complet, bibliothèque de prix, statistiques réduites.
 - **Phase 2 : Peppol.** Envoi et réception d'e-factures (obligatoire entre entreprises en Belgique depuis le 1er janvier 2026). Il faut un **point d'accès Peppol certifié** (prestataire agréé avec API) : on ne se connecte pas au réseau soi-même. Environ 600 factures fournisseurs à valider et rattacher à un chantier : formulaire pré-rempli depuis la e-facture, liaison à un ou plusieurs chantiers.
