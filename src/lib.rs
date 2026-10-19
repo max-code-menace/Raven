@@ -38,6 +38,7 @@ pub mod archive;
 pub mod mentions_tva;
 pub mod reprise;
 pub mod retard;
+pub mod signature;
 pub mod reprise_devis;
 pub mod societe;
 pub mod statistiques;
@@ -130,6 +131,7 @@ pub fn app(state: AppState) -> Router {
         .merge(factures_chantier::routes())
         .merge(facture_pdf::routes())
         .merge(archive::routes())
+        .merge(signature::routes())
         .merge(paiements::routes())
         .merge(envoi::routes())
         .merge(rappels::routes())

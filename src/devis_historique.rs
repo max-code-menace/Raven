@@ -37,6 +37,8 @@ struct Page {
     onglet: &'static str,
     barre: Barre,
     evenements: Vec<Evenement>,
+    /// Le dossier de preuve de la signature en ligne, s'il y en a un.
+    dossier: Option<crate::signature::Dossier>,
 }
 
 async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
@@ -54,6 +56,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<
         classe_statut: entete.classe_statut,
         onglet: "historique",
         barre: charger_barre(&state.db, id).await?,
+        dossier: crate::signature::dossier(&state.db, id).await?,
         evenements: evenements
             .into_iter()
             .map(|e| Evenement { quand: e.quand, genre: Genre::libelle(&e.genre), detail: e.detail })
