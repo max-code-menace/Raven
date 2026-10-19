@@ -5,7 +5,7 @@
 //! d'e-mails (copie des textes de départ neutres, `modeles_email_defaut`). Sa société reste à remplir (Réglages ›
 //! Société) : les pages et les PDF le signalent déjà quand elle manque.
 
-use sqlx::{Connection as _, PgPool};
+use sqlx::{Connection as _, PgConnection, PgPool};
 
 /// Les compteurs de numérotation d'une organisation.
 const COMPTEURS: [&str; 4] = ["devis", "chantier", "facture", "note_credit"];
@@ -13,15 +13,22 @@ const COMPTEURS: [&str; 4] = ["devis", "chantier", "facture", "note_credit"];
 /// Crée une organisation complète et rend son numéro. Tout est créé dans une seule transaction : en cas d'erreur, rien
 /// ne reste.
 pub async fn creer(db: &PgPool, nom: &str) -> Result<i64, String> {
+    let mut conn = db.acquire().await.map_err(|e| e.to_string())?;
+    let mut tx = conn.begin().await.map_err(|e| e.to_string())?;
+    let id = creer_dans(&mut tx, nom).await?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Crée une organisation complète dans la transaction de l'appelant (l'inscription y ajoute le compte). Après l'appel,
+/// la transaction travaille dans la nouvelle organisation (réglage limité à la transaction).
+pub(crate) async fn creer_dans(tx: &mut PgConnection, nom: &str) -> Result<i64, String> {
     let nom = nom.trim();
     if nom.is_empty() {
         return Err("Le nom de l'organisation est obligatoire.".to_string());
     }
     let erreur = |e: sqlx::Error| e.to_string();
-    let mut conn = db.acquire().await.map_err(erreur)?;
-    let mut tx = conn.begin().await.map_err(erreur)?;
     let id: i64 = sqlx::query_scalar("INSERT INTO organisations (nom) VALUES ($1) RETURNING id").bind(nom).fetch_one(&mut *tx).await.map_err(erreur)?;
-    // Le temps de cette transaction seulement, la connexion travaille dans la nouvelle organisation.
     sqlx::query("SELECT set_config('app.organisation_id', $1, true)").bind(id.to_string()).execute(&mut *tx).await.map_err(erreur)?;
     sqlx::query("INSERT INTO reglages DEFAULT VALUES").execute(&mut *tx).await.map_err(erreur)?;
     for compteur in COMPTEURS {
@@ -31,7 +38,6 @@ pub async fn creer(db: &PgPool, nom: &str) -> Result<i64, String> {
         .execute(&mut *tx)
         .await
         .map_err(erreur)?;
-    tx.commit().await.map_err(erreur)?;
     Ok(id)
 }
 

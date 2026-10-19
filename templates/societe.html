@@ -90,6 +90,12 @@
         <h3>Identifiants légaux</h3>
         {% call m::champ("TVA", "numero_tva", form.numero_tva, "text") %}{% endcall %}
         <label class="form-control w-full">
+          <span class="u-lbl">Régime de TVA</span>
+          <select class="select select-bordered w-full" name="regime_tva">
+            {% for (valeur, libelle) in regimes %}<option value="{{ valeur }}"{% if *valeur == form.regime_tva %} selected{% endif %}>{{ libelle }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="form-control w-full">
           <span class="u-lbl">Devise</span>
           <input class="input input-bordered w-full" type="text" value="€ - EUR" disabled>
         </label>

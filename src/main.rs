@@ -83,9 +83,16 @@ async fn main() {
     }
 
     // E-mails : sans BREVO_CLE_API, rien ne part (les e-mails sont seulement enregistrés dans l'application).
-    emails::configurer(std::env::var("BREVO_CLE_API").ok(), std::env::var("ADRESSE_PUBLIQUE").ok());
+    emails::configurer(
+        std::env::var("BREVO_CLE_API").ok(),
+        std::env::var("ADRESSE_PUBLIQUE").ok(),
+        std::env::var("EMAIL_EXPEDITEUR").ok(),
+    );
     if emails::envoi_actif() {
         println!("E-mails : envoi par Brevo activé.");
+        if std::env::var("EMAIL_EXPEDITEUR").map(|e| !ubifacture::commun::email_valide(e.trim())).unwrap_or(true) {
+            println!("ATTENTION : EMAIL_EXPEDITEUR manque : les e-mails d'inscription, de mot de passe et d'invitation ne partiront pas.");
+        }
     } else {
         println!("E-mails : mode test (pas de BREVO_CLE_API), les e-mails sont seulement enregistrés.");
     }

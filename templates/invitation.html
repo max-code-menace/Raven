@@ -1,0 +1,20 @@
+{% extends "public_base.html" %}
+{% block titre %}Invitation{% endblock %}
+{% block content %}
+      <h2 class="font-semibold" style="margin:0">Rejoindre {{ organisation }}</h2>
+      <p style="margin:0">Tu es invité à utiliser Ubifacture avec {{ organisation }}. Choisis ton mot de passe pour commencer.</p>
+      {% if !erreur.is_empty() %}
+      <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
+      {% endif %}
+      <form method="post" action="/invitation/{{ jeton }}" style="display:flex;flex-direction:column;gap:16px;margin:0">
+        <label class="form-control"><span class="u-lbl">E-mail</span>
+          <input class="input input-bordered w-full" type="email" value="{{ email }}" disabled></label>
+        <label class="form-control"><span class="u-lbl">Ton nom</span>
+          <input class="input input-bordered w-full" name="nom" value="{{ nom }}" maxlength="120" autocomplete="name" required autofocus></label>
+        <label class="form-control"><span class="u-lbl">Mot de passe (10 caractères au moins)</span>
+          <input class="input input-bordered w-full" type="password" name="mot_de_passe" minlength="10" autocomplete="new-password" required></label>
+        <label class="form-control"><span class="u-lbl">Encore une fois</span>
+          <input class="input input-bordered w-full" type="password" name="confirmation" minlength="10" autocomplete="new-password" required></label>
+        <button class="btn btn-primary w-full" type="submit">Rejoindre l'équipe</button>
+      </form>
+{% endblock %}

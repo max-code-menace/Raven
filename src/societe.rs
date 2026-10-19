@@ -153,8 +153,51 @@ pub struct SocieteForm {
     telephones_supplementaires: Vec<String>,
     site_web: String,
     numero_tva: String,
+    /// « assujetti » ou « franchise » (petite entreprise).
+    regime_tva: String,
     iban: Vec<String>,
     bic: Vec<String>,
+}
+
+/// Les régimes de TVA proposés.
+pub const REGIMES_TVA: [(&str, &str); 2] = [
+    ("assujetti", "Assujetti à la TVA"),
+    ("franchise", "Franchise de TVA des petites entreprises (pas de TVA sur les factures)"),
+];
+
+impl SocieteForm {
+    /// Le formulaire rempli par l'assistant de démarrage (un téléphone, un compte, nom abrégé = nom).
+    pub(crate) fn depuis_demarrage(
+        nom: &str,
+        rue: &str,
+        numero: &str,
+        code_postal: &str,
+        ville: &str,
+        pays: &str,
+        email: &str,
+        telephone: &str,
+        numero_tva: &str,
+        regime_tva: &str,
+        iban: &str,
+        bic: &str,
+    ) -> SocieteForm {
+        SocieteForm {
+            nom: nom.to_string(),
+            nom_abrege: nom.to_string(),
+            rue: rue.to_string(),
+            numero: numero.to_string(),
+            code_postal: code_postal.to_string(),
+            ville: ville.to_string(),
+            pays: pays.to_string(),
+            email: email.to_string(),
+            telephone: telephone.to_string(),
+            numero_tva: numero_tva.to_string(),
+            regime_tva: regime_tva.to_string(),
+            iban: vec![iban.to_string()],
+            bic: vec![bic.to_string()],
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(FromRow)]
@@ -172,6 +215,7 @@ struct SocieteLigne {
     telephones_supplementaires: Vec<String>,
     site_web: Option<String>,
     numero_tva: Option<String>,
+    regime_tva: String,
 }
 
 #[derive(FromRow)]
@@ -183,7 +227,7 @@ struct CompteLigne {
 async fn charger_formulaire(db: &mut PgConnection) -> Result<SocieteForm, sqlx::Error> {
     let societe: Option<SocieteLigne> = sqlx::query_as(
         "SELECT nom, nom_abrege, rue, numero, code_postal, ville, pays, email, emails_supplementaires,
-                telephone, telephones_supplementaires, site_web, numero_tva FROM societe WHERE organisation_id = app_organisation()",
+                telephone, telephones_supplementaires, site_web, numero_tva, regime_tva FROM societe WHERE organisation_id = app_organisation()",
     )
     .fetch_optional(&mut *db)
     .await?;
@@ -207,16 +251,17 @@ async fn charger_formulaire(db: &mut PgConnection) -> Result<SocieteForm, sqlx::
             telephones_supplementaires: s.telephones_supplementaires,
             site_web: s.site_web.unwrap_or_default(),
             numero_tva: s.numero_tva.unwrap_or_default(),
+            regime_tva: s.regime_tva,
             ..Default::default()
         },
-        None => SocieteForm { pays: "BE".into(), ..Default::default() },
+        None => SocieteForm { pays: "BE".into(), regime_tva: "assujetti".into(), ..Default::default() },
     };
     form.iban = comptes.iter().map(|c| c.iban.clone()).collect();
     form.bic = comptes.iter().map(|c| c.bic.clone().unwrap_or_default()).collect();
     Ok(form)
 }
 
-struct Valeurs {
+pub(crate) struct Valeurs {
     nom: String,
     nom_abrege: String,
     rue: String,
@@ -230,10 +275,11 @@ struct Valeurs {
     telephones_supplementaires: Vec<String>,
     site_web: Option<String>,
     numero_tva: Option<String>,
+    regime_tva: String,
     comptes: Vec<(String, Option<String>)>,
 }
 
-fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
+pub(crate) fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
     let mut erreurs = Vec::new();
 
     let nom = f.nom.trim().to_string();
@@ -282,6 +328,11 @@ fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
         },
     };
 
+    let regime_tva = if f.regime_tva.is_empty() { "assujetti".to_string() } else { f.regime_tva.clone() };
+    if !REGIMES_TVA.iter().any(|(v, _)| *v == regime_tva) {
+        erreurs.push("Ce régime de TVA n'existe pas.".to_string());
+    }
+
     // Les lignes de compte sont envoyées par paires (IBAN, BIC), dans l'ordre. Les lignes
     // entièrement vides sont ignorées. Le premier compte est celui utilisé par défaut.
     let mut comptes = Vec::new();
@@ -325,20 +376,21 @@ fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
         telephones_supplementaires,
         site_web: vide_en_none(&f.site_web),
         numero_tva,
+        regime_tva,
         comptes,
     })
 }
 
-async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Error> {
+pub(crate) async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Error> {
     let mut tx = db.begin().await?;
     sqlx::query(
         "INSERT INTO societe (nom, nom_abrege, rue, numero, code_postal, ville, pays, email,
-                              emails_supplementaires, telephone, telephones_supplementaires, site_web, numero_tva)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                              emails_supplementaires, telephone, telephones_supplementaires, site_web, numero_tva, regime_tva)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (organisation_id) DO UPDATE SET
             nom = $1, nom_abrege = $2, rue = $3, numero = $4, code_postal = $5, ville = $6, pays = $7,
             email = $8, emails_supplementaires = $9, telephone = $10, telephones_supplementaires = $11,
-            site_web = $12, numero_tva = $13, updated_at = now()",
+            site_web = $12, numero_tva = $13, regime_tva = $14, updated_at = now()",
     )
     .bind(&v.nom)
     .bind(&v.nom_abrege)
@@ -353,6 +405,7 @@ async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Err
     .bind(&v.telephones_supplementaires)
     .bind(&v.site_web)
     .bind(&v.numero_tva)
+    .bind(&v.regime_tva)
     .execute(&mut *tx)
     .await?;
 
@@ -403,6 +456,7 @@ struct PageSociete {
     a_un_logo: bool,
     version_logo: i64,
     conditions_generales: Option<String>,
+    regimes: &'static [(&'static str, &'static str)],
 }
 
 /// Un champ ajouté par le bouton « Ajouter un e-mail » / « Ajouter un téléphone ».
@@ -442,6 +496,7 @@ async fn construire_page(
         a_un_logo: nom_du_fichier(&mut *db, Fichier::Logo).await?.is_some(),
         version_logo: version_du_logo(&mut *db).await?,
         conditions_generales: nom_du_fichier(&mut *db, Fichier::ConditionsGenerales).await?,
+        regimes: &REGIMES_TVA,
         form,
         erreurs,
         enregistre,

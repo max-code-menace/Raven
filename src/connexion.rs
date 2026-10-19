@@ -5,8 +5,10 @@
 //! - Le cookie contient un jeton aléatoire ; la base n'en garde que l'empreinte SHA-256 (une copie de la base ne
 //!   permet pas de se faire passer pour quelqu'un). Session de 30 jours.
 //! - 5 essais ratés par quart d'heure et par e-mail, ensuite on attend.
-//! - Les utilisateurs se créent en ligne de commande (`cargo run -- utilisateur ajouter <e-mail>`), jamais depuis le
-//!   site : il n'y a pas de page d'inscription.
+//! - Les comptes se créent sur le site (`comptes` : inscription, puis lien de vérification envoyé par e-mail ; ou
+//!   invitation dans une équipe) ou en ligne de commande (`cargo run -- utilisateur ajouter <e-mail>`). Un compte
+//!   inscrit sur le site ne se connecte qu'après avoir confirmé son adresse e-mail.
+//! - Tant que l'assistant de démarrage de l'organisation n'est pas fait, toutes les pages mènent à `/demarrage`.
 //!
 //! - Un utilisateur est **membre** d'une organisation ; sa session est ouverte dans cette organisation et chaque page
 //!   travaille dans celle-ci (`base::Organisation`, posée par `exiger_connexion`).
@@ -32,14 +34,14 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use crate::{AppState, Erreur};
 
-const COOKIE: &str = "ubifacture_session";
+pub(crate) const COOKIE: &str = "ubifacture_session";
 const DUREE_JOURS: i32 = 30;
 const ESSAIS_MAX: i64 = 5;
-const LONGUEUR_MIN: usize = 10;
+pub(crate) const LONGUEUR_MIN: usize = 10;
 
 // ─── Mots de passe ──────────────────────────────────────────────────────────
 
@@ -64,9 +66,18 @@ pub fn assez_long(mot_de_passe: &str) -> bool {
 
 // ─── Utilisateurs (ligne de commande) ───────────────────────────────────────
 
-/// Ajoute un utilisateur, propriétaire de l'organisation donnée. Erreur lisible si l'e-mail existe déjà, si le mot
-/// de passe est trop court ou si l'organisation n'existe pas.
-pub async fn ajouter_utilisateur(db: &PgPool, organisation: i64, email: &str, nom: &str, mot_de_passe: &str) -> Result<(), String> {
+/// Crée un compte, membre de l'organisation avec le rôle donné, dans la transaction de l'appelant. `verifie` : son
+/// adresse e-mail est déjà confirmée (ligne de commande, invitation reçue à cette adresse). Erreur lisible si l'e-mail
+/// n'est pas valable ou existe déjà, ou si le mot de passe est trop court.
+pub(crate) async fn creer_compte(
+    tx: &mut PgConnection,
+    organisation: i64,
+    email: &str,
+    nom: &str,
+    mot_de_passe: &str,
+    role: &str,
+    verifie: bool,
+) -> Result<i64, String> {
     let email = email.trim();
     if !crate::commun::email_valide(email) {
         return Err(format!("« {email} » n'est pas une adresse e-mail."));
@@ -74,6 +85,29 @@ pub async fn ajouter_utilisateur(db: &PgPool, organisation: i64, email: &str, no
     if !assez_long(mot_de_passe) {
         return Err(format!("Le mot de passe doit faire au moins {LONGUEUR_MIN} caractères."));
     }
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO utilisateurs (email, nom, mot_de_passe, email_verifie_le) VALUES ($1, $2, $3, CASE WHEN $4 THEN now() END) RETURNING id",
+    )
+    .bind(email)
+    .bind(nom.trim())
+    .bind(hacher(mot_de_passe))
+    .bind(verifie)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| if e.to_string().contains("utilisateurs_email") { format!("{email} existe déjà.") } else { e.to_string() })?;
+    sqlx::query("INSERT INTO membres (utilisateur_id, organisation_id, role) VALUES ($1, $2, $3::text::role_membre)")
+        .bind(id)
+        .bind(organisation)
+        .bind(role)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Ajoute un utilisateur (ligne de commande), propriétaire de l'organisation donnée, adresse considérée comme
+/// vérifiée. Erreur lisible si l'e-mail existe déjà, si le mot de passe est trop court ou si l'organisation n'existe pas.
+pub async fn ajouter_utilisateur(db: &PgPool, organisation: i64, email: &str, nom: &str, mot_de_passe: &str) -> Result<(), String> {
     let existe: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM organisations WHERE id = $1)")
         .bind(organisation)
         .fetch_one(db)
@@ -83,19 +117,7 @@ pub async fn ajouter_utilisateur(db: &PgPool, organisation: i64, email: &str, no
         return Err(format!("Aucune organisation n° {organisation}."));
     }
     let mut tx = db.begin().await.map_err(|e| e.to_string())?;
-    let id: i64 = sqlx::query_scalar("INSERT INTO utilisateurs (email, nom, mot_de_passe) VALUES ($1, $2, $3) RETURNING id")
-        .bind(email)
-        .bind(nom.trim())
-        .bind(hacher(mot_de_passe))
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| if e.to_string().contains("utilisateurs_email") { format!("{email} existe déjà.") } else { e.to_string() })?;
-    sqlx::query("INSERT INTO membres (utilisateur_id, organisation_id, role) VALUES ($1, $2, 'proprietaire')")
-        .bind(id)
-        .bind(organisation)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| e.to_string())?;
+    creer_compte(&mut tx, organisation, email, nom, mot_de_passe, "proprietaire", true).await?;
     tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -130,14 +152,20 @@ pub async fn liste_utilisateurs(db: &PgPool) -> Result<Vec<(String, String, Stri
 
 // ─── Sessions ───────────────────────────────────────────────────────────────
 
-fn empreinte(jeton: &str) -> Vec<u8> {
+pub(crate) fn empreinte(jeton: &str) -> Vec<u8> {
     Sha256::digest(jeton.as_bytes()).to_vec()
 }
 
-async fn ouvrir(db: &PgPool, utilisateur_id: i64, organisation: i64, cookies: CookieJar) -> Result<CookieJar, sqlx::Error> {
+/// Un jeton aléatoire de 256 bits, en hexadécimal (sessions, liens envoyés par e-mail).
+pub(crate) fn jeton_aleatoire() -> String {
     let mut octets = [0u8; 32];
     getrandom::fill(&mut octets).expect("le système ne fournit pas de hasard");
-    let jeton = hex::encode(octets);
+    hex::encode(octets)
+}
+
+/// Ouvre une session dans l'organisation et rend le cookie à poser.
+pub(crate) async fn ouvrir(db: &PgPool, utilisateur_id: i64, organisation: i64, cookies: CookieJar) -> Result<CookieJar, sqlx::Error> {
+    let jeton = jeton_aleatoire();
     sqlx::query("DELETE FROM sessions WHERE expire_le < now()").execute(db).await?;
     sqlx::query(
         "INSERT INTO sessions (empreinte, utilisateur_id, organisation_id, expire_le) VALUES ($1, $2, $3, now() + make_interval(days => $4))",
@@ -157,10 +185,14 @@ async fn ouvrir(db: &PgPool, utilisateur_id: i64, organisation: i64, cookies: Co
     Ok(cookies.add(cookie))
 }
 
-/// L'utilisateur connecté et l'organisation de sa session (ids), d'après le cookie.
-async fn utilisateur(db: &PgPool, cookies: &CookieJar) -> Result<Option<(i64, i64)>, sqlx::Error> {
+/// L'utilisateur connecté, l'organisation de sa session (ids) et si son assistant de démarrage est fait, d'après le
+/// cookie.
+async fn utilisateur(db: &PgPool, cookies: &CookieJar) -> Result<Option<(i64, i64, bool)>, sqlx::Error> {
     let Some(cookie) = cookies.get(COOKIE) else { return Ok(None) };
-    sqlx::query_as("SELECT utilisateur_id, organisation_id FROM sessions WHERE empreinte = $1 AND expire_le > now()")
+    sqlx::query_as(
+        "SELECT s.utilisateur_id, s.organisation_id, o.demarre_le IS NOT NULL
+         FROM sessions s JOIN organisations o ON o.id = s.organisation_id WHERE s.empreinte = $1 AND s.expire_le > now()",
+    )
         .bind(empreinte(cookie.value()))
         .fetch_optional(db)
         .await
@@ -168,7 +200,22 @@ async fn utilisateur(db: &PgPool, cookies: &CookieJar) -> Result<Option<(i64, i6
 
 /// Les adresses ouvertes sans connexion.
 fn publique(chemin: &str) -> bool {
-    chemin == "/connexion" || chemin == "/sante" || chemin.starts_with("/client/")
+    ["/connexion", "/sante", "/inscription", "/mot-de-passe-oublie"].contains(&chemin)
+        || ["/client/", "/inscription/", "/mot-de-passe/", "/invitation/"].iter().any(|debut| chemin.starts_with(debut))
+}
+
+/// Ce qui reste ouvert tant que l'assistant de démarrage n'est pas fait.
+fn avant_demarrage(chemin: &str) -> bool {
+    chemin == "/demarrage" || chemin == "/deconnexion"
+}
+
+/// Envoie le navigateur ailleurs (y compris depuis une requête htmx).
+fn rediriger(requete: &Request, adresse: &str) -> Response {
+    if requete.headers().contains_key("hx-request") {
+        (StatusCode::OK, [("HX-Redirect", adresse.to_string())]).into_response()
+    } else {
+        Redirect::to(adresse).into_response()
+    }
 }
 
 /// N'accepte que des adresses internes simples pour revenir après la connexion (pas de renvoi vers un autre site).
@@ -185,8 +232,10 @@ pub async fn exiger_connexion(State(state): State<AppState>, cookies: CookieJar,
         return suite.run(requete).await;
     }
     match utilisateur(&state.db, &cookies).await {
-        Ok(Some((_, organisation))) => {
+        Ok(Some((_, _, false))) if !avant_demarrage(&chemin) => rediriger(&requete, "/demarrage"),
+        Ok(Some((utilisateur, organisation, _))) => {
             requete.extensions_mut().insert(crate::base::Organisation(organisation));
+            requete.extensions_mut().insert(crate::base::Utilisateur(utilisateur));
             suite.run(requete).await
         }
         Ok(None) => {
@@ -194,11 +243,7 @@ pub async fn exiger_connexion(State(state): State<AppState>, cookies: CookieJar,
                 Some(c) if c != "/" => format!("/connexion?suite={c}"),
                 _ => "/connexion".to_string(),
             };
-            if requete.headers().contains_key("hx-request") {
-                (StatusCode::OK, [("HX-Redirect", adresse)]).into_response()
-            } else {
-                Redirect::to(&adresse).into_response()
-            }
+            rediriger(&requete, &adresse)
         }
         Err(e) => Erreur::from(e).into_response(),
     }
@@ -213,6 +258,8 @@ struct Saisie {
     mot_de_passe: String,
     /// La page à ouvrir après la connexion.
     suite: String,
+    /// Un message après une action réussie (« mot_de_passe » : le mot de passe vient d'être changé).
+    ok: String,
 }
 
 #[derive(Template)]
@@ -221,17 +268,24 @@ struct Page {
     email: String,
     suite: String,
     erreur: &'static str,
+    message: &'static str,
+    /// Le mot de passe est bon mais l'adresse n'est pas encore confirmée : proposer de renvoyer le lien.
+    non_verifie: bool,
 }
 
 async fn afficher(State(state): State<AppState>, cookies: CookieJar, Query(s): Query<Saisie>) -> Result<Response, Erreur> {
     if utilisateur(&state.db, &cookies).await?.is_some() {
         return Ok(Redirect::to("/").into_response());
     }
-    Ok(Html(Page { email: String::new(), suite: s.suite, erreur: "" }.render()?).into_response())
+    let message = match s.ok.as_str() {
+        "mot_de_passe" => "Ton mot de passe est changé : connecte-toi avec le nouveau.",
+        _ => "",
+    };
+    Ok(Html(Page { email: String::new(), suite: s.suite, erreur: "", message, non_verifie: false }.render()?).into_response())
 }
 
 fn refus(s: Saisie, erreur: &'static str) -> Result<Response, Erreur> {
-    let page = Page { email: s.email.trim().to_string(), suite: s.suite, erreur };
+    let page = Page { email: s.email.trim().to_string(), suite: s.suite, erreur, message: "", non_verifie: false };
     Ok((StatusCode::UNAUTHORIZED, Html(page.render()?)).into_response())
 }
 
@@ -247,10 +301,13 @@ async fn envoyer(State(state): State<AppState>, cookies: CookieJar, Form(s): For
     if essais >= ESSAIS_MAX {
         return refus(s, "Trop d'essais ratés : attends un quart d'heure avant de réessayer.");
     }
-    let trouve: Option<(i64, String)> =
-        sqlx::query_as("SELECT id, mot_de_passe FROM utilisateurs WHERE lower(email) = lower($1)").bind(&email).fetch_optional(db).await?;
-    let id = match trouve {
-        Some((id, empreinte)) if correct(&s.mot_de_passe, &empreinte) => id,
+    let trouve: Option<(i64, String, bool)> =
+        sqlx::query_as("SELECT id, mot_de_passe, email_verifie_le IS NOT NULL FROM utilisateurs WHERE lower(email) = lower($1)")
+            .bind(&email)
+            .fetch_optional(db)
+            .await?;
+    let (id, verifie) = match trouve {
+        Some((id, empreinte, verifie)) if correct(&s.mot_de_passe, &empreinte) => (id, verifie),
         autre => {
             if autre.is_none() {
                 perdre_le_meme_temps(&s.mot_de_passe);
@@ -263,6 +320,16 @@ async fn envoyer(State(state): State<AppState>, cookies: CookieJar, Form(s): For
         .bind(&email)
         .execute(db)
         .await?;
+    if !verifie {
+        let page = Page {
+            email: email.clone(),
+            suite: s.suite,
+            erreur: "Confirme d'abord ton adresse e-mail : clique sur le lien que nous t'avons envoyé.",
+            message: "",
+            non_verifie: true,
+        };
+        return Ok((StatusCode::UNAUTHORIZED, Html(page.render()?)).into_response());
+    }
     // Pour l'instant, une seule organisation par utilisateur en pratique : la plus ancienne.
     let organisation: Option<i64> =
         sqlx::query_scalar("SELECT organisation_id FROM membres WHERE utilisateur_id = $1 ORDER BY organisation_id LIMIT 1")

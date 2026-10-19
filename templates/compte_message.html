@@ -1,0 +1,21 @@
+{% extends "public_base.html" %}
+{% block titre %}{{ titre }}{% endblock %}
+{% block content %}
+      <h2 class="font-semibold" style="margin:0">{{ titre }}</h2>
+      <p style="margin:0">{{ texte }}</p>
+      {% if !action.is_empty() %}
+      <form method="post" action="{{ action }}" style="margin:0">
+        <button class="btn btn-primary w-full" type="submit">{{ bouton }}</button>
+      </form>
+      {% endif %}
+      {% if renvoyer %}
+      <form method="post" action="/inscription/renvoyer" style="display:flex;flex-direction:column;gap:12px;margin:0">
+        <label class="form-control">
+          <span class="u-lbl">Recevoir un nouveau lien à l'adresse</span>
+          <input class="input input-bordered w-full" type="email" name="email" autocomplete="email" required>
+        </label>
+        <button class="btn w-full" type="submit">Renvoyer le lien</button>
+      </form>
+      {% endif %}
+      <p class="u-petit" style="margin:0"><a class="link" href="/connexion">Aller à la connexion</a></p>
+{% endblock %}

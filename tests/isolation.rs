@@ -31,7 +31,7 @@ use ubifacture::{AppState, app, application, base::Base, connexion, organisation
 async fn empreinte_de_a(pool: &PgPool) -> BTreeMap<String, String> {
     let tables: Vec<String> = sqlx::query_scalar(
         "SELECT c.relname::text FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'organisation_id'
-         WHERE c.relkind = 'r' AND c.relnamespace = 'public'::regnamespace AND c.relname NOT IN ('membres', 'sessions')
+         WHERE c.relkind = 'r' AND c.relnamespace = 'public'::regnamespace AND c.relname NOT IN ('membres', 'sessions', 'invitations')
          ORDER BY 1",
     )
     .fetch_all(pool)
@@ -44,6 +44,20 @@ async fn empreinte_de_a(pool: &PgPool) -> BTreeMap<String, String> {
         let e: String = sqlx::query_scalar(sqlx::AssertSqlSafe(sql)).fetch_one(pool).await.unwrap();
         empreintes.insert(table, e);
     }
+    // Les tables de comptes, communes au site : la part de A.
+    for (nom, sql) in [
+        ("membres de A", "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM membres t WHERE organisation_id = 1"),
+        ("invitations de A", "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM invitations t WHERE organisation_id = 1"),
+        (
+            "comptes de A",
+            "SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) FROM utilisateurs t
+             WHERE id IN (SELECT utilisateur_id FROM membres WHERE organisation_id = 1)",
+        ),
+        ("organisation A", "SELECT md5(t::text) FROM organisations t WHERE id = 1"),
+    ] {
+        let e: String = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.to_string())).fetch_one(pool).await.unwrap();
+        empreintes.insert(nom.to_string(), e);
+    }
     empreintes
 }
 
@@ -55,6 +69,8 @@ async fn textes_de_a(pool: &PgPool) -> Vec<String> {
             UNION SELECT reference FROM factures UNION SELECT description FROM ouvrages UNION SELECT nom FROM societe
             UNION SELECT fournisseur FROM chantier_achats UNION SELECT email_comptable FROM reglages
             UNION SELECT description FROM devis_lignes UNION SELECT description FROM facture_lignes
+            UNION SELECT u.email FROM utilisateurs u JOIN membres m ON m.utilisateur_id = u.id AND m.organisation_id = 1
+            UNION SELECT email FROM invitations WHERE organisation_id = 1
          ) t WHERE length(x) >= 6",
     )
     .fetch_all(pool)
@@ -87,6 +103,8 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
     let achats = ids(pool, "SELECT id FROM chantier_achats").await;
     let imports = ids(pool, "SELECT id FROM imports_excel").await;
     ids(pool, "SELECT id FROM recurrences").await;
+    let comptes_a = ids(pool, "SELECT utilisateur_id FROM membres WHERE organisation_id = 1").await;
+    let invitations_a = ids(pool, "SELECT id FROM invitations WHERE organisation_id = 1").await;
 
     let mut a: Vec<(&'static str, String)> = Vec::new();
     let mut deux = |m: &'static str, chemin: String| a.push((m, chemin));
@@ -165,16 +183,26 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
             deux("POST", format!("/{genre}/{id}"));
         }
     }
+    for &u in &comptes_a {
+        deux("POST", format!("/parametres/equipe/membres/{u}/role"));
+        deux("POST", format!("/parametres/equipe/membres/{u}/retirer"));
+    }
+    for &i in &invitations_a {
+        deux("POST", format!("/parametres/equipe/invitations/{i}/annuler"));
+    }
     // Les pages sans numéro : B n'y voit que ses propres données.
     for chemin in [
         "/", "/devis", "/factures", "/factures?statut=en_retard", "/chantiers", "/chantiers?statut=tous", "/entreprises", "/contacts",
         "/bibliotheque", "/bibliotheque/choisir?q=a", "/statistiques", "/statistiques?periode=12_mois", "/exports", "/factures/rappels",
         "/factures/recurrences", "/achats", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
-        "/parametres/societe/conditions-generales", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
+        "/parametres/societe/conditions-generales", "/parametres/equipe", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
     ] {
         deux("GET", chemin.to_string());
     }
-    for chemin in ["/factures/rappels", "/factures/recurrences/preparer", "/exports", "/parametres/emails/devis", "/parametres/rappels"] {
+    for chemin in [
+        "/factures/rappels", "/factures/recurrences/preparer", "/exports", "/parametres/emails/devis", "/parametres/rappels", "/demarrage",
+        "/parametres/equipe/inviter",
+    ] {
         deux("POST", chemin.to_string());
     }
     a
@@ -207,31 +235,41 @@ async fn envoyer(site: &Router, methode: &str, chemin: &str, cookie: &str) -> Re
     Reponse { statut, type_contenu, corps: reponse.into_body().collect().await.unwrap().to_bytes().to_vec() }
 }
 
-/// Crée l'organisation B (vide, par `organisations::creer`), sa société et un compte connecté : le cookie de session.
+/// Crée l'organisation B (vide, par `organisations::creer`) et un compte connecté, qui fait l'assistant de démarrage :
+/// le cookie de session.
 async fn connecter_b(pool: &PgPool, site: &Router) -> String {
     let b = organisations::creer(pool, "Organisation B").await.unwrap();
     assert_eq!(b, 2);
-    let mut base = Base::ouvrir(pool, b).await.unwrap();
-    sqlx::query("INSERT INTO societe (nom, nom_abrege, email, telephone) VALUES ('Société B', 'B', 'b@exemple.be', '0')")
-        .execute(&mut *base)
-        .await
-        .unwrap();
-    drop(base);
     connexion::ajouter_utilisateur(pool, b, "b@exemple.be", "", "un-long-mot-de-passe").await.unwrap();
-    let requete = Request::builder()
-        .method("POST")
-        .uri("/connexion")
-        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-        .body(Body::from("email=b%40exemple.be&mot_de_passe=un-long-mot-de-passe"))
-        .unwrap();
-    let r = site.clone().oneshot(requete).await.unwrap();
-    r.headers().get(header::SET_COOKIE).expect("connexion de B").to_str().unwrap().split(';').next().unwrap().to_string()
+    let poster = |chemin: &'static str, corps: &'static str, cookie: Option<String>| {
+        let mut r = Request::builder().method("POST").uri(chemin).header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+        if let Some(c) = cookie {
+            r = r.header(header::COOKIE, c);
+        }
+        site.clone().oneshot(r.body(Body::from(corps)).unwrap())
+    };
+    let r = poster("/connexion", "email=b%40exemple.be&mot_de_passe=un-long-mot-de-passe", None).await.unwrap();
+    let cookie = r.headers().get(header::SET_COOKIE).expect("connexion de B").to_str().unwrap().split(';').next().unwrap().to_string();
+    let demarrage = "nom=Soci%C3%A9t%C3%A9+B&pays=BE&email=b%40exemple.be&telephone=0&regime_tva=assujetti&profil_metier=peinture\
+                     &dernier_devis=0&derniere_facture=0&derniere_note_credit=0";
+    let r = poster("/demarrage", demarrage, Some(cookie.clone())).await.unwrap();
+    assert_eq!(r.headers().get(header::LOCATION).map(|v| v.to_str().unwrap()), Some("/"), "assistant de démarrage de B");
+    cookie
 }
 
 #[sqlx::test]
 async fn b_ne_voit_ni_ne_modifie_rien_de_a_sur_aucune_page(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
     donnees::remplir(&pool, &app(AppState { db: pool.clone() })).await;
+    // L'équipe de A : un propriétaire, un membre et une invitation en attente.
+    connexion::ajouter_utilisateur(&pool, 1, "patron.a@exemple.be", "Patron de A", "un-long-mot-de-passe").await.unwrap();
+    connexion::ajouter_utilisateur(&pool, 1, "ouvrier.a@exemple.be", "Ouvrier de A", "un-long-mot-de-passe").await.unwrap();
+    sqlx::query(
+        "INSERT INTO invitations (organisation_id, email, empreinte, expire_le) VALUES (1, 'invite.a@exemple.be', '\\x01', now() + interval '7 days')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
     let site = application(AppState { db: pool.clone() });
     let cookie = connecter_b(&pool, &site).await;
     let avant = empreinte_de_a(&pool).await;

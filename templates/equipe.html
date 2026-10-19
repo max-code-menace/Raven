@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Équipe · Réglages · Ubifacture{% endblock %}
+{% block nav_reglages_equipe %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("reglages", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Équipe</h1>
+        <div class="u-sous-titre">Réglages · les personnes qui utilisent Ubifacture pour ton entreprise ({{ places }} / {{ max }})</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Membres</h2></div>
+  <table class="u-table">
+    <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Depuis</th>{% if proprietaire %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+      {% for m in membres %}
+      <tr>
+        <td>{{ m.nom }}{% if m.moi %} <span class="u-petit u-muet">(toi)</span>{% endif %}</td>
+        <td>{{ m.email }}</td>
+        <td>
+          {% if proprietaire %}
+          <form method="post" action="/parametres/equipe/membres/{{ m.id }}/role" style="margin:0;display:flex;gap:6px">
+            <select class="select select-bordered select-sm" name="role">
+              {% for (valeur, libelle) in roles %}<option value="{{ valeur }}"{% if *valeur == m.role %} selected{% endif %}>{{ libelle }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-sm" type="submit">Changer</button>
+          </form>
+          {% else %}{{ m.libelle }}{% endif %}
+        </td>
+        <td>{{ m.depuis }}</td>
+        {% if proprietaire %}
+        <td>{% if !m.moi %}<form method="post" action="/parametres/equipe/membres/{{ m.id }}/retirer" style="margin:0"><button class="btn btn-sm btn-ghost" type="submit">Retirer</button></form>{% endif %}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if !invitations.is_empty() %}
+<section class="u-card">
+  <div class="u-card-h"><h2>Invitations en attente</h2></div>
+  <table class="u-table">
+    <thead><tr><th>E-mail</th><th>Rôle</th><th>Valable jusqu'au</th>{% if proprietaire %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+      {% for i in invitations %}
+      <tr>
+        <td>{{ i.email }}</td><td>{{ i.libelle }}</td><td>{{ i.expire }}</td>
+        {% if proprietaire %}<td><form method="post" action="/parametres/equipe/invitations/{{ i.id }}/annuler" style="margin:0"><button class="btn btn-sm btn-ghost" type="submit">Annuler</button></form></td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if proprietaire %}
+<section class="u-card">
+  <div class="u-card-h"><h2>Inviter quelqu'un</h2></div>
+  <form class="u-card-b" method="post" action="/parametres/equipe/inviter" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <label class="form-control" style="flex:1;min-width:240px"><span class="u-lbl">E-mail</span><input class="input input-bordered w-full" type="email" name="email" required></label>
+    <label class="form-control"><span class="u-lbl">Rôle</span>
+      <select class="select select-bordered" name="role">{% for (valeur, libelle) in roles %}<option value="{{ valeur }}">{{ libelle }}</option>{% endfor %}</select></label>
+    <button class="btn btn-primary" type="submit"{% if places >= max %} disabled{% endif %}>Envoyer l'invitation</button>
+  </form>
+  <p class="u-petit u-muet" style="margin:0 16px 16px">Un propriétaire gère l'équipe ; un membre utilise tout le reste. L'invitation est valable 7 jours.</p>
+</section>
+{% endif %}
+{% endblock %}

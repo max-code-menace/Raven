@@ -20,24 +20,33 @@ pub(crate) const LONGUEUR_MAX_CORPS: usize = 20_000;
 struct Config {
     cle_brevo: Option<String>,
     adresse_publique: String,
+    /// L'adresse qui envoie les e-mails du site (inscription, mot de passe, invitation) : `EMAIL_EXPEDITEUR`.
+    expediteur_site: Option<String>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 /// Appelé une seule fois par `main.rs` au lancement. Sans clé, les e-mails sont seulement enregistrés.
 /// `adresse_publique` : l'adresse du site vue par les clients (liens vers la page client en ligne).
-pub fn configurer(cle_brevo: Option<String>, adresse_publique: Option<String>) {
+/// `expediteur_site` : l'adresse qui envoie les e-mails du site (voir `emails_systeme`).
+pub fn configurer(cle_brevo: Option<String>, adresse_publique: Option<String>, expediteur_site: Option<String>) {
     let cle_brevo = cle_brevo.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
     let adresse_publique = adresse_publique
         .map(|a| a.trim().trim_end_matches('/').to_string())
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| ADRESSE_PAR_DEFAUT.to_string());
-    let _ = CONFIG.set(Config { cle_brevo, adresse_publique });
+    let expediteur_site = expediteur_site.map(|e| e.trim().to_string()).filter(|e| email_valide(e));
+    let _ = CONFIG.set(Config { cle_brevo, adresse_publique, expediteur_site });
 }
 
 /// Une clé Brevo est configurée : les e-mails partent vraiment.
 pub fn envoi_actif() -> bool {
     CONFIG.get().is_some_and(|c| c.cle_brevo.is_some())
+}
+
+/// La clé Brevo et l'expéditeur des e-mails du site, s'ils sont configurés.
+pub(crate) fn config_site() -> (Option<String>, Option<String>) {
+    CONFIG.get().map(|c| (c.cle_brevo.clone(), c.expediteur_site.clone())).unwrap_or_default()
 }
 
 /// « https://ubifacture.exemple.be » : le début des liens envoyés aux clients.
@@ -325,6 +334,24 @@ fn requete_brevo(expediteur: (&str, &str), m: &Message) -> serde_json::Value {
     corps
 }
 
+/// Envoie la requête à Brevo ; rend sa réponse, ou l'erreur lisible.
+pub(crate) async fn poster_brevo(cle: String, corps: serde_json::Value) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+        ureq::post(API_BREVO)
+            .set("api-key", &cle)
+            .set("accept", "application/json")
+            .timeout(std::time::Duration::from_secs(30))
+            .send_json(corps)
+            .map_err(|e| match e {
+                ureq::Error::Status(code, r) => format!("Brevo a répondu {code} : {}", r.into_string().unwrap_or_default()),
+                autre => format!("Brevo injoignable : {autre}"),
+            })
+            .and_then(|r| r.into_json::<serde_json::Value>().map_err(|e| e.to_string()))
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()))
+}
+
 /// Envoie (ou enregistre seulement, sans clé) un e-mail et le note dans le journal des e-mails.
 pub(crate) async fn envoyer(db: &mut PgConnection, m: Message) -> Result<(i64, Issue), sqlx::Error> {
     let cle = CONFIG.get().and_then(|c| c.cle_brevo.clone());
@@ -336,20 +363,7 @@ pub(crate) async fn envoyer(db: &mut PgConnection, m: Message) -> Result<(i64, I
                 (Issue::Echec, "La société n'a pas d'adresse e-mail valable (Réglages › Société).".to_string(), String::new())
             } else {
                 let corps = requete_brevo((&nom, &email), &m);
-                let reponse = tokio::task::spawn_blocking(move || {
-                    ureq::post(API_BREVO)
-                        .set("api-key", &cle)
-                        .set("accept", "application/json")
-                        .timeout(std::time::Duration::from_secs(30))
-                        .send_json(corps)
-                        .map_err(|e| match e {
-                            ureq::Error::Status(code, r) => format!("Brevo a répondu {code} : {}", r.into_string().unwrap_or_default()),
-                            autre => format!("Brevo injoignable : {autre}"),
-                        })
-                        .and_then(|r| r.into_json::<serde_json::Value>().map_err(|e| e.to_string()))
-                })
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()));
+                let reponse = poster_brevo(cle, corps).await;
                 match reponse {
                     Ok(v) => (Issue::Envoye, String::new(), v["messageId"].as_str().unwrap_or_default().to_string()),
                     Err(e) => {

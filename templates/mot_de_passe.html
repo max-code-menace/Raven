@@ -1,0 +1,32 @@
+{% extends "public_base.html" %}
+{% block titre %}Mot de passe{% endblock %}
+{% block content %}
+      {% if jeton.is_empty() %}
+      <h2 class="font-semibold" style="margin:0">Mot de passe oublié</h2>
+      <p style="margin:0">Indique ton adresse e-mail : nous t'envoyons un lien pour choisir un nouveau mot de passe.</p>
+      <form method="post" action="/mot-de-passe-oublie" style="display:flex;flex-direction:column;gap:16px;margin:0">
+        <label class="form-control">
+          <span class="u-lbl">E-mail</span>
+          <input class="input input-bordered w-full" type="email" name="email" autocomplete="email" required autofocus>
+        </label>
+        <button class="btn btn-primary w-full" type="submit">Recevoir le lien</button>
+      </form>
+      {% else %}
+      <h2 class="font-semibold" style="margin:0">Nouveau mot de passe</h2>
+      {% if !erreur.is_empty() %}
+      <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
+      {% endif %}
+      <form method="post" action="/mot-de-passe/{{ jeton }}" style="display:flex;flex-direction:column;gap:16px;margin:0">
+        <label class="form-control">
+          <span class="u-lbl">Nouveau mot de passe (10 caractères au moins)</span>
+          <input class="input input-bordered w-full" type="password" name="mot_de_passe" minlength="10" autocomplete="new-password" required autofocus>
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Encore une fois</span>
+          <input class="input input-bordered w-full" type="password" name="confirmation" minlength="10" autocomplete="new-password" required>
+        </label>
+        <button class="btn btn-primary w-full" type="submit">Enregistrer le mot de passe</button>
+      </form>
+      {% endif %}
+      <p class="u-petit" style="margin:0"><a class="link" href="/connexion">Aller à la connexion</a></p>
+{% endblock %}

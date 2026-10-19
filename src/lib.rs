@@ -6,9 +6,11 @@ pub mod base;
 pub mod avenants;
 pub mod chantiers;
 pub mod commun;
+pub mod comptes;
 pub mod connexion;
 pub mod contacts_import;
 pub mod db;
+pub mod demarrage;
 pub mod calcul;
 pub mod devis;
 pub mod devis_apercu;
@@ -20,7 +22,9 @@ pub mod devis_pdf;
 pub mod devis_statut;
 pub mod devis_totaux;
 pub mod emails;
+pub mod emails_systeme;
 pub mod envoi;
+pub mod equipe;
 pub mod exports;
 pub mod facture_calcul;
 pub mod factures;
@@ -139,6 +143,9 @@ fn pages() -> Router<AppState> {
         .merge(recurrences::routes())
         .merge(exports::routes())
         .merge(page_client::routes())
+        .merge(comptes::routes())
+        .merge(demarrage::routes())
+        .merge(equipe::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
         .merge(bibliotheque_import::routes())

@@ -72,7 +72,7 @@ async fn lire(site: &Router, uri: &str, cookie: &str) -> StatusCode {
 #[sqlx::test]
 async fn la_session_est_ouverte_dans_l_organisation_du_membre(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
-    sqlx::query("INSERT INTO organisations (nom) VALUES ('Deuxième')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO organisations (nom, demarre_le) VALUES ('Deuxième', now())").execute(&pool).await.unwrap();
     connexion::ajouter_utilisateur(&pool, 2, "deux@exemple.be", "", "un-long-mot-de-passe").await.unwrap();
     let erreur = connexion::ajouter_utilisateur(&pool, 99, "perdu@exemple.be", "", "un-long-mot-de-passe").await.unwrap_err();
     assert_eq!(erreur, "Aucune organisation n° 99.");
@@ -213,7 +213,7 @@ async fn l_utilisateur_de_la_base_ne_contourne_pas_les_regles(options: PgPoolOpt
     let sans_regle: Vec<String> = sqlx::query_scalar(
         "SELECT c.relname::text FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'organisation_id'
          WHERE c.relkind = 'r' AND c.relnamespace = 'public'::regnamespace AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
-           AND c.relname NOT IN ('membres', 'sessions')",
+           AND c.relname NOT IN ('membres', 'sessions', 'invitations')",
     )
     .fetch_all(&pool)
     .await

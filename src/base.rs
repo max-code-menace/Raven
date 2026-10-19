@@ -66,3 +66,19 @@ impl FromRequestParts<AppState> for Base {
         Ok(Base::ouvrir(&state.db, id).await?)
     }
 }
+
+/// L'utilisateur connecté (son numéro), posé dans la requête par la connexion. Les pages qui en ont besoin
+/// (Réglages › Équipe) le reçoivent comme extracteur ; sans connexion, elles s'arrêtent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Utilisateur(pub i64);
+
+impl<S: Send + Sync> FromRequestParts<S> for Utilisateur {
+    type Rejection = Erreur;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Utilisateur, Erreur> {
+        parts.extensions.get::<Utilisateur>().copied().ok_or_else(|| {
+            eprintln!("Page {} demandée sans utilisateur connecté : refusée.", parts.uri.path());
+            Erreur::interne()
+        })
+    }
+}
