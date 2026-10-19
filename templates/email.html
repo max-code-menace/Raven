@@ -57,6 +57,12 @@
         <span class="u-lbl">Message</span>
         <textarea class="textarea textarea-bordered" name="corps" rows="14">{{ saisie.corps }}</textarea>
       </label>
+      {% if !bloc_fixe.is_empty() %}
+      <div class="form-control">
+        <span class="u-lbl">Mentions légales, ajoutées automatiquement à la fin du message (non modifiables)</span>
+        <pre class="u-petit" style="white-space:pre-wrap;margin:0;padding:10px 12px;background:#F1F2EF;border:1px solid #C9CCC6;border-radius:6px;font-family:inherit">{{ bloc_fixe }}</pre>
+      </div>
+      {% endif %}
     </div>
   </form>
 

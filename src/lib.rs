@@ -37,6 +37,7 @@ pub mod recurrences;
 pub mod archive;
 pub mod mentions_tva;
 pub mod reprise;
+pub mod retard;
 pub mod reprise_devis;
 pub mod societe;
 pub mod statistiques;

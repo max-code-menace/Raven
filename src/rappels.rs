@@ -20,7 +20,7 @@ use sqlx::{FromRow, PgPool};
 use crate::commun::format_euros;
 use crate::emails::{self, Issue};
 use crate::envoi::{self, Saisie};
-use crate::{AppState, Erreur, factures};
+use crate::{AppState, Erreur, factures, retard};
 
 fn date_belge(d: NaiveDate) -> String {
     d.format("%d/%m/%Y").to_string()
@@ -164,6 +164,7 @@ struct Retour {
     enregistres: String,
     echecs: String,
     sans_email: String,
+    incomplets: String,
     erreur: String,
 }
 
@@ -182,6 +183,12 @@ impl Retour {
         }
         if n(&self.sans_email) > 0 {
             morceaux.push(format!("{} facture(s) sans e-mail du client : rien envoyé", n(&self.sans_email)));
+        }
+        if n(&self.incomplets) > 0 {
+            morceaux.push(format!(
+                "{} facture(s) non relancée(s) : il manque le numéro d'entreprise, un e-mail ou un téléphone de la société (Réglages › Société), mentions obligatoires d'un rappel",
+                n(&self.incomplets)
+            ));
         }
         if morceaux.is_empty() { String::new() } else { format!("{}.", morceaux.join(" · ")) }
     }
@@ -217,6 +224,18 @@ async fn rappel_prerempli(db: &PgPool, id: i64) -> Result<(&'static str, Saisie)
     Ok((modele, Saisie { destinataires: email, copie: String::new(), objet: emails::remplir(&objet, &variables), corps: emails::remplir(&corps, &variables) }))
 }
 
+async fn aujourdhui(db: &PgPool) -> Result<NaiveDate, sqlx::Error> {
+    sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(db).await
+}
+
+/// Le bloc légal d'un rappel envoyé aujourd'hui, et ce qui manque à la société pour qu'il soit légal.
+async fn mentions(db: &PgPool, f: &factures::Facture) -> Result<(String, Vec<String>), Erreur> {
+    let contexte = retard::contexte(db, f).await?;
+    let manques = retard::manques(&contexte);
+    let bloc = retard::bloc_legal(&contexte, &retard::reglage(db).await?, aujourdhui(db).await?);
+    Ok((bloc, manques))
+}
+
 /// La facture, si elle peut recevoir un rappel (validée, pas une note de crédit, quelque chose à recevoir).
 async fn facture_a_rappeler(db: &PgPool, id: i64) -> Result<factures::Facture, Erreur> {
     let f = factures::charger(db, id).await?.ok_or_else(Erreur::introuvable)?;
@@ -238,7 +257,7 @@ async fn envoyer_selection(State(state): State<AppState>, Form(s): Form<Selectio
     if s.facture.is_empty() {
         return Ok(Redirect::to("/factures/rappels?erreur=rien"));
     }
-    let (mut envoyes, mut enregistres, mut echecs, mut sans_email) = (0, 0, 0, 0);
+    let (mut envoyes, mut enregistres, mut echecs, mut sans_email, mut incomplets) = (0, 0, 0, 0, 0);
     for id in s.facture {
         let Ok(f) = facture_a_rappeler(&state.db, id).await else { continue };
         let (modele, saisie) = rappel_prerempli(&state.db, id).await?;
@@ -246,17 +265,24 @@ async fn envoyer_selection(State(state): State<AppState>, Form(s): Form<Selectio
             sans_email += 1;
             continue;
         };
-        match envoi::envoyer_piece(&state.db, &f, modele, destinataires, Vec::new(), saisie.objet, saisie.corps).await? {
+        let (bloc, manques) = mentions(&state.db, &f).await?;
+        if !manques.is_empty() {
+            incomplets += 1;
+            continue;
+        }
+        let corps = format!("{}\n\n{bloc}", saisie.corps.trim_end());
+        match envoi::envoyer_piece(&state.db, &f, modele, destinataires, Vec::new(), saisie.objet, corps).await? {
             Issue::Envoye => envoyes += 1,
             Issue::Enregistre => enregistres += 1,
             Issue::Echec => echecs += 1,
         }
     }
-    Ok(Redirect::to(&format!("/factures/rappels?envoyes={envoyes}&enregistres={enregistres}&echecs={echecs}&sans_email={sans_email}")))
+    Ok(Redirect::to(&format!("/factures/rappels?envoyes={envoyes}&enregistres={enregistres}&echecs={echecs}&sans_email={sans_email}&incomplets={incomplets}")))
 }
 
 async fn page_rappel(db: &PgPool, f: &factures::Facture, saisie: Saisie, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
     let titre = factures::titre(&f.genre, f.numero, f.date_facture);
+    let (bloc_fixe, manques) = mentions(db, f).await?;
     let page = envoi::Page {
         titre: format!("Envoyer un rappel - {titre}"),
         retour: format!("/factures/{}", f.id),
@@ -264,10 +290,11 @@ async fn page_rappel(db: &PgPool, f: &factures::Facture, saisie: Saisie, erreurs
         nav: "rappels",
         saisie,
         pieces: vec![format!("{titre} (PDF, conditions générales comprises)")],
-        avertissements: Vec::new(),
+        avertissements: manques,
         erreurs,
         envoi_actif: emails::envoi_actif(),
         anciens: envoi::anciens(db, None, Some(f.id)).await?,
+        bloc_fixe,
     };
     Ok(Html(page.render()?))
 }
@@ -284,8 +311,16 @@ async fn envoyer_un(State(state): State<AppState>, Path(id): Path<i64>, Form(s):
         Ok(v) => v,
         Err(erreurs) => return Ok(page_rappel(&state.db, &f, s, erreurs).await?.into_response()),
     };
+    // Les mentions légales sont ajoutées par le serveur, après ce qui a été saisi : on ne peut pas les retirer.
+    let (bloc, manques) = mentions(&state.db, &f).await?;
+    if !manques.is_empty() {
+        let mut erreurs = vec!["Ce rappel ne peut pas partir : il manque, pour ses mentions légales :".to_string()];
+        erreurs.extend(manques);
+        return Ok(page_rappel(&state.db, &f, s, erreurs).await?.into_response());
+    }
     let (modele, _) = rappel_prerempli(&state.db, id).await?;
-    let issue = envoi::envoyer_piece(&state.db, &f, modele, destinataires, copie, s.objet.trim().to_string(), s.corps).await?;
+    let corps = format!("{}\n\n{bloc}", s.corps.trim_end());
+    let issue = envoi::envoyer_piece(&state.db, &f, modele, destinataires, copie, s.objet.trim().to_string(), corps).await?;
     let suite = match issue {
         Issue::Envoye => "ok=rappel_envoye",
         Issue::Enregistre => "ok=email_enregistre",
@@ -314,8 +349,37 @@ async fn enregistrer_delais(State(state): State<AppState>, Form(d): Form<Delais>
     Ok(Redirect::to("/parametres/emails?ok=delais#rappels"))
 }
 
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct Mentions {
+    indemnite: Option<String>,
+    interets: String,
+    pme: Option<String>,
+}
+
+/// Les trois réglages qui décident ce qu'un rappel peut réclamer à un particulier (voir `retard.rs`).
+async fn enregistrer_mentions(State(state): State<AppState>, Form(m): Form<Mentions>) -> Result<Redirect, Erreur> {
+    // Un taux en pour cent (« 8 » ou « 8,5 ») devient des centièmes de pour cent ; vide = pas d'intérêts de retard.
+    let interets = if m.interets.trim().is_empty() {
+        Some(None)
+    } else {
+        crate::fiches::euros_vers_centimes(&m.interets).filter(|c| (0..=3000).contains(c)).map(|c| Some(c as i32))
+    };
+    let Some(interets) = interets else {
+        return Ok(Redirect::to("/parametres/emails?erreur=mentions#rappels"));
+    };
+    sqlx::query("UPDATE reglages SET rappel_indemnite_particuliers = $1, rappel_interets_particuliers = $2, rappel_pme = $3, updated_at = now() WHERE id = 1")
+        .bind(m.indemnite.is_some())
+        .bind(interets)
+        .bind(m.pme.is_some())
+        .execute(&state.db)
+        .await?;
+    Ok(Redirect::to("/parametres/emails?ok=mentions#rappels"))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/parametres/rappels/mentions", post(enregistrer_mentions))
         .route("/factures/rappels", get(afficher).post(envoyer_selection))
         .route("/factures/{id}/rappel", get(formulaire).post(envoyer_un))
         .route("/parametres/rappels", post(enregistrer_delais))

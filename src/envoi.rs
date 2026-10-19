@@ -51,6 +51,8 @@ pub(crate) struct Page {
     pub(crate) erreurs: Vec<String>,
     pub(crate) envoi_actif: bool,
     pub(crate) anciens: Vec<Ancien>,
+    /// Mentions légales ajoutées automatiquement à la fin du message (rappels) : montrées, jamais modifiables.
+    pub(crate) bloc_fixe: String,
 }
 
 pub(crate) fn statut_email(code: &str) -> (&'static str, &'static str) {
@@ -138,6 +140,7 @@ async fn page_devis(db: &PgPool, id: i64, saisie: Option<Saisie>, erreurs: Vec<S
         erreurs,
         envoi_actif: emails::envoi_actif(),
         anciens: anciens(db, Some(id), None).await?,
+        bloc_fixe: String::new(),
     };
     Ok(Html(page.render()?))
 }
@@ -232,6 +235,7 @@ async fn page_facture(db: &PgPool, f: &factures::Facture, saisie: Option<Saisie>
         erreurs,
         envoi_actif: emails::envoi_actif(),
         anciens: anciens(db, None, Some(f.id)).await?,
+        bloc_fixe: String::new(),
     };
     Ok(Html(page.render()?))
 }
@@ -318,6 +322,12 @@ pub struct EmailVue {
 struct PageReglages {
     rappel_premier: i32,
     rappel_suivant: i32,
+    rappel_indemnite: bool,
+    /// Taux d'intérêt de retard envers les particuliers, en pour cent (« 8,00 ») ; vide : aucun.
+    rappel_interets: String,
+    rappel_pme: bool,
+    /// Le plafond légal du moment (« 10,50 »), s'il est connu.
+    taux_plafond: String,
     envoi_actif: bool,
     expediteur: String,
     adresse_publique: String,
@@ -348,6 +358,9 @@ async fn reglages(State(state): State<AppState>, Query(r): Query<RetourReglages>
     .await?;
     let noms: Vec<(String, String)> = modeles.iter().map(|(c, n, _, _)| (c.clone(), n.clone())).collect();
     let (rappel_premier, rappel_suivant) = crate::rappels::delais(&state.db).await?;
+    let reglage = crate::retard::reglage(&state.db).await?;
+    let aujourdhui: chrono::NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&state.db).await?;
+    let pourcent = |c: i32| format!("{},{:02}", c / 100, c % 100);
     let (nom_societe, email_societe, _) = emails::societe(&state.db).await?;
     let page = PageReglages {
         envoi_actif: emails::envoi_actif(),
@@ -383,15 +396,21 @@ async fn reglages(State(state): State<AppState>, Query(r): Query<RetourReglages>
         message_ok: match r.ok.as_str() {
             "modele" => "Le modèle est enregistré.",
             "delais" => "Les délais des rappels sont enregistrés.",
+            "mentions" => "Les réglages légaux des rappels sont enregistrés.",
             _ => "",
         },
         message_erreur: match r.erreur.as_str() {
             "modele" => "Le modèle n'est pas enregistré : l'objet est obligatoire (300 caractères), le message 20 000 caractères au maximum.",
             "delais" => "Les délais ne sont pas enregistrés : un nombre de jours entre 1 et 365.",
+            "mentions" => "Les réglages légaux ne sont pas enregistrés : le taux d'intérêt est un nombre entre 0 et 30 (par exemple 8 ou 8,5), ou vide.",
             _ => "",
         },
         rappel_premier,
         rappel_suivant,
+        rappel_indemnite: reglage.indemnite_particuliers,
+        rappel_interets: reglage.interets_particuliers_centiemes.map(pourcent).unwrap_or_default(),
+        rappel_pme: reglage.pme,
+        taux_plafond: crate::retard::taux_commercial_centiemes(aujourdhui).map(pourcent).unwrap_or_default(),
     };
     Ok(Html(page.render()?))
 }
