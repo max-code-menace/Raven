@@ -249,7 +249,7 @@ struct ParametresPdf {
 
 async fn servir(State(state): State<AppState>, Path(id): Path<i64>, Query(o): Query<ParametresPdf>) -> Result<Response, Erreur> {
     let f = factures::charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
-    let (nom, octets) = pdf_de_la_facture(&state.db, &f).await?;
+    let (nom, octets) = crate::archive::pdf(&state.db, &f).await?;
     let disposition = if o.telecharger.is_empty() { "inline" } else { "attachment" };
     let mut reponse = octets.into_response();
     let entetes = reponse.headers_mut();

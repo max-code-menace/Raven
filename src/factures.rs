@@ -722,6 +722,8 @@ struct Page {
     lien_client: String,
     /// Facture en retard : (où en sont les rappels, un rappel est dû aujourd'hui).
     rappel: Option<(String, bool)>,
+    /// L'archive légale (PDF et UBL tels qu'émis) d'une pièce validée.
+    archive: Vec<crate::archive::Ligne>,
 }
 
 #[derive(Template)]
@@ -855,6 +857,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         historique: historique(&state.db, id).await?,
         lien_client: if f.numero.is_some() { crate::page_client::lien(&state.db, crate::emails::Piece::Facture, id).await? } else { String::new() },
         rappel: if solde.etat == "en_retard" { crate::rappels::resume_facture(&state.db, id).await? } else { None },
+        archive: if f.numero.is_some() { crate::archive::lignes(&state.db, &f).await? } else { Vec::new() },
     };
     Ok(Html(page.render()?))
 }
@@ -1208,6 +1211,13 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>, Form(apres)
     .await?;
     paiements::noter(&mut tx, id, "validation", &format!("Validée : {}", titre(&f.genre, Some(numero), f.date_facture))).await?;
     tx.commit().await?;
+    // Le PDF et l'UBL émis sont archivés tout de suite. Si cela échoue, la facture reste valide : l'archive se fera au
+    // premier téléchargement, envoi ou affichage (même contenu, la facture ne change plus).
+    if let Some(validee) = charger(&state.db, id).await?
+        && crate::archive::garantir(&state.db, &validee).await.is_err()
+    {
+        eprintln!("Archive de la facture {id} : pas encore faite, elle se fera à la prochaine utilisation.");
+    }
     if apres.puis == "email" {
         return Ok(Redirect::to(&format!("/factures/{id}/email")));
     }

@@ -324,7 +324,7 @@ async fn page_facture(State(state): State<AppState>, Path(jeton): Path<String>) 
 
 async fn pdf_facture(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Response, Erreur> {
     let f = facture_du_jeton(&state.db, &jeton).await?;
-    let (nom, octets) = crate::facture_pdf::pdf_de_la_facture(&state.db, &f).await?;
+    let (nom, octets) = crate::archive::pdf(&state.db, &f).await?;
     pdf(nom, octets)
 }
 

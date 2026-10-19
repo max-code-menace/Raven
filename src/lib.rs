@@ -34,6 +34,7 @@ pub mod paiements;
 pub mod pdf;
 pub mod rappels;
 pub mod recurrences;
+pub mod archive;
 pub mod mentions_tva;
 pub mod reprise;
 pub mod reprise_devis;
@@ -127,6 +128,7 @@ pub fn app(state: AppState) -> Router {
         .merge(factures::routes())
         .merge(factures_chantier::routes())
         .merge(facture_pdf::routes())
+        .merge(archive::routes())
         .merge(paiements::routes())
         .merge(envoi::routes())
         .merge(rappels::routes())

@@ -251,7 +251,7 @@ pub(crate) async fn envoyer_piece(
     objet: String,
     corps: String,
 ) -> Result<Issue, Erreur> {
-    let (nom, pdf) = crate::facture_pdf::pdf_de_la_facture(db, f).await?;
+    let (nom, pdf) = crate::archive::pdf(db, f).await?;
     let a_qui = destinataires.join(", ");
     let (_, issue) = emails::envoyer(
         db,
