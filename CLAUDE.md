@@ -68,7 +68,7 @@ Mahx dirige le produit, il n'est pas développeur. Claude code.
 - **Vocabulaire et modules** (étape 3) : dans les gabarits, jamais « chantier » en dur dans un texte affiché : `{{ crate::profil::mot("Chantier") }}` (formes « Chantier », « chantier », « Chantiers », « chantiers » ; « projet » est aussi masculin) ; un message écrit par le code passe par `crate::profil::adapter(…)` (les gabarits l'appliquent déjà à `message_ok` / `message_erreur`) ; un PDF lit `profil::projet_en_base`. Ce qui appartient à un module s'affiche sous `{% if crate::profil::actuel().avancements %}` (avenants, achats, import_metres) et ses adresses portent la garde `profil::exiger_…` (`route_layer`) ;
 - **Régime de TVA** : les menus de taux viennent de `fiches::Options` (une société en franchise n'a que « Franchise de TVA », les autres jamais) ; une facture ou un devis hors régime n'est pas complet ; toute requête est limitée à l'organisation de la session ; rien de propre à une organisation (société, réglages, compteurs, modèles d'e-mails, fichiers) n'est commun au site. Un test vérifie qu'une organisation ne voit jamais les données d'une autre.
 
-Machine de Mahx : Windows. Build Tools Visual Studio installés.
+Machine de Mahx : Windows. Build Tools Visual Studio installés. Dossier du projet : `C:\Users\franc\Documents\ubifacture` (PowerShell normal, pas administrateur ; `cargo` 1.99.1 vérifié le 19/10/2026).
 
 ## Vocabulaire (le même partout : code, écrans, PDF)
 | Terme | Sens |
