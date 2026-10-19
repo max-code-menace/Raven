@@ -121,7 +121,7 @@ async fn par_mois(db: &mut PgConnection, debut: NaiveDate, fin: NaiveDate) -> Re
 }
 
 async fn afficher(mut db: Base, Query(f): Query<Filtre>) -> Result<Html<String>, Erreur> {
-        let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let (code, debut, fin) = periode(&f.periode, &f.du, &f.au, aujourdhui);
 
     let (nombre_factures, ca_ht, ca_ttc): (i64, i64, i64) = sqlx::query_as(

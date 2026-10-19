@@ -127,10 +127,6 @@ pub async fn liste_utilisateurs(db: &PgPool) -> Result<Vec<(String, String, Stri
     .await
 }
 
-/// Les organisations (numéro et nom), pour la ligne de commande.
-pub async fn liste_organisations(db: &PgPool) -> Result<Vec<(i64, String)>, sqlx::Error> {
-    sqlx::query_as("SELECT id, nom FROM organisations ORDER BY id").fetch_all(db).await
-}
 
 // ─── Sessions ───────────────────────────────────────────────────────────────
 

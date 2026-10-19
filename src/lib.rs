@@ -30,6 +30,7 @@ pub mod fiches;
 pub mod import_devis;
 pub mod import_excel;
 pub mod journal;
+pub mod organisations;
 pub mod page_client;
 pub mod paiements;
 pub mod pdf;

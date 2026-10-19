@@ -187,7 +187,7 @@ struct RetourListe {
 }
 
 async fn liste(mut db: Base, Query(retour): Query<RetourListe>) -> Result<Html<String>, Erreur> {
-        let jour = aujourdhui(&mut *db).await?;
+    let jour = aujourdhui(&mut *db).await?;
     let mut lignes = Vec::new();
     for r in toutes(&mut *db).await? {
         let (entreprise, contact, reference, ttc): (Option<i64>, Option<i64>, String, i64) = sqlx::query_as(
@@ -221,7 +221,7 @@ async fn liste(mut db: Base, Query(retour): Query<RetourListe>) -> Result<Html<S
 
 /// « Préparer les factures » : un brouillon pour chaque échéance arrivée.
 async fn preparer(mut db: Base) -> Result<Redirect, Erreur> {
-        let jour = aujourdhui(&mut *db).await?;
+    let jour = aujourdhui(&mut *db).await?;
     let mut nombre = 0;
     for r in toutes(&mut *db).await? {
         for (date, due) in r.a_venir(jour) {

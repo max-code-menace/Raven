@@ -301,7 +301,7 @@ struct RechercheAchats {
 }
 
 async fn liste_achats(mut db: Base, Query(r): Query<RechercheAchats>) -> Result<Html<String>, Erreur> {
-        let q = r.q.trim().to_string();
+    let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
     const FILTRE: &str = "FROM chantier_achats a JOIN chantiers ch ON ch.id = a.chantier_id JOIN devis d ON d.id = ch.devis_id
          WHERE ($1 = '' OR a.fournisseur ILIKE $2 OR a.description ILIKE $2 OR d.reference ILIKE $2)";

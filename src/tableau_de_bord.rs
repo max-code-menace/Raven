@@ -71,7 +71,7 @@ async fn deux(db: &mut PgConnection, sql: &'static str) -> Result<(i64, i64), sq
 }
 
 pub async fn afficher(mut db: Base) -> Result<Html<String>, Erreur> {
-        let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let debut_mois = aujourdhui.with_day(1).expect("le 1er existe");
 
     // Devis (sans les avenants, qui sont sur leur chantier).

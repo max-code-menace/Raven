@@ -17,6 +17,27 @@ async fn main() {
     if arguments.first().map(String::as_str) == Some("utilisateur") {
         std::process::exit(utilisateurs(&pool, &arguments[1..]).await);
     }
+    // `cargo run -- organisation creer "<nom>"` · `organisation liste`.
+    if arguments.first().map(String::as_str) == Some("organisation") {
+        let resultat = match arguments[1..].iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+            ["creer", nom @ ..] if !nom.is_empty() => ubifacture::organisations::creer(&pool, &nom.join(" "))
+                .await
+                .map(|id| format!("Organisation n° {id} créée. Ajoute son premier compte : cargo run -- utilisateur ajouter <e-mail> --organisation {id}")),
+            ["liste"] => ubifacture::organisations::liste(&pool)
+                .await
+                .map(|l| l.iter().map(|(id, nom)| format!("{id}  {nom}")).collect::<Vec<_>>().join("\n"))
+                .map_err(|e| e.to_string()),
+            _ => Err("Commandes : organisation creer \"<nom>\" · organisation liste".to_string()),
+        };
+        match resultat {
+            Ok(message) => println!("{message}"),
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
     // `cargo run -- reprise <fichier.json> [--enregistrer] [--organisation <n°>]` : reprise des factures de Vertuoza
     // (essai par défaut).
     if arguments.first().map(String::as_str) == Some("reprise") {
@@ -96,7 +117,7 @@ async fn organisation_choisie(pool: &sqlx::PgPool, reste: &[&str]) -> Result<(i6
     }
     let organisation = match organisation {
         Some(o) => o,
-        None => match connexion::liste_organisations(pool).await.map_err(|e| e.to_string())?.as_slice() {
+        None => match ubifacture::organisations::liste(pool).await.map_err(|e| e.to_string())?.as_slice() {
             [(seule, _)] => *seule,
             liste => {
                 let noms: Vec<String> = liste.iter().map(|(id, nom)| format!("  {id}  {nom}")).collect();
