@@ -1,14 +1,34 @@
-# Ubifacture — instructions pour Claude Code
+# Raven (nom interne : Ubifacture) — instructions pour Claude Code
 
 ## Le produit
-Outil de **devis, de factures et de suivi de chantier** pour une entreprise du bâtiment belge (Ubique, l'entreprise du frère de Mahx).
-Il remplace Vertuoza (environ 300 € par mois). Un seul compte partagé par deux personnes. Clients : particuliers et entreprises.
+**Raven** est un logiciel de **devis et de factures simple**, vendu par abonnement aux **indépendants et petites équipes (1 à 8 personnes)** de tous les métiers : artisans du bâtiment, élagueurs, bûcherons, peintres, paysagistes, graphistes, etc. Clients finaux : particuliers et entreprises, en Belgique.
+Le cœur : **devis → acceptation / signature en ligne → facturation (simple, acompte, avancement, finale) → suivi des paiements**.
+Né d'Ubifacture, l'outil interne d'Ubique (l'entreprise du frère de Mahx, qui remplaçait Vertuoza) : Ubique devient la **première organisation** de Raven et l'utilise au quotidien.
+
+Principes du produit :
+- **Simplicité** : écrans clairs et rapides, pas de fonction inutile.
+- **Libre-service** : le produit doit tourner presque seul (inscription, réglages, aide), avec très peu de support humain.
+- **Fiabilité** : calculs justes, numérotation correcte, données sauvegardées, **isolation stricte entre organisations**.
+- **Évolution maîtrisée** : rien n'est ajouté sans preuve d'un besoin réel des utilisateurs.
 
 Décisions fermes, à ne pas remettre en question :
 - **Projet en Rust.** Ne jamais proposer un autre langage ni un framework JavaScript.
 - **Projet séparé de Nodimmo** : dossier, base de données et dépôt propres. Ne jamais toucher à `..\nodimmo` ni à `..\ubique` (ancien dossier de documentation, remplacé par celui-ci).
-- On ne copie pas tout Vertuoza : seulement ce que l'entreprise utilise (voir « Décisions de Mahx »).
-- Outil interne : pas de paiement en ligne de ce logiciel, pas de facturation de ce logiciel.
+- On ne copie pas tout Vertuoza : seulement ce qui sert vraiment (voir « Décisions de Mahx »).
+- **Un seul logiciel** pour tous les clients (pas de version à part pour Ubique).
+
+## Décisions de Mahx (19/10/2026, étape 0 : passage au produit commercial)
+- **Organisation** = l'entreprise cliente qui s'abonne (dans le code : `organisation_id`). « Entreprise » reste la fiche d'un client ou d'un fournisseur.
+- **Isolation** (choix technique de Claude, accepté) : une colonne `organisation_id` dans chaque table de données, plus la sécurité au niveau des lignes de PostgreSQL (RLS) en second filet, plus un test d'isolation par écran. Pas de base ni de schéma par client.
+- **Ubique = organisation n° 1.**
+- **Reprise des données de Vertuoza : en pause**, reprise une fois le multi-organisation fait (bascule d'Ubique toujours possible le 1er janvier 2027).
+- **Peppol : l'envoi des factures est dans la V1** (par un point d'accès agréé, prestataire à choisir). La réception vient après la V1.
+- **Profil métier** choisi à l'inscription, modifiable dans les réglages : il règle le vocabulaire (« Chantier » pour le bâtiment, « Projet » pour les autres métiers) et les modules allumés. Bâtiment : avancements, avenants, achats et rentabilité allumés. Autres métiers : ces modules éteints mais activables. Factures récurrentes et statistiques pour tous. Les modules existants sont gardés, aucun n'est supprimé.
+- **Formules** : Indépendant 35 € HT par mois (1 utilisateur), Entreprise 59 € HT par mois (jusqu'à 8 utilisateurs).
+- **Paiement des abonnements : Mollie**, dès le départ (domiciliation SEPA, Bancontact, carte).
+- **Hébergement en UE : à choisir avant la mise en production** (étape 7). Plateforme gérée recommandée (Clever Cloud ou équivalent), sauvegardes avec copie supplémentaire ailleurs.
+- **Nom commercial : Raven** (marque et nom de domaine à vérifier avant tout affichage public). Le code garde le nom `ubifacture`.
+- **Société qui vend Raven : à créer** (à voir avec un comptable ; ne bloque pas le développement).
 
 ## Décisions de Mahx (15/10/2026)
 - **Page client en ligne** (consulter, signer, payer par QR code) : **oui, dès la phase 1**.
@@ -42,16 +62,19 @@ Mahx dirige le produit, il n'est pas développeur. Claude code.
 - Base `ubifacture`, utilisateur `ubifacture` (créés par `scripts/creer-base.sql`), `DATABASE_URL` dans `.env` (non versionné, modèle dans `.env.example`). Les tests créent leurs propres bases temporaires.
 - Lancement : `cargo run` (port 3001, voir `.claude/launch.json`). Comptes : `cargo run -- utilisateur ajouter <e-mail> [nom]`, `cargo run -- utilisateur mot-de-passe <e-mail>`, `cargo run -- utilisateur liste` (le mot de passe est demandé sans s'afficher).
 - **Mise en page** : tout nouvel écran suit la mise en page commune (`templates/base.html`, `_styles.html`, `_ui.html`) et l'organisation de Vertuoza (planches : https://claude.ai/artifact/DjQgs5yMyDasRcuTwvfryC). Pas de JavaScript écrit à la main : menus, filtres et sections repliables passent par `<details>` ou htmx.
-- Déjà choisis : PDF avec Typst, e-mails par l'API de Brevo (`ureq`), signature en ligne simple (nom + bon pour accord), paiement par QR code EPC (`qrcode`), export ZIP (`zip`). Connexion : Argon2 + cookie de session, comme Nodimmo (fait le 17/10/2026). Encore à choisir : hébergement en UE.
+- Déjà choisis : PDF avec Typst, e-mails par l'API de Brevo (`ureq`), signature en ligne simple (nom + bon pour accord), paiement par QR code EPC (`qrcode`), export ZIP (`zip`). Connexion : Argon2 + cookie de session, comme Nodimmo (fait le 17/10/2026). Abonnements : Mollie. Encore à choisir : hébergement en UE, point d'accès Peppol.
+- **Multi-organisation** (dès l'étape 1) : toute nouvelle table de données porte `organisation_id` ; toute requête est limitée à l'organisation de la session ; rien de propre à une organisation (société, réglages, compteurs, modèles d'e-mails, fichiers) n'est commun au site. Un test vérifie qu'une organisation ne voit jamais les données d'une autre.
 
 Machine de Mahx : Windows. Build Tools Visual Studio installés.
 
 ## Vocabulaire (le même partout : code, écrans, PDF)
 | Terme | Sens |
 |---|---|
+| Organisation | L'entreprise cliente de Raven (abonnement, utilisateurs, société, réglages, numérotation propres) |
+| Profil métier | Choisi à l'inscription : vocabulaire (Chantier ou Projet) et modules allumés |
 | Entreprise / Contact | Fiches de contacts : une société ou une personne. Profils : prospect, client, fournisseur (matériaux, sous-traitant, autres), architecte, etc. |
 | Devis | Offre de prix à lots et lignes. Statuts : brouillon, à envoyer, envoi en cours, envoyé, échec d'envoi, signé, accepté, refusé |
-| Chantier | Naît d'un devis accepté ; porte avancements, factures et factures fournisseurs |
+| Chantier (ou Projet, selon le profil métier) | Naît d'un devis accepté ; porte avancements, factures et factures fournisseurs |
 | Avenant | Correction du devis après acceptation (en plus ou en moins) ; jours ouvrables supplémentaires possibles |
 | Facture d'acompte | Émise après acceptation du devis, avant les travaux |
 | Avancement / Facture d'avancement | Pourcentage d'avancement du chantier, qui produit une facture ; la facture finale reprend le reste à avancer |
@@ -67,8 +90,22 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés.
 3. Dates stockées en `timestamptz` (ou `date` pour une date de document), affichées 15/10/2026 ; montants affichés « 4 431,84 € ».
 4. Mentions obligatoires d'une facture belge, numéro de TVA, IBAN, délai de paiement, conditions générales et assurance décennale sur les documents : à valider avec le comptable.
 5. Exemple vérifié sur un vrai chantier : devis de base 10 384,13 € HT + avenant −3 780,36 € = 6 603,77 € HT ; avancement de 55,04 % = 3 634,47 € ; facture finale = reste à avancer 2 969,30 € HT.
+6. Pour la V1 de Raven (pas encore fait) : **régime de la franchise de TVA** des petites entreprises (pas de TVA, mention obligatoire), **taux de 12 %**, mentions obligatoires selon le cas (assujetti, franchisé, autoliquidation), numérotation **par organisation** avec un premier numéro réglable (client qui vient d'un autre logiciel), conservation des factures (durée à confirmer avec le comptable) même après la fin d'un abonnement.
 
-## Phases
+## Plan de la V1 de Raven (décidé le 19/10/2026)
+0. **Décisions** (fait le 19/10/2026, voir plus haut).
+1. **Multi-organisation** : `organisation_id` partout, société / réglages / compteurs / modèles d'e-mails par organisation, unicité des numéros par organisation, RLS, organisation lue depuis la session, tests d'isolation. Ubique devient l'organisation n° 1.
+2. **Comptes en libre-service** : inscription, vérification de l'e-mail, mot de passe oublié, invitations (jusqu'à 8), rôles propriétaire / membre ; assistant de démarrage (identité, TVA, IBAN, logo, premier numéro, régime de TVA, profil métier).
+3. **Simplifier et rendre multi-métier** : profil métier (Chantier ou Projet, modules allumés) ; modules propres à Ubique et Vertuoza (reprise, import du modèle Excel de Mahx, import de la bibliothèque de Vertuoza) retirés des écrans ; modèles d'e-mails neutres ; franchise de TVA et 12 %.
+4. **Bibliothèque par secteur** : catalogue commun en arborescence (Bâtiment › menuiserie, gyproc, maçonnerie… ; Espaces verts ; Peinture ; Graphisme…), copié dans l'organisation selon son métier ; descriptions et unités, prix laissés à l'utilisateur.
+5. **Envoi Peppol** : l'UBL existant envoyé par l'API d'un point d'accès agréé, statut d'envoi, identifiant Peppol du client.
+6. **Abonnements Mollie** : essai gratuit, deux formules, limite d'utilisateurs, impayés, factures d'abonnement émises par Raven lui-même.
+7. **Mise en production** : configuration par variables d'environnement, CI (build + tests), hébergement UE, sauvegardes avec restauration testée, journaux et alertes, Tailwind local, e-mails envoyés depuis le domaine de Raven (réponse vers l'organisation), en-têtes de sécurité, relecture de sécurité ; pages légales (CGV, confidentialité, contrat de traitement des données) et page d'accueil.
+8. **Bêta fermée** : 5 à 10 utilisateurs de métiers différents (dont Ubique), puis lancement.
+
+Après la V1, seulement si les utilisateurs le demandent : réception Peppol (factures fournisseurs à valider et rattacher), CodaBox (extraits CODA, rapprochement par la communication structurée), statistiques avancées.
+
+## Phases (plan d'origine pour Ubique, remplacé par le plan de la V1 de Raven)
 - **Phase 1** : contacts, devis (lots, lignes, TVA, option marge et prix d'achat, aperçu et export PDF), accepter / refuser, chantier, avancements, factures d'acompte / avancement / finale / simple, notes de crédit, numérotation, VCS, suivi des paiements et retards, export pour le comptable (PDF, UBL 2.1 si demandé), envoi par e-mail avec modèles et rappels, **page client en ligne** (consulter, signer, payer par QR), suivi de chantier complet, bibliothèque de prix, statistiques réduites.
 - **Phase 2 : Peppol.** Envoi et réception d'e-factures (obligatoire entre entreprises en Belgique depuis le 1er janvier 2026). Il faut un **point d'accès Peppol certifié** (prestataire agréé avec API) : on ne se connecte pas au réseau soi-même. Environ 600 factures fournisseurs à valider et rattacher à un chantier : formulaire pré-rempli depuis la e-facture, liaison à un ou plusieurs chantiers.
 - **Phase 3 : CodaBox.** Lecture des extraits bancaires CODA et rapprochement des paiements par la communication structurée.
@@ -167,12 +204,14 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés.
 - [x] Connexion (17/10/2026, avant la mise en ligne) : migration `0023_connexion.sql` (utilisateurs, sessions, essais ratés), `src/connexion.rs`, page `/connexion` et « Se déconnecter » dans le menu. Toutes les pages demandent d'être connecté sauf `/connexion`, `/client/…` (page client, lien secret) et `/sante`. Mot de passe Argon2 (10 caractères au moins), session de 30 jours par cookie (HttpOnly, Secure, SameSite=Lax ; la base ne garde que l'empreinte du jeton), 5 essais ratés par quart d'heure et par e-mail. Comptes créés en ligne de commande seulement (pas d'inscription sur le site). `crate::application` = le site protégé (`main.rs`) ; `crate::app` = le site sans connexion, pour les tests des écrans. 355 tests.
 - [x] Import des entreprises et des contacts (17/10/2026, transition) : `src/contacts_import.rs`, `/entreprises/import` et `/contacts/import` (bouton « Importer (Excel, CSV) » des listes). Colonnes retrouvées par leur titre ; l'adresse en une colonne de la liste de Vertuoza (« Rue du Beau Site 12, 1390 Grez-Doiceau 🇧🇪 Belgique ») est découpée ; un contact est relié à son entreprise par le nom ; pas de doublon (même nom et e-mail, ou même TVA). 359 tests.
 - Plan de transition Vertuoza → Ubifacture (hébergement recommandé : Clever Cloud ; bascule proposée le 1er janvier 2027 ; Peppol en phase 2 avant de quitter Vertuoza) : https://claude.ai/artifact/S8TFTH7HketsK5UysDo52X
-- [ ] Reprise des données de Vertuoza (transition ; choix de Mahx : ce qui est en cours et l'année 2026, lecture seule de Vertuoza, aucun export créé chez eux).
+- [ ] Reprise des données de Vertuoza (**en pause depuis le 19/10/2026**, reprise après l'étape 1 de la V1 de Raven ; transition ; choix de Mahx : ce qui est en cours et l'année 2026, lecture seule de Vertuoza, aucun export créé chez eux).
   - [x] Étape 1, côté Ubifacture : migration `0024_reprise_vertuoza.sql` (colonnes `reprise` et `chantier_vertuoza` des factures ; les contrôles chantier / avancement ne s'appliquent pas aux factures reprises), `src/reprise.rs`, commande `cargo run -- reprise <fichier.json>` (essai par défaut, `--enregistrer` pour garder). Factures, notes de crédit et paiements gardent numéro, dates, montants et VCS de Vertuoza ; clients retrouvés par le nom ou créés ; pas de doublon à la relance ; une facture créée dans Ubifacture avec le même numéro bloque tout ; compteurs remontés au plus grand numéro repris. Bandeau « Facture reprise de Vertuoza » ; exclues de l'export comptable. Le fichier JSON (noms de clients) va dans `docs/vertuoza/captures/reprise/` (non versionné). 362 tests.
   - [ ] Étape 1, relevé des factures 2026 dans Vertuoza (session Vertuoza expirée le 18/10 : Mahx doit se reconnecter dans le navigateur intégré).
   - [ ] Étape 2 : devis, avenants, chantiers (rattacher les factures reprises par `chantier_vertuoza`). Étape 3 : avancements, puis comparaison des totaux avec Vertuoza.
 - `Cargo.toml` : `[profile.dev] debug = "line-tables-only"` (le dossier `target` est passé de 54 Go à 9 Go ; le disque s'était rempli).
-- [ ] Phases 2 et 3.
+- [ ] Phases 2 et 3 (remplacées par le plan de la V1 de Raven).
+- [x] V1 de Raven, étape 0 : diagnostic du dépôt (19/10/2026 : 362 tests réussis, 0 échec ; aucune isolation entre organisations : `societe` et `reglages` à une ligne, compteurs et numéros uniques pour tout le site, environ 330 requêtes à limiter à l'organisation) et décisions de Mahx (voir « Décisions de Mahx (19/10/2026) »).
+- [ ] V1 de Raven, étape 1 : multi-organisation (plan détaillé à présenter à Mahx avant d'écrire du code).
 
 ## Fichiers de documentation
 - `docs/vertuoza-releve.md` : relevé complet de Vertuoza et décisions de Mahx.
