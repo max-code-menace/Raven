@@ -154,8 +154,12 @@
   ]
 
   v(0.4cm)
-  if d.autoliquidation {
-    par(text(weight: "bold")[TVA acquittée par autoliquidation.])
+  // Mentions légales de TVA (autoliquidation, taux de 6 %) : textes figés, imprimés en entier.
+  for m in d.mentions {
+    v(2pt)
+    block(width: 100%, breakable: false, inset: 6pt, stroke: 0.4pt + trait, radius: 2pt)[
+      #text(size: 7.5pt, m)
+    ]
   }
   if d.paiement != none {
     block(width: 100%, inset: 10pt, stroke: 0.6pt + trait, radius: 3pt)[

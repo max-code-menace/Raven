@@ -1088,6 +1088,9 @@ pub(crate) async fn verifier(db: &PgPool, f: &Facture, lignes: &[LigneBase]) -> 
     if !postes.is_empty() && t.ttc_cents <= 0 {
         manques.push("Un total TTC positif".to_string());
     }
+    if crate::mentions_tva::combine_autoliquidation_et_6(lignes) {
+        manques.push("Pas d'autoliquidation et de TVA à 6 % sur la même facture (le 6 % exige un consommateur final, l'autoliquidation un assujetti qui dépose des déclarations périodiques)".to_string());
+    }
     if let Some(origine) = f.facture_origine_id {
         // Une note de crédit ne rend jamais plus que ce que la facture n'a pas encore crédité.
         let reste = reste_a_crediter(db, origine, Some(f.id)).await?;

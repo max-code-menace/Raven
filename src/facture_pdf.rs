@@ -193,7 +193,7 @@ pub(crate) fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("lignes", tableau(&lignes)),
         ("totaux", totaux_typst),
         ("libelle_total", litteral(if d.note_credit { "Total TTC crédité" } else { "Total TTC à payer" })),
-        ("autoliquidation", totaux.autoliquidation.to_string()),
+        ("mentions", tableau(&crate::mentions_tva::a_imprimer(&d.lignes).iter().map(|m| litteral(m)).collect::<Vec<_>>())),
         ("paiement", paiement),
     ]);
     (format!("{MODELE}\n#facture({donnees})\n"), fichiers)

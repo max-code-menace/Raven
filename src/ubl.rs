@@ -158,6 +158,10 @@ pub(crate) fn document(d: &Document) -> String {
     }
     let _ = write!(xml, "<cbc:{nom_code}>{code_type}</cbc:{nom_code}>");
     balise(&mut xml, "cbc:Note", &d.remarque);
+    // Les mentions légales de TVA font partie de la facture : elles voyagent aussi dans le XML (BT-22).
+    for mention in crate::mentions_tva::a_imprimer(&d.lignes) {
+        balise(&mut xml, "cbc:Note", mention);
+    }
     xml.push_str("<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>");
     // La référence de l'acheteur est obligatoire chez Peppol : la référence de la pièce, sinon son numéro.
     let reference = if d.reference.trim().is_empty() { d.numero.to_string() } else { d.reference.clone() };
