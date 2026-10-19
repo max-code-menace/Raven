@@ -339,7 +339,7 @@ struct RetourReglages {
 
 async fn reglages(mut db: Base, Query(r): Query<RetourReglages>) -> Result<Html<String>, Erreur> {
     let modeles: Vec<(String, String, String, String)> =
-        sqlx::query_as("SELECT code, nom, objet, corps FROM modeles_email ORDER BY position").fetch_all(&mut *db).await?;
+        sqlx::query_as("SELECT code, nom, objet, corps FROM modeles_email WHERE organisation_id = app_organisation() ORDER BY position").fetch_all(&mut *db).await?;
     let journal: Vec<(String, String, String, String, String, Vec<String>, String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
         "SELECT to_char(created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI'), modele, destinataires, objet, corps, pieces,
                 statut, erreur, devis_id, facture_id
@@ -405,13 +405,13 @@ struct SaisieModele {
 }
 
 async fn enregistrer_modele(mut db: Base, Path(code): Path<String>, Form(m): Form<SaisieModele>) -> Result<Redirect, Erreur> {
-    let existe: Option<String> = sqlx::query_scalar("SELECT code FROM modeles_email WHERE code = $1").bind(&code).fetch_optional(&mut *db).await?;
+    let existe: Option<String> = sqlx::query_scalar("SELECT code FROM modeles_email WHERE organisation_id = app_organisation() AND code = $1").bind(&code).fetch_optional(&mut *db).await?;
     let code = existe.ok_or_else(Erreur::introuvable)?;
     let objet = m.objet.trim();
     if objet.is_empty() || objet.chars().count() > emails::LONGUEUR_MAX_OBJET || m.corps.chars().count() > emails::LONGUEUR_MAX_CORPS {
         return Ok(Redirect::to(&format!("/parametres/emails?erreur=modele&modele={code}#modele-{code}")));
     }
-    sqlx::query("UPDATE modeles_email SET objet = $1, corps = $2, updated_at = now() WHERE code = $3")
+    sqlx::query("UPDATE modeles_email SET objet = $1, corps = $2, updated_at = now() WHERE organisation_id = app_organisation() AND code = $3")
         .bind(objet)
         .bind(m.corps.replace("\r\n", "\n"))
         .bind(&code)

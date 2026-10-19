@@ -3,12 +3,17 @@
 // sur http://127.0.0.1:3002 pendant trois heures :
 //   cargo test --test vitrine -- --ignored --nocapture
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, header},
 };
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -66,7 +71,8 @@ async fn recalculer(pool: &PgPool, devis: i64) {
 
 #[sqlx::test]
 #[ignore]
-async fn vitrine(pool: PgPool) {
+async fn vitrine(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = app(AppState { db: pool.clone() });
     sqlx::query(
         "INSERT INTO societe (nom, nom_abrege, rue, numero, code_postal, ville, email, telephone, numero_tva)

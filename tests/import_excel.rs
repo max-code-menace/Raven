@@ -3,6 +3,8 @@
 // Pour essayer un vrai fichier sans l'enregistrer nulle part :
 //   $env:IMPORT_FICHIER = "C:\chemin\Devis.xlsx"; cargo test --test import_excel -- --ignored --nocapture
 
+mod commun;
+
 use std::io::Write;
 
 use axum::{
@@ -11,7 +13,10 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -165,7 +170,8 @@ fn import_depuis(lieu: &str) -> i64 {
 }
 
 #[sqlx::test]
-async fn importer_le_modele_dans_un_nouveau_devis(pool: PgPool) {
+async fn importer_le_modele_dans_un_nouveau_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = nouveau_devis(&pool, &s).await;
     let (code, page) = lire(&s, &format!("/devis/{id}/import")).await;
@@ -240,7 +246,8 @@ async fn importer_le_modele_dans_un_nouveau_devis(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_avenant_en_moins_depuis_excel(pool: PgPool) {
+async fn un_avenant_en_moins_depuis_excel(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     use C::*;
     let s = site(&pool);
     // Un chantier : un devis accepté.
@@ -277,7 +284,8 @@ async fn un_avenant_en_moins_depuis_excel(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn sans_taux_de_tva_et_fichier_sans_en_tete(pool: PgPool) {
+async fn sans_taux_de_tva_et_fichier_sans_en_tete(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     use C::*;
     let s = site(&pool);
     let id = nouveau_devis(&pool, &s).await;
@@ -311,7 +319,8 @@ async fn sans_taux_de_tva_et_fichier_sans_en_tete(pool: PgPool) {
 /// Lit un vrai fichier (chemin dans IMPORT_FICHIER) et affiche ce qui serait importé. Rien n'est enregistré.
 #[sqlx::test]
 #[ignore]
-async fn essayer_un_vrai_fichier(pool: PgPool) {
+async fn essayer_un_vrai_fichier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let Ok(chemin) = std::env::var("IMPORT_FICHIER") else {
         println!("Indique le fichier : $env:IMPORT_FICHIER = \"C:\\chemin\\Devis.xlsx\"");
         return;

@@ -29,7 +29,7 @@ fn date_belge(d: NaiveDate) -> String {
 
 /// (premier rappel après l'échéance, rappel suivant après le précédent), en jours.
 pub(crate) async fn delais(db: &mut PgConnection) -> Result<(i32, i32), sqlx::Error> {
-    sqlx::query_as("SELECT rappel_premier_jours, rappel_suivant_jours FROM reglages WHERE id = 1").fetch_one(&mut *db).await
+    sqlx::query_as("SELECT rappel_premier_jours, rappel_suivant_jours FROM reglages WHERE organisation_id = app_organisation()").fetch_one(&mut *db).await
 }
 
 /// La date à laquelle le prochain rappel est dû.
@@ -307,7 +307,7 @@ async fn enregistrer_delais(mut db: Base, Form(d): Form<Delais>) -> Result<Redir
     let (Some(premier), Some(suivant)) = (lire(&d.premier), lire(&d.suivant)) else {
         return Ok(Redirect::to("/parametres/emails?erreur=delais#rappels"));
     };
-    sqlx::query("UPDATE reglages SET rappel_premier_jours = $1, rappel_suivant_jours = $2, updated_at = now() WHERE id = 1")
+    sqlx::query("UPDATE reglages SET rappel_premier_jours = $1, rappel_suivant_jours = $2, updated_at = now() WHERE organisation_id = app_organisation()")
         .bind(premier)
         .bind(suivant)
         .execute(&mut *db)

@@ -1,12 +1,17 @@
 // Tests de l'étape 9-4 : statistiques réduites (chiffre d'affaires, encaissé, impayés, conversion des devis).
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -70,7 +75,8 @@ pub async fn devis(pool: &PgPool, s: &Router, statut: &str) -> i64 {
 }
 
 #[sqlx::test]
-async fn statistiques_de_la_periode(pool: PgPool) {
+async fn statistiques_de_la_periode(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let page = lire(&s, "/statistiques").await;
     assert!(page.contains("Statistiques") && page.contains("Chiffre d&#39;affaires") || page.contains("Chiffre d'affaires"));

@@ -248,7 +248,7 @@ async fn afficher(mut db: Base, Query(r): Query<Retour>) -> Result<Html<String>,
     .await?;
     let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let (debut, fin) = mois_precedent(aujourdhui);
-    let email_comptable: String = sqlx::query_scalar("SELECT email_comptable FROM reglages WHERE id = 1").fetch_one(&mut *db).await?;
+    let email_comptable: String = sqlx::query_scalar("SELECT email_comptable FROM reglages WHERE organisation_id = app_organisation()").fetch_one(&mut *db).await?;
     let page = Page {
         exports: lignes
             .into_iter()
@@ -357,7 +357,7 @@ async fn enregistrer_comptable(mut db: Base, Form(c): Form<Comptable>) -> Result
     if !email.is_empty() && !email_valide(email) {
         return Ok(Redirect::to("/exports?erreur=comptable"));
     }
-    sqlx::query("UPDATE reglages SET email_comptable = $1, updated_at = now() WHERE id = 1").bind(email).execute(&mut *db).await?;
+    sqlx::query("UPDATE reglages SET email_comptable = $1, updated_at = now() WHERE organisation_id = app_organisation()").bind(email).execute(&mut *db).await?;
     Ok(Redirect::to("/exports?ok=comptable"))
 }
 
@@ -366,7 +366,7 @@ async fn envoyer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> 
     let ligne: Option<(NaiveDate, NaiveDate, String, Vec<u8>)> =
         sqlx::query_as("SELECT date_debut, date_fin, nom_fichier, fichier FROM exports WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
     let (debut, fin, nom, fichier) = ligne.ok_or_else(Erreur::introuvable)?;
-    let email: String = sqlx::query_scalar("SELECT email_comptable FROM reglages WHERE id = 1").fetch_one(&mut *db).await?;
+    let email: String = sqlx::query_scalar("SELECT email_comptable FROM reglages WHERE organisation_id = app_organisation()").fetch_one(&mut *db).await?;
     if email.is_empty() {
         return Ok(Redirect::to("/exports?erreur=sans_comptable"));
     }

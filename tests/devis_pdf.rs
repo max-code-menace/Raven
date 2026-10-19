@@ -1,12 +1,17 @@
 // Tests du PDF du devis (Typst) et de l'onglet Visualisation.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -37,7 +42,7 @@ async fn taux(pool: &PgPool, centiemes: i32) -> i64 {
 }
 
 async fn societe(pool: &PgPool) {
-    sqlx::query("INSERT INTO societe (id, nom, nom_abrege, rue, numero, code_postal, ville, email, telephone, numero_tva) VALUES (1, 'Ubique SRL', 'Ubique', 'Rue du Bâtiment', '5', '4000', 'Liège', 'info@ubique.be', '04 123 45 67', 'BE0123456789')")
+    sqlx::query("INSERT INTO societe (nom, nom_abrege, rue, numero, code_postal, ville, email, telephone, numero_tva) VALUES ('Ubique SRL', 'Ubique', 'Rue du Bâtiment', '5', '4000', 'Liège', 'info@ubique.be', '04 123 45 67', 'BE0123456789')")
         .execute(pool).await.unwrap();
     sqlx::query("INSERT INTO societe_comptes_bancaires (iban, par_defaut) VALUES ('BE68 5390 0754 7034', true)").execute(pool).await.unwrap();
 }
@@ -62,7 +67,8 @@ async fn devis_complet(pool: &PgPool) -> i64 {
 // ─── La route du PDF ────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn le_pdf_se_telecharge_avec_le_bon_nom(pool: PgPool) {
+async fn le_pdf_se_telecharge_avec_le_bon_nom(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let d = devis_complet(&pool).await;
     let s = site(&pool);
@@ -79,12 +85,14 @@ async fn le_pdf_se_telecharge_avec_le_bon_nom(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_devis_inconnu_n_a_pas_de_pdf(pool: PgPool) {
+async fn un_devis_inconnu_n_a_pas_de_pdf(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     assert_eq!(reponse(&site(&pool), "/devis/999/pdf").await.0, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
-async fn un_devis_vide_donne_quand_meme_un_pdf(pool: PgPool) {
+async fn un_devis_vide_donne_quand_meme_un_pdf(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(&pool).await.unwrap();
     let (statut, _, octets) = reponse(&site(&pool), &format!("/devis/{d}/pdf")).await;
     assert_eq!(statut, StatusCode::OK);
@@ -92,7 +100,8 @@ async fn un_devis_vide_donne_quand_meme_un_pdf(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_pdf_tient_sur_plusieurs_pages_quand_il_y_a_beaucoup_de_lignes(pool: PgPool) {
+async fn le_pdf_tient_sur_plusieurs_pages_quand_il_y_a_beaucoup_de_lignes(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let d = devis_complet(&pool).await;
     let reduit = taux(&pool, 600).await;
@@ -116,7 +125,8 @@ fn lopdf_pages(octets: &[u8]) -> usize {
 // ─── Les conditions générales ───────────────────────────────────────────────
 
 #[sqlx::test]
-async fn les_conditions_generales_sont_ajoutees_a_la_suite(pool: PgPool) {
+async fn les_conditions_generales_sont_ajoutees_a_la_suite(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let d = devis_complet(&pool).await;
     let sans = reponse(&site(&pool), &format!("/devis/{d}/pdf")).await.2;
@@ -132,7 +142,8 @@ async fn les_conditions_generales_sont_ajoutees_a_la_suite(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn des_conditions_generales_illisibles_ne_bloquent_pas_le_devis(pool: PgPool) {
+async fn des_conditions_generales_illisibles_ne_bloquent_pas_le_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let d = devis_complet(&pool).await;
     sqlx::query("INSERT INTO societe_fichiers (usage, nom, type_mime, contenu) VALUES ('conditions_generales', 'cg.pdf', 'application/pdf', $1)")
@@ -144,7 +155,8 @@ async fn des_conditions_generales_illisibles_ne_bloquent_pas_le_devis(pool: PgPo
 }
 
 #[sqlx::test]
-async fn un_logo_abime_ne_bloque_pas_le_devis(pool: PgPool) {
+async fn un_logo_abime_ne_bloque_pas_le_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let d = devis_complet(&pool).await;
     // Un « PNG » dont seul l'en-tête est bon : Typst ne peut pas le lire.
@@ -160,7 +172,8 @@ async fn un_logo_abime_ne_bloque_pas_le_devis(pool: PgPool) {
 // ─── Ce que contient le texte envoyé à Typst ────────────────────────────────
 
 #[sqlx::test]
-async fn le_pdf_reprend_les_informations_et_les_lignes(pool: PgPool) {
+async fn le_pdf_reprend_les_informations_et_les_lignes(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let d = devis_complet(&pool).await;
     let source = typst(&pool, d).await;
@@ -180,7 +193,8 @@ async fn le_pdf_reprend_les_informations_et_les_lignes(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_autre_client_de_facturation_et_une_adresse_de_chantier_propre(pool: PgPool) {
+async fn un_autre_client_de_facturation_et_une_adresse_de_chantier_propre(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let client: i64 = sqlx::query_scalar("INSERT INTO entreprises (nom) VALUES ('Client SA') RETURNING id").fetch_one(&pool).await.unwrap();
     let assurance: i64 = sqlx::query_scalar("INSERT INTO entreprises (nom, rue, numero, code_postal, ville, pays) VALUES ('Assurance Belfius', 'Boulevard Pachéco', '44', '1000', 'Bruxelles', 'BE') RETURNING id").fetch_one(&pool).await.unwrap();
     let d: i64 = sqlx::query_scalar(
@@ -195,7 +209,8 @@ async fn un_autre_client_de_facturation_et_une_adresse_de_chantier_propre(pool: 
 }
 
 #[sqlx::test]
-async fn les_textes_tapes_ne_peuvent_pas_s_echapper_du_texte_typst(pool: PgPool) {
+async fn les_textes_tapes_ne_peuvent_pas_s_echapper_du_texte_typst(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let piege = "\") #panic(\"boom\") [*gras*] \\ $x$ #import \"a\"";
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero, reference, remarque_1, remarque_2, responsable) VALUES (1, $1, $1, $1, $1) RETURNING id")
@@ -210,7 +225,8 @@ async fn les_textes_tapes_ne_peuvent_pas_s_echapper_du_texte_typst(pool: PgPool)
 }
 
 #[sqlx::test]
-async fn un_saut_de_page_coupe_le_tableau_en_deux(pool: PgPool) {
+async fn un_saut_de_page_coupe_le_tableau_en_deux(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(&pool).await.unwrap();
     for (position, genre, texte) in [(1, "texte", "avant"), (2, "saut_de_page", ""), (3, "texte", "apres")] {
         sqlx::query("INSERT INTO devis_lignes (devis_id, position, genre, description) VALUES ($1, $2, $3::text::genre_ligne, $4)")
@@ -225,7 +241,8 @@ async fn un_saut_de_page_coupe_le_tableau_en_deux(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_pdf_du_client_ne_contient_aucune_donnee_de_marge(pool: PgPool) {
+async fn le_pdf_du_client_ne_contient_aucune_donnee_de_marge(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let d = devis_complet(&pool).await;
     sqlx::query("UPDATE devis SET marge_activee = true, frais_generaux_centiemes = 1717 WHERE id = $1").bind(d).execute(&pool).await.unwrap();
@@ -237,7 +254,8 @@ async fn le_pdf_du_client_ne_contient_aucune_donnee_de_marge(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn l_ajustement_figure_dans_le_pdf(pool: PgPool) {
+async fn l_ajustement_figure_dans_le_pdf(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_complet(&pool).await;
     sqlx::query("UPDATE devis SET ajustement_libelle = 'Remise commerciale', ajustement_mode = 'montant', ajustement_valeur = -1000 WHERE id = $1").bind(d).execute(&pool).await.unwrap();
     let source = typst(&pool, d).await;
@@ -247,7 +265,8 @@ async fn l_ajustement_figure_dans_le_pdf(pool: PgPool) {
 // ─── L'onglet Visualisation ─────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn l_onglet_montre_le_pdf_et_les_boutons(pool: PgPool) {
+async fn l_onglet_montre_le_pdf_et_les_boutons(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let d = devis_complet(&pool).await;
     let (statut, html) = page(&site(&pool), &format!("/devis/{d}/apercu")).await;
@@ -259,7 +278,8 @@ async fn l_onglet_montre_le_pdf_et_les_boutons(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_liste_de_ce_qu_il_reste_a_completer(pool: PgPool) {
+async fn la_liste_de_ce_qu_il_reste_a_completer(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(&pool).await.unwrap();
     let (_, html) = page(&site(&pool), &format!("/devis/{d}/apercu")).await;
     for manque in ["La référence du devis", "Le responsable", "Le client", "Les conditions de paiement", "Au moins une ligne chiffrée", "Les coordonnées de ta société"] {
@@ -274,8 +294,9 @@ async fn la_liste_de_ce_qu_il_reste_a_completer(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_liste_signale_une_societe_sans_tva_ni_compte(pool: PgPool) {
-    sqlx::query("INSERT INTO societe (id, nom, nom_abrege, email, telephone) VALUES (1, 'Ubique', 'Ubique', 'a@b.be', '0')").execute(&pool).await.unwrap();
+async fn la_liste_signale_une_societe_sans_tva_ni_compte(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    sqlx::query("INSERT INTO societe (nom, nom_abrege, email, telephone) VALUES ('Ubique', 'Ubique', 'a@b.be', '0')").execute(&pool).await.unwrap();
     let d = devis_complet(&pool).await;
     let (_, html) = page(&site(&pool), &format!("/devis/{d}/apercu")).await;
     assert!(html.contains("Le numéro de TVA de ta société") && html.contains("Un compte bancaire par défaut"));

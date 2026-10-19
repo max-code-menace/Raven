@@ -244,7 +244,7 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
     let Some(numero) = f.numero else { return Ok(None) };
     let lignes = factures::charger_lignes(&mut *db, id).await?;
     let societe: Option<(String, String, String, String, String, String, Option<String>, String, String)> = sqlx::query_as(
-        "SELECT nom, trim(concat_ws(' ', rue, numero)), code_postal, ville, pays, '', numero_tva, email, telephone FROM societe WHERE id = 1",
+        "SELECT nom, trim(concat_ws(' ', rue, numero)), code_postal, ville, pays, '', numero_tva, email, telephone FROM societe WHERE organisation_id = app_organisation()",
     )
     .fetch_optional(&mut *db)
     .await?;
@@ -281,7 +281,7 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
     let acheteur = acheteur
         .map(|(nom, rue, code_postal, ville, pays, tva, email, telephone)| Partie { nom, rue, code_postal, ville, pays, tva, email, telephone })
         .unwrap_or_default();
-    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(&mut *db).await?;
+    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
     let conditions = match f.conditions_paiement_id {
         Some(c) => crate::fiches::Options::charger(&mut *db, crate::fiches::Genre::Entreprise)
             .await?

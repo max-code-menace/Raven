@@ -25,7 +25,7 @@ async fn dupliquer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur
     // Un devis prend le prochain numéro de la numérotation continue ; un avenant, le prochain numéro de son chantier.
     // Dans les deux cas, dans la même transaction que la copie.
     let numero = match chantier {
-        None => sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'devis' RETURNING valeur")
+        None => sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE organisation_id = app_organisation() AND nom = 'devis' RETURNING valeur")
             .fetch_one(&mut *tx)
             .await?,
         Some(chantier_id) => crate::avenants::prochain_numero(&mut tx, chantier_id).await?,

@@ -17,21 +17,34 @@ async fn main() {
     if arguments.first().map(String::as_str) == Some("utilisateur") {
         std::process::exit(utilisateurs(&pool, &arguments[1..]).await);
     }
-    // `cargo run -- reprise <fichier.json> [--enregistrer]` : reprise des factures de Vertuoza (essai par défaut).
+    // `cargo run -- reprise <fichier.json> [--enregistrer] [--organisation <n°>]` : reprise des factures de Vertuoza
+    // (essai par défaut).
     if arguments.first().map(String::as_str) == Some("reprise") {
         let Some(chemin) = arguments.get(1).filter(|a| !a.starts_with("--")) else {
-            eprintln!("Commande : reprise <fichier.json> [--enregistrer]");
+            eprintln!("Commande : reprise <fichier.json> [--enregistrer] [--organisation <n°>]");
             std::process::exit(1);
         };
         let enregistrer = arguments.iter().any(|a| a == "--enregistrer");
+        let options: Vec<&str> = arguments[2..].iter().map(String::as_str).filter(|a| *a != "--enregistrer").collect();
+        let organisation = match organisation_choisie(&pool, &options).await {
+            Ok((organisation, reste)) if reste.is_empty() => organisation,
+            Ok((_, reste)) => {
+                eprintln!("Argument inconnu : {reste}");
+                std::process::exit(1);
+            }
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(1);
+            }
+        };
         let code = match std::fs::read_to_string(chemin) {
             Err(e) => {
                 eprintln!("Lecture de {chemin} impossible : {e}");
                 1
             }
-            Ok(texte) => match ubifacture::reprise::importer(&pool, &texte, enregistrer).await {
+            Ok(texte) => match ubifacture::reprise::importer(&pool, organisation, &texte, enregistrer).await {
                 Ok(rapport) => {
-                    println!("{rapport}");
+                    println!("Organisation n° {organisation}.\n{rapport}");
                     0
                 }
                 Err(message) => {
@@ -65,7 +78,8 @@ async fn main() {
         .expect("le serveur s'est arrêté");
 }
 
-/// L'organisation du nouvel utilisateur (`--organisation <n°>`, obligatoire s'il y en a plusieurs) et son nom (le reste).
+/// L'organisation choisie (`--organisation <n°>`, obligatoire s'il y en a plusieurs) et les autres mots (le nom d'un
+/// nouvel utilisateur).
 async fn organisation_choisie(pool: &sqlx::PgPool, reste: &[&str]) -> Result<(i64, String), String> {
     let mut organisation = None;
     let mut nom = Vec::new();

@@ -183,12 +183,12 @@ struct CompteLigne {
 async fn charger_formulaire(db: &mut PgConnection) -> Result<SocieteForm, sqlx::Error> {
     let societe: Option<SocieteLigne> = sqlx::query_as(
         "SELECT nom, nom_abrege, rue, numero, code_postal, ville, pays, email, emails_supplementaires,
-                telephone, telephones_supplementaires, site_web, numero_tva FROM societe WHERE id = 1",
+                telephone, telephones_supplementaires, site_web, numero_tva FROM societe WHERE organisation_id = app_organisation()",
     )
     .fetch_optional(&mut *db)
     .await?;
     let comptes: Vec<CompteLigne> =
-        sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires ORDER BY par_defaut DESC, id")
+        sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() ORDER BY par_defaut DESC, id")
             .fetch_all(&mut *db)
             .await?;
 
@@ -332,10 +332,10 @@ fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
 async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Error> {
     let mut tx = db.begin().await?;
     sqlx::query(
-        "INSERT INTO societe (id, nom, nom_abrege, rue, numero, code_postal, ville, pays, email,
+        "INSERT INTO societe (nom, nom_abrege, rue, numero, code_postal, ville, pays, email,
                               emails_supplementaires, telephone, telephones_supplementaires, site_web, numero_tva)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-         ON CONFLICT (id) DO UPDATE SET
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         ON CONFLICT (organisation_id) DO UPDATE SET
             nom = $1, nom_abrege = $2, rue = $3, numero = $4, code_postal = $5, ville = $6, pays = $7,
             email = $8, emails_supplementaires = $9, telephone = $10, telephones_supplementaires = $11,
             site_web = $12, numero_tva = $13, updated_at = now()",
@@ -356,7 +356,7 @@ async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Err
     .execute(&mut *tx)
     .await?;
 
-    sqlx::query("DELETE FROM societe_comptes_bancaires").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM societe_comptes_bancaires WHERE organisation_id = app_organisation()").execute(&mut *tx).await?;
     for (i, (iban, bic)) in v.comptes.iter().enumerate() {
         sqlx::query("INSERT INTO societe_comptes_bancaires (iban, bic, par_defaut) VALUES ($1, $2, $3)")
             .bind(iban)
@@ -371,7 +371,7 @@ async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Err
 // ─── Fichiers en base ───────────────────────────────────────────────────────
 
 async fn nom_du_fichier(db: &mut PgConnection, fichier: Fichier) -> Result<Option<String>, sqlx::Error> {
-    sqlx::query_scalar("SELECT nom FROM societe_fichiers WHERE usage = $1")
+    sqlx::query_scalar("SELECT nom FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = $1")
         .bind(fichier.usage())
         .fetch_optional(&mut *db)
         .await
@@ -379,7 +379,7 @@ async fn nom_du_fichier(db: &mut PgConnection, fichier: Fichier) -> Result<Optio
 
 async fn version_du_logo(db: &mut PgConnection) -> Result<i64, sqlx::Error> {
     let v: Option<i64> =
-        sqlx::query_scalar("SELECT extract(epoch FROM updated_at)::bigint FROM societe_fichiers WHERE usage = 'logo'")
+        sqlx::query_scalar("SELECT extract(epoch FROM updated_at)::bigint FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'logo'")
             .fetch_optional(&mut *db)
             .await?;
     Ok(v.unwrap_or(0))
@@ -525,7 +525,7 @@ async fn televerser(fichier: Fichier, mut db: Base, mut multipart: Multipart) ->
     let nom = nom_de_fichier_propre(&nom_brut, defaut);
     sqlx::query(
         "INSERT INTO societe_fichiers (usage, nom, type_mime, contenu) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (usage) DO UPDATE SET nom = $2, type_mime = $3, contenu = $4, updated_at = now()",
+         ON CONFLICT (organisation_id, usage) DO UPDATE SET nom = $2, type_mime = $3, contenu = $4, updated_at = now()",
     )
     .bind(fichier.usage())
     .bind(nom)
@@ -537,7 +537,7 @@ async fn televerser(fichier: Fichier, mut db: Base, mut multipart: Multipart) ->
 }
 
 async fn retirer(fichier: Fichier, mut db: Base) -> Result<Redirect, Erreur> {
-    sqlx::query("DELETE FROM societe_fichiers WHERE usage = $1")
+    sqlx::query("DELETE FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = $1")
         .bind(fichier.usage())
         .execute(&mut *db)
         .await?;
@@ -546,7 +546,7 @@ async fn retirer(fichier: Fichier, mut db: Base) -> Result<Redirect, Erreur> {
 
 async fn telecharger(fichier: Fichier, mut db: Base) -> Result<Response, Erreur> {
     let ligne: Option<(String, String, Vec<u8>)> =
-        sqlx::query_as("SELECT nom, type_mime, contenu FROM societe_fichiers WHERE usage = $1")
+        sqlx::query_as("SELECT nom, type_mime, contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = $1")
             .bind(fichier.usage())
             .fetch_optional(&mut *db)
             .await?;

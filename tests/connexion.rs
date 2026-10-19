@@ -1,13 +1,18 @@
 // Tests de la connexion : le site servi (`application`) demande d'être connecté, sauf la page de connexion,
 // la page client en ligne et /sante.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, application, connexion};
 
@@ -55,7 +60,8 @@ fn valeur_cookie(set_cookie: &str) -> String {
 }
 
 #[sqlx::test]
-async fn sans_connexion_tout_mene_a_la_page_de_connexion(pool: PgPool) {
+async fn sans_connexion_tout_mene_a_la_page_de_connexion(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     assert_eq!(lire(&s, "/", None).await.lieu.as_deref(), Some("/connexion"));
     assert_eq!(lire(&s, "/factures/3", None).await.lieu.as_deref(), Some("/connexion?suite=/factures/3"));
@@ -74,7 +80,8 @@ async fn sans_connexion_tout_mene_a_la_page_de_connexion(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn se_connecter_puis_se_deconnecter(pool: PgPool) {
+async fn se_connecter_puis_se_deconnecter(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     connexion::ajouter_utilisateur(&pool, 1, "max@ubique.be", "Max", "un-long-mot-de-passe").await.unwrap();
     assert!(connexion::ajouter_utilisateur(&pool, 1, "MAX@ubique.be", "", "un-long-mot-de-passe").await.is_err(), "pas deux fois le même e-mail");
     assert!(connexion::ajouter_utilisateur(&pool, 1, "autre@ubique.be", "", "court").await.is_err(), "10 caractères au moins");
@@ -107,7 +114,8 @@ async fn se_connecter_puis_se_deconnecter(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn trop_d_essais_et_changement_de_mot_de_passe(pool: PgPool) {
+async fn trop_d_essais_et_changement_de_mot_de_passe(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     connexion::ajouter_utilisateur(&pool, 1, "max@ubique.be", "", "un-long-mot-de-passe").await.unwrap();
     let s = site(&pool);
     let bon = "email=max%40ubique.be&mot_de_passe=un-long-mot-de-passe";

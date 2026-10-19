@@ -2,13 +2,18 @@
 // Informations du devis, « Valider et envoyer » en un clic, bouton « Corriger (note de crédit) » sur une facture
 // verrouillée, onglets de la facture, écran « Factures fournisseurs » (achats de tous les chantiers).
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -64,7 +69,8 @@ async fn devis_envoye(pool: &PgPool) -> i64 {
 }
 
 #[sqlx::test]
-async fn un_acompte_depuis_l_onglet_informations_du_devis(pool: PgPool) {
+async fn un_acompte_depuis_l_onglet_informations_du_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let devis = devis_envoye(&pool).await;
     let (_, page) = lire(&s, &format!("/devis/{devis}")).await;
@@ -84,7 +90,8 @@ async fn un_acompte_depuis_l_onglet_informations_du_devis(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn valider_et_envoyer_puis_corriger(pool: PgPool) {
+async fn valider_et_envoyer_puis_corriger(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let devis = devis_envoye(&pool).await;
     poster(&s, &format!("/devis/{devis}/statut/accepter"), "date=2026-10-05").await;
@@ -110,7 +117,8 @@ async fn valider_et_envoyer_puis_corriger(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_factures_fournisseurs(pool: PgPool) {
+async fn les_factures_fournisseurs(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let devis = devis_envoye(&pool).await;
     poster(&s, &format!("/devis/{devis}/statut/accepter"), "date=2026-10-05").await;

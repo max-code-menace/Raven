@@ -150,7 +150,7 @@ pub(crate) async fn charger_bloc(db: &mut PgConnection, entreprise: Option<i64>,
 pub(crate) async fn charger_societe(db: &mut PgConnection) -> Result<Option<Societe>, sqlx::Error> {
     let ligne: Option<(String, String, String, String, String, String, String, String, String)> = sqlx::query_as(
         "SELECT nom, rue, numero, code_postal, ville, pays, COALESCE(numero_tva, ''), email, telephone
-         FROM societe WHERE id = 1",
+         FROM societe WHERE organisation_id = app_organisation()",
     )
     .fetch_optional(&mut *db)
     .await?;
@@ -158,8 +158,8 @@ pub(crate) async fn charger_societe(db: &mut PgConnection) -> Result<Option<Soci
         return Ok(None);
     };
     let iban: Option<String> =
-        sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(&mut *db).await?;
-    let logo: Option<(String, Vec<u8>)> = sqlx::query_as("SELECT type_mime, contenu FROM societe_fichiers WHERE usage = 'logo'")
+        sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
+    let logo: Option<(String, Vec<u8>)> = sqlx::query_as("SELECT type_mime, contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'logo'")
         .fetch_optional(&mut *db)
         .await?;
     // L'extension dit à Typst quel format d'image lire.
@@ -426,7 +426,7 @@ pub async fn pdf_du_devis(db: &mut PgConnection, id: i64) -> Result<(String, Vec
     };
 
     let conditions: Option<Vec<u8>> =
-        sqlx::query_scalar("SELECT contenu FROM societe_fichiers WHERE usage = 'conditions_generales'").fetch_optional(&mut *db).await?;
+        sqlx::query_scalar("SELECT contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'conditions_generales'").fetch_optional(&mut *db).await?;
     if let Some(conditions) = conditions {
         match tokio::task::spawn_blocking({
             let base = octets.clone();

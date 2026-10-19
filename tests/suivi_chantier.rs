@@ -1,13 +1,18 @@
 // Tests de l'étape 9-2 : suivi de chantier complet (rentabilité prévue et actuelle, budget d'achat, heures,
 // facturation et encaissements, achats saisis à la main).
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -88,7 +93,8 @@ async fn chantier(pool: &PgPool, s: &Router) -> i64 {
 }
 
 #[sqlx::test]
-async fn rentabilite_budget_et_heures_prevus(pool: PgPool) {
+async fn rentabilite_budget_et_heures_prevus(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = chantier(&pool, &s).await;
     let page = lire(&s, &format!("/chantiers/{id}")).await;
@@ -109,7 +115,8 @@ async fn rentabilite_budget_et_heures_prevus(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_achats_du_chantier(pool: PgPool) {
+async fn les_achats_du_chantier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = chantier(&pool, &s).await;
     let jour = aujourdhui(&pool).await;
@@ -142,7 +149,8 @@ async fn les_achats_du_chantier(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn facture_encaisse_et_benefice_actuel(pool: PgPool) {
+async fn facture_encaisse_et_benefice_actuel(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = chantier(&pool, &s).await;
     // Un acompte de 1 000 € HT validé (TTC 1 060 €), payé 500 €.

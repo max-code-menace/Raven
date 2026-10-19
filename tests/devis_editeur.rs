@@ -1,12 +1,17 @@
 // Tests de l'éditeur de devis, onglet Informations.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -76,14 +81,16 @@ fn formulaire(client: &str, tva: i64, conditions: i64) -> String {
 }
 
 #[sqlx::test]
-async fn un_devis_inconnu_est_introuvable(pool: PgPool) {
+async fn un_devis_inconnu_est_introuvable(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     assert_eq!(lire(&s, "/devis/999").await.0, StatusCode::NOT_FOUND);
     assert_eq!(poster(&s, "/devis/999", "reference=x").await.0, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
-async fn la_page_montre_le_numero_et_le_statut(pool: PgPool) {
+async fn la_page_montre_le_numero_et_le_statut(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     entreprise(&pool, "Dupont SRL").await;
     let (statut, page) = lire(&site(&pool), &format!("/devis/{id}")).await;
@@ -98,7 +105,8 @@ async fn la_page_montre_le_numero_et_le_statut(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn enregistrer_met_a_jour_le_brouillon(pool: PgPool) {
+async fn enregistrer_met_a_jour_le_brouillon(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let e = entreprise(&pool, "Dupont SRL").await;
     let (tva, cond) = (taux_reduit(&pool).await, sept_jours(&pool).await);
@@ -130,7 +138,8 @@ async fn enregistrer_met_a_jour_le_brouillon(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_contact_peut_etre_le_client(pool: PgPool) {
+async fn un_contact_peut_etre_le_client(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let c = contact(&pool, "Anne", "Lambert").await;
     let (tva, cond) = (taux_reduit(&pool).await, sept_jours(&pool).await);
@@ -142,7 +151,8 @@ async fn un_contact_peut_etre_le_client(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_champs_obligatoires_sont_verifies_et_rien_n_est_enregistre(pool: PgPool) {
+async fn les_champs_obligatoires_sont_verifies_et_rien_n_est_enregistre(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let (statut, _, page) = poster(&site(&pool), &format!("/devis/{id}"), "reference=&responsable=&date_devis=pas-une-date").await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
@@ -161,14 +171,16 @@ async fn les_champs_obligatoires_sont_verifies_et_rien_n_est_enregistre(pool: Pg
 }
 
 #[sqlx::test]
-async fn les_valeurs_tapees_reviennent_apres_une_erreur(pool: PgPool) {
+async fn les_valeurs_tapees_reviennent_apres_une_erreur(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let (_, _, page) = poster(&site(&pool), &format!("/devis/{id}"), "reference=Garde+moi&responsable=Marc").await;
     assert!(page.contains("value=\"Garde moi\"") && page.contains("value=\"Marc\""));
 }
 
 #[sqlx::test]
-async fn un_client_ou_un_taux_inexistant_est_refuse(pool: PgPool) {
+async fn un_client_ou_un_taux_inexistant_est_refuse(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let s = site(&pool);
     let (statut, _, page) = poster(&s, &format!("/devis/{id}"), &formulaire("e9999", 9999, 9999)).await;
@@ -180,7 +192,8 @@ async fn un_client_ou_un_taux_inexistant_est_refuse(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_autre_client_de_facturation_est_exige_si_la_case_est_decochee(pool: PgPool) {
+async fn un_autre_client_de_facturation_est_exige_si_la_case_est_decochee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let e = entreprise(&pool, "Dupont SRL").await;
     let assurance = entreprise(&pool, "Assurance Belfius").await;
@@ -207,7 +220,8 @@ async fn un_autre_client_de_facturation_est_exige_si_la_case_est_decochee(pool: 
 }
 
 #[sqlx::test]
-async fn l_adresse_du_chantier_n_est_gardee_que_si_elle_est_propre_au_devis(pool: PgPool) {
+async fn l_adresse_du_chantier_n_est_gardee_que_si_elle_est_propre_au_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let e = entreprise(&pool, "Dupont SRL").await;
     let (tva, cond) = (taux_reduit(&pool).await, sept_jours(&pool).await);
@@ -228,7 +242,8 @@ async fn l_adresse_du_chantier_n_est_gardee_que_si_elle_est_propre_au_devis(pool
 }
 
 #[sqlx::test]
-async fn architecte_et_gestionnaire_sont_facultatifs_mais_doivent_exister(pool: PgPool) {
+async fn architecte_et_gestionnaire_sont_facultatifs_mais_doivent_exister(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let e = entreprise(&pool, "Dupont SRL").await;
     let archi = contact(&pool, "Paul", "Architecte").await;
@@ -249,7 +264,8 @@ async fn architecte_et_gestionnaire_sont_facultatifs_mais_doivent_exister(pool: 
 }
 
 #[sqlx::test]
-async fn un_devis_envoye_n_est_plus_modifiable(pool: PgPool) {
+async fn un_devis_envoye_n_est_plus_modifiable(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let e = entreprise(&pool, "Dupont SRL").await;
     let (tva, cond) = (taux_reduit(&pool).await, sept_jours(&pool).await);
@@ -268,14 +284,16 @@ async fn un_devis_envoye_n_est_plus_modifiable(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_textes_tapes_sont_neutralises(pool: PgPool) {
+async fn les_textes_tapes_sont_neutralises(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let (_, _, page) = poster(&site(&pool), &format!("/devis/{id}"), "reference=%3Cscript%3Ealert(1)%3C%2Fscript%3E&remarque_1=%3Cb%3Egras%3C%2Fb%3E").await;
     assert!(!page.contains("<script>alert(1)") && !page.contains("<b>gras"));
 }
 
 #[sqlx::test]
-async fn deux_clients_de_facturation_sont_refuses_par_la_base(pool: PgPool) {
+async fn deux_clients_de_facturation_sont_refuses_par_la_base(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
     let e = entreprise(&pool, "E").await;
     let c = contact(&pool, "C", "D").await;
@@ -293,7 +311,8 @@ async fn deux_clients_de_facturation_sont_refuses_par_la_base(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_liste_mene_a_l_editeur_et_nouveau_y_arrive(pool: PgPool) {
+async fn la_liste_mene_a_l_editeur_et_nouveau_y_arrive(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (statut, lieu, _) = poster(&s, "/devis", "").await;
     assert_eq!(statut, StatusCode::SEE_OTHER);

@@ -45,7 +45,7 @@ pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
 /// transaction : pas de doublon si deux personnes créent en même temps, pas de trou si ça échoue.
 pub(crate) async fn creer_brouillon(db: &mut PgConnection) -> Result<i64, sqlx::Error> {
     let mut tx = db.begin().await?;
-    let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'devis' RETURNING valeur")
+    let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE organisation_id = app_organisation() AND nom = 'devis' RETURNING valeur")
         .fetch_one(&mut *tx)
         .await?;
     let id: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES ($1) RETURNING id")

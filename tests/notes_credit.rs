@@ -1,12 +1,17 @@
 // Tests de l'étape 7-3 : notes de crédit (créditer une facture validée, crédit partiel, numérotation propre) et PDF.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -83,7 +88,8 @@ async fn ttc(pool: &PgPool, id: i64) -> i64 {
 }
 
 #[sqlx::test]
-async fn crediter_entierement_une_facture(pool: PgPool) {
+async fn crediter_entierement_une_facture(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let facture = facture_validee(&pool, &s).await;
 
@@ -137,7 +143,8 @@ async fn crediter_entierement_une_facture(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_credit_partiel_ne_depasse_jamais_le_reste(pool: PgPool) {
+async fn un_credit_partiel_ne_depasse_jamais_le_reste(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let facture = facture_validee(&pool, &s).await;
 
@@ -175,7 +182,8 @@ async fn un_credit_partiel_ne_depasse_jamais_le_reste(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_pdf_d_une_facture_et_d_une_note_de_credit(pool: PgPool) {
+async fn le_pdf_d_une_facture_et_d_une_note_de_credit(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let facture = facture_validee(&pool, &s).await;
     for (uri, nom) in [(format!("/factures/{facture}/pdf"), "inline; filename=\"Facture-125.pdf\""), (format!("/factures/{facture}/pdf?telecharger=1"), "attachment; filename=\"Facture-125.pdf\"")] {
@@ -204,7 +212,8 @@ async fn le_pdf_d_une_facture_et_d_une_note_de_credit(pool: PgPool) {
 //   $env:RENDU_DOSSIER = "C:\chemin\dossier"; cargo test --test notes_credit -- --ignored
 #[sqlx::test]
 #[ignore]
-async fn ecrire_les_pages_d_une_facture_en_png(pool: PgPool) {
+async fn ecrire_les_pages_d_une_facture_en_png(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let dossier = std::env::var("RENDU_DOSSIER").expect("Il faut RENDU_DOSSIER (dossier de sortie).");
     let s = site(&pool);
     let facture = facture_validee(&pool, &s).await;

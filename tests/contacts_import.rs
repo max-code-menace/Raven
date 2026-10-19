@@ -1,12 +1,17 @@
 // Test de l'import des entreprises et des contacts (transition depuis Vertuoza).
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -37,7 +42,8 @@ async fn televerser(site: &Router, uri: &str, octets: &[u8]) -> (StatusCode, Opt
 }
 
 #[sqlx::test]
-async fn importer_entreprises_puis_contacts(pool: PgPool) {
+async fn importer_entreprises_puis_contacts(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (code, _, page) = envoyer(&s, Request::builder().uri("/contacts").body(Body::empty()).unwrap()).await;
     assert!(code == StatusCode::OK && page.contains("href=\"/contacts/import\""));

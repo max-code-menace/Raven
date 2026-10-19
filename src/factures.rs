@@ -1107,7 +1107,7 @@ pub(crate) async fn verifier(db: &mut PgConnection, f: &Facture, lignes: &[Ligne
     }
     // La numérotation est annuelle : une année déjà close (une pièce de l'année suivante existe) ne se rouvre pas.
     let compteur = if f.genre == "note_credit" { "note_credit" } else { "facture" };
-    let annee_compteur: Option<i32> = sqlx::query_scalar("SELECT annee FROM compteurs WHERE nom = $1").bind(compteur).fetch_one(&mut *db).await?;
+    let annee_compteur: Option<i32> = sqlx::query_scalar("SELECT annee FROM compteurs WHERE organisation_id = app_organisation() AND nom = $1").bind(compteur).fetch_one(&mut *db).await?;
     if let Some(annee) = annee_compteur
         && f.date_facture.year() < annee
     {
@@ -1156,7 +1156,7 @@ async fn valider(mut db: Base, Path(id): Path<i64>, Form(apres): Form<ApresValid
     let compteur = if note_credit { "note_credit" } else { "facture" };
     let mut tx = db.begin().await?;
     // Verrouille le compteur d'abord : deux validations en même temps passent l'une après l'autre.
-    sqlx::query("SELECT valeur FROM compteurs WHERE nom = $1 FOR UPDATE").bind(compteur).execute(&mut *tx).await?;
+    sqlx::query("SELECT valeur FROM compteurs WHERE organisation_id = app_organisation() AND nom = $1 FOR UPDATE").bind(compteur).execute(&mut *tx).await?;
     sqlx::query("SELECT id FROM factures WHERE id = $1 FOR UPDATE").bind(id).execute(&mut *tx).await?;
     let f = charger(&mut *tx, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.brouillon() {
@@ -1174,7 +1174,7 @@ async fn valider(mut db: Base, Path(id): Path<i64>, Form(apres): Form<ApresValid
     let (numero, annee_compteur): (i64, Option<i32>) = sqlx::query_as(
         "UPDATE compteurs SET valeur = CASE WHEN annee IS NULL OR annee < $2 THEN 1 ELSE valeur + 1 END,
                               annee = GREATEST(COALESCE(annee, $2), $2)
-         WHERE nom = $1 RETURNING valeur, annee",
+         WHERE organisation_id = app_organisation() AND nom = $1 RETURNING valeur, annee",
     )
     .bind(compteur)
     .bind(annee)

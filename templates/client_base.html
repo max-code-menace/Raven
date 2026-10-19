@@ -24,7 +24,7 @@
 <body>
 <main class="c-page">
   <header class="c-tete">
-    {% if entreprise.a_un_logo %}<img src="/client/logo" alt="{{ entreprise.nom }}">{% endif %}
+    {% if entreprise.a_un_logo %}<img src="{{ entreprise.logo }}" alt="{{ entreprise.nom }}">{% endif %}
     <div><strong>{{ entreprise.nom }}</strong><div class="u-petit u-muet">{{ entreprise.email }}{% if !entreprise.telephone.is_empty() %} · {{ entreprise.telephone }}{% endif %}</div></div>
   </header>
   {% block content %}{% endblock %}

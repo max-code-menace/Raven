@@ -1,12 +1,17 @@
 // Tests de l'étape 7-2 : factures d'acompte, d'avancement et finale, créées depuis le chantier.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -145,7 +150,8 @@ async fn avancement_55(pool: &PgPool, s: &Router, ex: &Exemple) -> i64 {
 }
 
 #[sqlx::test]
-async fn l_exemple_reel_avancement_puis_facture_finale(pool: PgPool) {
+async fn l_exemple_reel_avancement_puis_facture_finale(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ex = exemple(&pool, &s).await;
     let av = avancement_55(&pool, &s, &ex).await;
@@ -210,7 +216,8 @@ async fn l_exemple_reel_avancement_puis_facture_finale(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn l_acompte_est_deduit_de_la_facture_finale(pool: PgPool) {
+async fn l_acompte_est_deduit_de_la_facture_finale(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ex = exemple(&pool, &s).await;
 
@@ -245,7 +252,8 @@ async fn l_acompte_est_deduit_de_la_facture_finale(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(pool: PgPool) {
+async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ex = exemple(&pool, &s).await;
     for corps in ["mode=pourcentage&valeur=0", "mode=montant&valeur=999999", "mode=pourcentage&valeur=abc", "mode=x&valeur=10"] {
@@ -275,7 +283,8 @@ async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_acompte_se_repartit_entre_les_taux_et_suit_la_remise(pool: PgPool) {
+async fn un_acompte_se_repartit_entre_les_taux_et_suit_la_remise(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     // 1 000 € à 21 % et 1 000 € à 6 %, remise de 200 € : 1 800 € HT, soit 900 € par taux.
     let devis = devis_envoye(&pool, 180_000).await;

@@ -36,7 +36,7 @@ fn date_belge(d: NaiveDate) -> String {
 /// Crée le chantier d'un devis qu'on vient d'accepter et renvoie son numéro.
 /// Le compteur est incrémenté dans la transaction de l'acceptation : pas de trou, pas de doublon.
 pub async fn creer(tx: &mut Transaction<'_, Postgres>, devis_id: i64, date_debut: NaiveDate) -> Result<i64, sqlx::Error> {
-    let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'chantier' RETURNING valeur")
+    let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE organisation_id = app_organisation() AND nom = 'chantier' RETURNING valeur")
         .fetch_one(&mut **tx)
         .await?;
     sqlx::query("INSERT INTO chantiers (numero, devis_id, date_debut) VALUES ($1, $2, $3)")

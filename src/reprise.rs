@@ -212,12 +212,13 @@ async fn client(tx: &mut Transaction<'_, Postgres>, c: &Client, rapport: &mut Ra
     }
 }
 
-/// Charge le fichier. `enregistrer` faux : essai, tout est annulé à la fin.
-pub async fn importer(db: &PgPool, texte: &str, enregistrer: bool) -> Result<Rapport, String> {
+/// Charge le fichier dans l'organisation donnée. `enregistrer` faux : essai, tout est annulé à la fin.
+pub async fn importer(db: &PgPool, organisation: i64, texte: &str, enregistrer: bool) -> Result<Rapport, String> {
     let fichier: Fichier = serde_json::from_str(texte).map_err(|e| format!("Le fichier n'est pas lisible : {e}"))?;
     let mut rapport = Rapport { enregistre: enregistrer, ..Default::default() };
     let erreur_base = |e: sqlx::Error| format!("Erreur de la base : {e}");
-    let mut tx = db.begin().await.map_err(erreur_base)?;
+    let mut base = crate::base::Base::ouvrir(db, organisation).await.map_err(erreur_base)?;
+    let mut tx = base.begin().await.map_err(erreur_base)?;
 
     // Les factures d'abord, les notes de crédit ensuite (elles pointent vers leur facture).
     let mut pieces = fichier.factures.clone();
@@ -408,7 +409,7 @@ pub async fn importer(db: &PgPool, texte: &str, enregistrer: bool) -> Result<Rap
     // Les compteurs ne redescendent jamais sous le plus grand numéro repris de l'année en cours du compteur.
     for (compteur, note) in [("facture", false), ("note_credit", true)] {
         let (valeur, annee): (i64, Option<i32>) =
-            sqlx::query_as("SELECT valeur, annee FROM compteurs WHERE nom = $1 FOR UPDATE").bind(compteur).fetch_one(&mut *tx).await.map_err(erreur_base)?;
+            sqlx::query_as("SELECT valeur, annee FROM compteurs WHERE organisation_id = app_organisation() AND nom = $1 FOR UPDATE").bind(compteur).fetch_one(&mut *tx).await.map_err(erreur_base)?;
         let max: Option<(i32, i64)> = sqlx::query_as(
             "SELECT EXTRACT(YEAR FROM date_facture)::int AS a, max(numero) FROM factures
              WHERE numero IS NOT NULL AND (genre = 'note_credit') = $1 GROUP BY a ORDER BY a DESC LIMIT 1",
@@ -425,7 +426,7 @@ pub async fn importer(db: &PgPool, texte: &str, enregistrer: bool) -> Result<Rap
             };
             if (nouvelle_valeur, Some(nouvelle_annee)) != (valeur, annee) {
                 rapport.alertes.push(format!("Compteur des {compteur}s : {valeur} ({}) → {nouvelle_valeur} ({nouvelle_annee}).", annee.map(|a| a.to_string()).unwrap_or_default()));
-                sqlx::query("UPDATE compteurs SET valeur = $2, annee = $3 WHERE nom = $1")
+                sqlx::query("UPDATE compteurs SET valeur = $2, annee = $3 WHERE organisation_id = app_organisation() AND nom = $1")
                     .bind(compteur)
                     .bind(nouvelle_valeur)
                     .bind(nouvelle_annee)

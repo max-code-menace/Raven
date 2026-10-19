@@ -230,7 +230,7 @@ pub(crate) async fn pdf_de_la_facture(db: &mut PgConnection, f: &Facture) -> Res
         Err(e) => return Err(Erreur::pdf(&e.to_string())),
     };
     let conditions: Option<Vec<u8>> =
-        sqlx::query_scalar("SELECT contenu FROM societe_fichiers WHERE usage = 'conditions_generales'").fetch_optional(&mut *db).await?;
+        sqlx::query_scalar("SELECT contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'conditions_generales'").fetch_optional(&mut *db).await?;
     if let Some(conditions) = conditions {
         let base = octets.clone();
         match tokio::task::spawn_blocking(move || pdf::fusionner(&base, &conditions)).await {

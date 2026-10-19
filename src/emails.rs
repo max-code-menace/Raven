@@ -94,7 +94,7 @@ pub fn remplir(modele: &str, valeurs: &[(&str, String)]) -> String {
 }
 
 pub(crate) async fn modele(db: &mut PgConnection, code: &str) -> Result<(String, String), sqlx::Error> {
-    sqlx::query_as("SELECT objet, corps FROM modeles_email WHERE code = $1").bind(code).fetch_one(&mut *db).await
+    sqlx::query_as("SELECT objet, corps FROM modeles_email WHERE organisation_id = app_organisation() AND code = $1").bind(code).fetch_one(&mut *db).await
 }
 
 /// Le lien secret d'une pièce (créé au premier besoin, jamais changé ensuite).
@@ -153,8 +153,8 @@ async fn client(db: &mut PgConnection, entreprise: Option<i64>, contact: Option<
 
 /// (nom, e-mail, IBAN par défaut) de la société.
 pub(crate) async fn societe(db: &mut PgConnection) -> Result<(String, String, String), sqlx::Error> {
-    let ligne: Option<(String, String)> = sqlx::query_as("SELECT nom, email FROM societe WHERE id = 1").fetch_optional(&mut *db).await?;
-    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(&mut *db).await?;
+    let ligne: Option<(String, String)> = sqlx::query_as("SELECT nom, email FROM societe WHERE organisation_id = app_organisation()").fetch_optional(&mut *db).await?;
+    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
     let (nom, email) = ligne.unwrap_or_default();
     Ok((nom, email, iban.unwrap_or_default()))
 }

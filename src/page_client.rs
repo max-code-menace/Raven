@@ -6,7 +6,9 @@
 //! - **Facture** : il la consulte, voit ce qui reste à payer et la **paie par QR code** (format EPC « SEPA », lu par
 //!   les applications bancaires belges) avec la communication structurée.
 //!
-//! Le lien est un jeton de 144 bits impossible à deviner. Un brouillon n'est jamais visible. La page ne montre que ce
+//! Le lien est un jeton de 144 bits impossible à deviner. Un brouillon n'est jamais visible.
+//! Chaque page travaille dans l'organisation de la pièce du lien (`base_du_jeton`) : un lien ne montre jamais rien
+//! d'une autre organisation, et le logo est celui de cette organisation (`/client/{devis|facture}/{jeton}/logo`). La page ne montre que ce
 //! que le client reçoit déjà par e-mail (jamais les prix d'achat ni la marge).
 
 use askama::Template;
@@ -21,6 +23,7 @@ use chrono::NaiveDate;
 use serde::Deserialize;
 use sqlx::{Connection as _, PgConnection};
 
+use crate::base::Base;
 use crate::commun::format_euros;
 use crate::journal::{self, Genre};
 use crate::{AppState, Erreur, factures, paiements};
@@ -67,14 +70,51 @@ pub struct Entreprise {
     pub email: String,
     pub telephone: String,
     pub a_un_logo: bool,
+    /// L'adresse du logo, propre au lien de la page.
+    pub logo: String,
 }
 
-async fn entreprise(db: &mut PgConnection) -> Result<Entreprise, sqlx::Error> {
+/// La pièce d'un lien secret.
+#[derive(Clone, Copy)]
+enum Lien {
+    Devis,
+    Facture,
+}
+
+impl Lien {
+    fn chemin(self) -> &'static str {
+        match self {
+            Lien::Devis => "devis",
+            Lien::Facture => "facture",
+        }
+    }
+}
+
+/// La connexion d'une page client : liée à l'organisation de la pièce du lien secret (lien inconnu : 404).
+/// Le réglage `app.jeton` n'est posé que pour cette lecture (transaction), et la règle `lien_secret` de la base ne
+/// laisse lire que la pièce de ce lien.
+async fn base_du_jeton(state: &AppState, lien: Lien, jeton: &str) -> Result<Base, Erreur> {
+    let organisation: Option<i64> = {
+        let mut conn = state.db.acquire().await?;
+        let mut tx = conn.begin().await?;
+        sqlx::query("SELECT set_config('app.jeton', $1, true)").bind(jeton).execute(&mut *tx).await?;
+        let requete = match lien {
+            Lien::Devis => "SELECT organisation_id FROM devis WHERE jeton = $1",
+            Lien::Facture => "SELECT organisation_id FROM factures WHERE jeton = $1",
+        };
+        let organisation = sqlx::query_scalar(requete).bind(jeton).fetch_optional(&mut *tx).await?;
+        tx.rollback().await?;
+        organisation
+    };
+    Ok(Base::ouvrir(&state.db, organisation.ok_or_else(Erreur::introuvable)?).await?)
+}
+
+async fn entreprise(db: &mut PgConnection, lien: Lien, jeton: &str) -> Result<Entreprise, sqlx::Error> {
     let ligne: Option<(String, String, String)> =
-        sqlx::query_as("SELECT nom, email, telephone FROM societe WHERE id = 1").fetch_optional(&mut *db).await?;
-    let a_un_logo: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM societe_fichiers WHERE usage = 'logo')").fetch_one(&mut *db).await?;
+        sqlx::query_as("SELECT nom, email, telephone FROM societe WHERE organisation_id = app_organisation()").fetch_optional(&mut *db).await?;
+    let a_un_logo: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'logo')").fetch_one(&mut *db).await?;
     let (nom, email, telephone) = ligne.unwrap_or_default();
-    Ok(Entreprise { nom, email, telephone, a_un_logo })
+    Ok(Entreprise { nom, email, telephone, a_un_logo, logo: format!("/client/{}/{jeton}/logo", lien.chemin()) })
 }
 
 fn pdf(nom: String, octets: Vec<u8>) -> Result<Response, Erreur> {
@@ -89,11 +129,16 @@ fn pdf(nom: String, octets: Vec<u8>) -> Result<Response, Erreur> {
     Ok(reponse)
 }
 
-/// Le logo de la société, pour l'en-tête des pages client.
-async fn logo(State(state): State<AppState>) -> Result<Response, Erreur> {
-    let mut db = state.db.acquire().await?;
+/// Le logo de la société de la pièce, pour l'en-tête des pages client.
+async fn logo(State(state): State<AppState>, Path((piece, jeton)): Path<(String, String)>) -> Result<Response, Erreur> {
+    let lien = match piece.as_str() {
+        "devis" => Lien::Devis,
+        "facture" => Lien::Facture,
+        _ => return Err(Erreur::introuvable()),
+    };
+    let mut db = base_du_jeton(&state, lien, &jeton).await?;
     let ligne: Option<(String, Vec<u8>)> =
-        sqlx::query_as("SELECT type_mime, contenu FROM societe_fichiers WHERE usage = 'logo'").fetch_optional(&mut *db).await?;
+        sqlx::query_as("SELECT type_mime, contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'logo'").fetch_optional(&mut *db).await?;
     let (mime, contenu) = ligne.ok_or_else(Erreur::introuvable)?;
     let mut reponse = contenu.into_response();
     reponse.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_str(&mime).map_err(|_| Erreur::introuvable())?);
@@ -164,7 +209,7 @@ struct Retour {
 }
 
 async fn page_devis(State(state): State<AppState>, Path(jeton): Path<String>, Query(r): Query<Retour>) -> Result<Html<String>, Erreur> {
-    let mut db = state.db.acquire().await?;
+    let mut db = base_du_jeton(&state, Lien::Devis, &jeton).await?;
     let d = devis_du_jeton(&mut *db, &jeton).await?;
     // La première consultation est notée dans l'historique du devis.
     // Chaque ouverture est notée (tableau de bord : « Ouvertures par vos clients »).
@@ -183,7 +228,7 @@ async fn page_devis(State(state): State<AppState>, Path(jeton): Path<String>, Qu
         _ => "refuse",
     };
     let page = PageDevis {
-        entreprise: entreprise(&mut *db).await?,
+        entreprise: entreprise(&mut *db, Lien::Devis, &jeton).await?,
         jeton,
         titre: d.titre,
         date: date_belge(d.date),
@@ -206,7 +251,7 @@ async fn page_devis(State(state): State<AppState>, Path(jeton): Path<String>, Qu
 }
 
 async fn pdf_devis(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Response, Erreur> {
-    let mut db = state.db.acquire().await?;
+    let mut db = base_du_jeton(&state, Lien::Devis, &jeton).await?;
     let d = devis_du_jeton(&mut *db, &jeton).await?;
     let (nom, octets) = crate::devis_pdf::pdf_du_devis(&mut *db, d.id).await?;
     pdf(nom, octets)
@@ -220,7 +265,7 @@ struct Signature {
 }
 
 async fn signer(State(state): State<AppState>, Path(jeton): Path<String>, Form(s): Form<Signature>) -> Result<Redirect, Erreur> {
-    let mut db = state.db.acquire().await?;
+    let mut db = base_du_jeton(&state, Lien::Devis, &jeton).await?;
     let d = devis_du_jeton(&mut *db, &jeton).await?;
     let nom = s.nom.trim();
     if nom.is_empty() || nom.chars().count() > LONGUEUR_MAX_NOM {
@@ -281,7 +326,7 @@ async fn facture_du_jeton(db: &mut PgConnection, jeton: &str) -> Result<factures
 }
 
 async fn page_facture(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Html<String>, Erreur> {
-    let mut db = state.db.acquire().await?;
+    let mut db = base_du_jeton(&state, Lien::Facture, &jeton).await?;
     let f = facture_du_jeton(&mut *db, &jeton).await?;
     sqlx::query("INSERT INTO consultations_client (facture_id) VALUES ($1)").bind(f.id).execute(&mut *db).await?;
     let premiere = sqlx::query("UPDATE factures SET consulte_le = now() WHERE id = $1 AND consulte_le IS NULL").bind(f.id).execute(&mut *db).await?;
@@ -294,9 +339,9 @@ async fn page_facture(State(state): State<AppState>, Path(jeton): Path<String>) 
         sqlx::query_as("SELECT montant_ht_cents, montant_ttc_cents FROM factures WHERE id = $1").bind(f.id).fetch_one(&mut *db).await?;
     let solde = paiements::solde(&mut *db, f.id).await?;
     let compte: Option<(String, Option<String>)> =
-        sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(&mut *db).await?;
+        sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
     let (iban, bic) = compte.map(|(i, b)| (i, b.unwrap_or_default())).unwrap_or_default();
-    let entreprise = entreprise(&mut *db).await?;
+    let entreprise = entreprise(&mut *db, Lien::Facture, &jeton).await?;
     let note_credit = f.genre == "note_credit";
     let vcs = f.vcs.clone().unwrap_or_default();
     let reste = if note_credit { 0 } else { solde.reste_cents.max(0) };
@@ -328,7 +373,7 @@ async fn page_facture(State(state): State<AppState>, Path(jeton): Path<String>) 
 }
 
 async fn pdf_facture(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Response, Erreur> {
-    let mut db = state.db.acquire().await?;
+    let mut db = base_du_jeton(&state, Lien::Facture, &jeton).await?;
     let f = facture_du_jeton(&mut *db, &jeton).await?;
     let (nom, octets) = crate::facture_pdf::pdf_de_la_facture(&mut *db, &f).await?;
     pdf(nom, octets)
@@ -345,7 +390,7 @@ pub(crate) async fn lien(db: &mut PgConnection, piece: crate::emails::Piece, id:
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/client/logo", get(logo))
+        .route("/client/{piece}/{jeton}/logo", get(logo))
         .route("/client/devis/{jeton}", get(page_devis).post(signer))
         .route("/client/devis/{jeton}/pdf", get(pdf_devis))
         .route("/client/facture/{jeton}", get(page_facture))

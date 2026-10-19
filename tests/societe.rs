@@ -1,12 +1,17 @@
 // Tests de l'écran « paramètres de la société ».
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{HeaderMap, Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -94,7 +99,8 @@ fn pdf(taille: usize) -> Vec<u8> {
 // ─── Formulaire ─────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_page_vide_propose_un_compte_vide_et_les_boutons_d_ajout(pool: PgPool) {
+async fn la_page_vide_propose_un_compte_vide_et_les_boutons_d_ajout(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let r = lire(&site(&pool), "/parametres/societe").await;
     assert_eq!(r.statut, StatusCode::OK);
     let page = r.texte();
@@ -108,7 +114,8 @@ async fn la_page_vide_propose_un_compte_vide_et_les_boutons_d_ajout(pool: PgPool
 }
 
 #[sqlx::test]
-async fn enregistrer_puis_retrouver_les_valeurs(pool: PgPool) {
+async fn enregistrer_puis_retrouver_les_valeurs(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let corps = format!(
         "{BASE}&rue=Rue+du+Beau+Site&numero=12&code_postal=1390&ville=Grez-Doiceau&site_web=https%3A%2F%2Fubique.be\
@@ -121,7 +128,7 @@ async fn enregistrer_puis_retrouver_les_valeurs(pool: PgPool) {
     assert_eq!(r.lieu(), Some("/parametres/societe?ok=1"));
 
     let (nom, tva, emails, telephones): (String, Option<String>, Vec<String>, Vec<String>) = sqlx::query_as(
-        "SELECT nom, numero_tva, emails_supplementaires, telephones_supplementaires FROM societe WHERE id = 1",
+        "SELECT nom, numero_tva, emails_supplementaires, telephones_supplementaires FROM societe",
     )
     .fetch_one(&pool)
     .await
@@ -145,7 +152,8 @@ async fn enregistrer_puis_retrouver_les_valeurs(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn enregistrer_deux_fois_met_a_jour_sans_dupliquer(pool: PgPool) {
+async fn enregistrer_deux_fois_met_a_jour_sans_dupliquer(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/parametres/societe", &format!("{BASE}&iban={IBAN}&bic=")).await;
     let r = poster(
@@ -164,7 +172,8 @@ async fn enregistrer_deux_fois_met_a_jour_sans_dupliquer(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_erreurs_sont_toutes_signalees_et_rien_n_est_enregistre(pool: PgPool) {
+async fn les_erreurs_sont_toutes_signalees_et_rien_n_est_enregistre(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let r = poster(
         &site(&pool),
         "/parametres/societe",
@@ -186,7 +195,8 @@ async fn les_erreurs_sont_toutes_signalees_et_rien_n_est_enregistre(pool: PgPool
 }
 
 #[sqlx::test]
-async fn un_bic_invalide_et_un_iban_en_double_sont_refuses(pool: PgPool) {
+async fn un_bic_invalide_et_un_iban_en_double_sont_refuses(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let r = poster(&s, "/parametres/societe", &format!("{BASE}&iban={IBAN}&bic=xx")).await;
     assert_eq!(r.statut, StatusCode::UNPROCESSABLE_ENTITY);
@@ -199,7 +209,8 @@ async fn un_bic_invalide_et_un_iban_en_double_sont_refuses(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_formulaire_garde_ce_qui_a_ete_tape_en_cas_d_erreur(pool: PgPool) {
+async fn le_formulaire_garde_ce_qui_a_ete_tape_en_cas_d_erreur(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let r = poster(
         &site(&pool),
         "/parametres/societe",
@@ -214,7 +225,8 @@ async fn le_formulaire_garde_ce_qui_a_ete_tape_en_cas_d_erreur(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_premier_compte_est_celui_par_defaut(pool: PgPool) {
+async fn le_premier_compte_est_celui_par_defaut(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/parametres/societe", &format!("{BASE}&iban={IBAN}&bic=&iban={IBAN2}&bic=")).await;
     let comptes: Vec<(String, bool)> =
@@ -229,14 +241,16 @@ async fn le_premier_compte_est_celui_par_defaut(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_tva_belge_sans_prefixe_est_completee(pool: PgPool) {
+async fn la_tva_belge_sans_prefixe_est_completee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     poster(&site(&pool), "/parametres/societe", &format!("{BASE}&numero_tva=726.407.561")).await;
     let tva: Option<String> = sqlx::query_scalar("SELECT numero_tva FROM societe").fetch_one(&pool).await.unwrap();
     assert_eq!(tva.as_deref(), Some("BE 0726 407 561"));
 }
 
 #[sqlx::test]
-async fn le_html_tape_dans_le_nom_est_neutralise(pool: PgPool) {
+async fn le_html_tape_dans_le_nom_est_neutralise(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/parametres/societe", "nom=%3Cscript%3Ealert(1)%3C%2Fscript%3E&nom_abrege=X&email=a%40b.be&telephone=1").await;
     let page = lire(&s, "/parametres/societe").await.texte();
@@ -247,7 +261,8 @@ async fn le_html_tape_dans_le_nom_est_neutralise(pool: PgPool) {
 // ─── Lignes ajoutées par htmx ───────────────────────────────────────────────
 
 #[sqlx::test]
-async fn les_boutons_d_ajout_renvoient_une_ligne(pool: PgPool) {
+async fn les_boutons_d_ajout_renvoient_une_ligne(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let email = lire(&s, "/parametres/societe/ligne/email").await.texte();
     assert!(email.contains("name=\"emails_supplementaires\"") && email.contains("type=\"email\""));
@@ -264,7 +279,8 @@ async fn les_boutons_d_ajout_renvoient_une_ligne(pool: PgPool) {
 // ─── Logo ───────────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn envoyer_afficher_remplacer_et_retirer_le_logo(pool: PgPool) {
+async fn envoyer_afficher_remplacer_et_retirer_le_logo(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     assert_eq!(lire(&s, "/parametres/societe/logo").await.statut, StatusCode::NOT_FOUND);
 
@@ -292,7 +308,8 @@ async fn envoyer_afficher_remplacer_et_retirer_le_logo(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_logo_refuse_les_svg_les_pdf_et_les_fichiers_trop_gros(pool: PgPool) {
+async fn le_logo_refuse_les_svg_les_pdf_et_les_fichiers_trop_gros(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let uri = "/parametres/societe/logo/envoyer";
 
@@ -319,7 +336,8 @@ async fn le_logo_refuse_les_svg_les_pdf_et_les_fichiers_trop_gros(pool: PgPool) 
 // ─── Conditions générales ───────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn envoyer_et_lire_les_conditions_generales(pool: PgPool) {
+async fn envoyer_et_lire_les_conditions_generales(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let r = televerser(&s, "/parametres/societe/conditions-generales/envoyer", "C:\\docs\\Mes CG;2026.pdf", &pdf(500)).await;
     assert_eq!(r.statut, StatusCode::SEE_OTHER);
@@ -346,7 +364,8 @@ async fn envoyer_et_lire_les_conditions_generales(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_conditions_generales_refusent_ce_qui_n_est_pas_un_pdf_ou_est_trop_gros(pool: PgPool) {
+async fn les_conditions_generales_refusent_ce_qui_n_est_pas_un_pdf_ou_est_trop_gros(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let uri = "/parametres/societe/conditions-generales/envoyer";
 
@@ -368,7 +387,8 @@ async fn les_conditions_generales_refusent_ce_qui_n_est_pas_un_pdf_ou_est_trop_g
 }
 
 #[sqlx::test]
-async fn un_pdf_de_deux_mo_pile_est_accepte(pool: PgPool) {
+async fn un_pdf_de_deux_mo_pile_est_accepte(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let r = televerser(&site(&pool), "/parametres/societe/conditions-generales/envoyer", "cg.pdf", &pdf(2 * 1024 * 1024)).await;
     assert_eq!(r.statut, StatusCode::SEE_OTHER);
 }

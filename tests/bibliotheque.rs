@@ -1,12 +1,17 @@
 // Tests de l'étape 9-3 : bibliothèque de prix (ouvrages) et insertion d'un ouvrage dans un devis.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -40,7 +45,8 @@ async fn poster(site: &Router, uri: &str, corps: &str) -> (StatusCode, Option<St
 const PANNEAUX: &str = "description=Panneaux+isolants+PIR+12+cm&genre=fourniture&categorie=Toiture&fournisseur=Brico+Pro&unite=m%C2%B2&prix_achat=28&marge=60&prix_vente=&remarque=Pose+comprise";
 
 #[sqlx::test]
-async fn creer_chercher_modifier_supprimer(pool: PgPool) {
+async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (code, page) = lire(&s, "/bibliotheque").await;
     assert_eq!(code, StatusCode::OK);
@@ -89,7 +95,8 @@ async fn creer_chercher_modifier_supprimer(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn inserer_un_ouvrage_dans_un_devis(pool: PgPool) {
+async fn inserer_un_ouvrage_dans_un_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/bibliotheque", PANNEAUX).await;
     let ouvrage: i64 = sqlx::query_scalar("SELECT id FROM ouvrages").fetch_one(&pool).await.unwrap();

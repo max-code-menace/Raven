@@ -1,13 +1,18 @@
 // Tests de l'étape 8-3 : rappels de paiement semi-automatiques (liste des factures à relancer, envoi d'un clic).
 // Aucune clé Brevo pendant les tests : les rappels sont seulement enregistrés.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -70,7 +75,8 @@ async fn rappels(pool: &PgPool, id: i64) -> Vec<(String, String)> {
 }
 
 #[sqlx::test]
-async fn les_factures_a_relancer_et_l_envoi_groupe(pool: PgPool) {
+async fn les_factures_a_relancer_et_l_envoi_groupe(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let a = facture(&pool, &s, "Alpha SA", "compta@alpha.be", 10).await; // à relancer (premier rappel 7 jours après l'échéance)
     let b = facture(&pool, &s, "Beta SA", "compta@beta.be", 3).await; // en retard, pas encore à relancer
@@ -113,7 +119,8 @@ async fn les_factures_a_relancer_et_l_envoi_groupe(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_rappel_relu_avant_l_envoi(pool: PgPool) {
+async fn un_rappel_relu_avant_l_envoi(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = facture(&pool, &s, "Alpha SA", "compta@alpha.be", 10).await;
 
@@ -141,7 +148,8 @@ async fn un_rappel_relu_avant_l_envoi(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_delais_se_reglent(pool: PgPool) {
+async fn les_delais_se_reglent(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = facture(&pool, &s, "Alpha SA", "compta@alpha.be", 10).await;
     let (_, lieu, _) = poster(&s, "/parametres/rappels", "premier=15&suivant=10").await;

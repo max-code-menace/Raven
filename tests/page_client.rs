@@ -1,12 +1,17 @@
 // Tests de l'étape 9-1 : page client en ligne (lien secret) : consulter, signer un devis, payer une facture par QR code.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -61,7 +66,8 @@ fn chemin_client(page: &str, genre: &str) -> String {
 }
 
 #[sqlx::test]
-async fn le_client_consulte_et_signe_le_devis(pool: PgPool) {
+async fn le_client_consulte_et_signe_le_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let s = site(&pool);
     let (_, lieu) = poster(&s, "/devis", "").await;
@@ -118,7 +124,8 @@ async fn le_client_consulte_et_signe_le_devis(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_client_paie_la_facture_par_qr_code(pool: PgPool) {
+async fn le_client_paie_la_facture_par_qr_code(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let s = site(&pool);
     let (_, lieu) = poster(&s, "/factures", "").await;
