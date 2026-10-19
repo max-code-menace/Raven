@@ -111,11 +111,7 @@ Après la V1, seulement si les utilisateurs le demandent : réception Peppol (fa
 ## Prochaine session (point de reprise, 19/10/2026)
 **Où on en est** : étapes 0 à 3 de la V1 de Raven faites, branche `claude/stoic-allen-z04f7l` (poussée, arbre propre), 387 tests réussis, 0 avertissement. Migrations jusqu'à `0029`.
 
-**D'abord, chez Mahx (rien n'est encore installé de la branche)** : la dernière tentative a échoué car PowerShell était ouvert en administrateur dans `C:\Windows\system32` (`cargo` introuvable, pas de dépôt git) et `pg_dump` n'était pas dans `C:\Program Files\PostgreSQL\16\bin`. Dans l'ordre :
-1. PowerShell **normal** (pas administrateur) : `cargo --version` (sinon `Test-Path "$HOME\.cargo\bin\cargo.exe"`).
-2. Aller dans le dossier du projet (le trouver : `Get-ChildItem -Path $HOME, "C:\" -Directory -Recurse -Depth 4 -Filter ubifacture -ErrorAction SilentlyContinue`).
-3. Trouver `pg_dump` (`Get-ChildItem "C:\Program Files\PostgreSQL" -Recurse -Filter pg_dump.exe`) et **sauvegarder la vraie base avant tout `cargo run`** (le premier `cargo run` applique 0025 à 0029 aux données d'Ubique).
-4. `git pull origin claude/stoic-allen-z04f7l`, `cargo build`, `cargo test`, `cargo run` ; vérifier à l'œil : devis, factures, société, logo, un lien de page client déjà envoyé, puis une inscription d'essai en navigation privée (le lien de confirmation s'affiche dans la console sans clé Brevo).
+**Installé chez Mahx le 19/10/2026** : branche récupérée (`eb8d42b`), `cargo test` sur Windows : 387 réussis, 0 échec ; sauvegarde de la vraie base faite avant la migration (`ubifacture-avant-raven.backup` sur le Bureau, 112 Ko, format `pg_dump -F c`, restauration avec `pg_restore`) ; `cargo run` lancé, migrations 0025 à 0029 appliquées aux données d'Ubique, Mahx a confirmé que tout va bien. `pg_dump` : `C:\Program Files\PostgreSQL\16\bin\pg_dump.exe`. Toujours lancer PowerShell normal (pas administrateur) dans le dossier du projet.
 
 **Questions ouvertes à Mahx** :
 - Étape 4, contenu de la bibliothèque par secteur : une liste type préparée par Claude (descriptions et unités, sans prix) ou la bibliothèque d'Ubique (209 ouvrages, `docs/vertuoza/captures/inventaire/bibliotheque-vertuoza.csv`) nettoyée et classée ?
