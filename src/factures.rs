@@ -10,15 +10,16 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, Query, State},
+    extract::{Form, Path, Query},
     http::HeaderMap,
     response::{Html, Redirect},
     routing::{get, post},
 };
 use chrono::{Datelike, NaiveDate};
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 
+use crate::base::Base;
 use crate::calcul::{self, Ajustement};
 use crate::commun::{Choix, echapper_like, encoder_url, format_euros};
 use crate::devis_editeur::{Personne, Referentiel};
@@ -454,7 +455,7 @@ const DEPUIS: &str = "FROM factures f
 /// Une note de crédit diminue les totaux : elle compte en négatif.
 const SIGNE: &str = "CASE WHEN f.genre = 'note_credit' THEN -1 ELSE 1 END";
 
-async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
+async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
     let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
     let genre = GENRES.iter().map(|(v, _)| *v).find(|v| *v == r.genre.trim()).unwrap_or("");
@@ -470,7 +471,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     .bind(&motif)
     .bind(genre)
     .bind(statut_choisi)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *db)
     .await?;
     let pages = ((total + PAR_PAGE - 1) / PAR_PAGE).max(1);
     let page: i64 = r.page.trim().parse().unwrap_or(1).clamp(1, pages);
@@ -489,7 +490,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     .bind(statut_choisi)
     .bind(PAR_PAGE)
     .bind((page - 1) * PAR_PAGE)
-    .fetch_all(&state.db)
+    .fetch_all(&mut *db)
     .await?;
 
     let liste = Liste {
@@ -546,13 +547,13 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
 }
 
 /// « Nouvelle facture » : une facture simple en brouillon, sans numéro.
-async fn nouvelle(State(state): State<AppState>) -> Result<Redirect, Erreur> {
-    let taux = taux_par_defaut(&state.db).await?;
+async fn nouvelle(mut db: Base) -> Result<Redirect, Erreur> {
+    let taux = taux_par_defaut(&mut *db).await?;
     let id: i64 = sqlx::query_scalar(
         "INSERT INTO factures (genre, date_facture, taux_tva_id) VALUES ('simple', (now() AT TIME ZONE 'Europe/Brussels')::date, $1) RETURNING id",
     )
     .bind(taux)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *db)
     .await?;
     Ok(Redirect::to(&format!("/factures/{id}?ok=creee")))
 }
@@ -658,13 +659,13 @@ pub(crate) fn libelle_evenement(genre: &str) -> &'static str {
     }
 }
 
-async fn historique(db: &PgPool, id: i64) -> Result<Vec<Evenement>, sqlx::Error> {
+async fn historique(db: &mut PgConnection, id: i64) -> Result<Vec<Evenement>, sqlx::Error> {
     let lignes: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT genre, detail, to_char(created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI')
          FROM facture_evenements WHERE facture_id = $1 ORDER BY created_at DESC, id DESC",
     )
     .bind(id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     Ok(lignes.into_iter().map(|(genre, detail, quand)| Evenement { quand, genre: libelle_evenement(&genre), detail }).collect())
 }
@@ -736,19 +737,19 @@ struct LignesMaj {
     lignes: Lignes,
 }
 
-async fn liens(db: &PgPool, f: &Facture) -> Result<Vec<Lien>, sqlx::Error> {
+async fn liens(db: &mut PgConnection, f: &Facture) -> Result<Vec<Lien>, sqlx::Error> {
     let mut liens = Vec::new();
     if let Some(chantier) = f.chantier_id {
-        let numero: i64 = sqlx::query_scalar("SELECT numero FROM chantiers WHERE id = $1").bind(chantier).fetch_one(db).await?;
+        let numero: i64 = sqlx::query_scalar("SELECT numero FROM chantiers WHERE id = $1").bind(chantier).fetch_one(&mut *db).await?;
         liens.push(Lien { adresse: format!("/chantiers/{chantier}/finances"), texte: format!("Chantier n° {numero}") });
     }
     if let (Some(chantier), Some(avancement)) = (f.chantier_id, f.avancement_id) {
         let (numero, reference): (i32, String) =
-            sqlx::query_as("SELECT numero, reference FROM avancements WHERE id = $1").bind(avancement).fetch_one(db).await?;
+            sqlx::query_as("SELECT numero, reference FROM avancements WHERE id = $1").bind(avancement).fetch_one(&mut *db).await?;
         liens.push(Lien { adresse: format!("/chantiers/{chantier}/avancements/{avancement}"), texte: format!("Avancement n° {numero} ({reference})") });
     }
     if let Some(origine) = f.facture_origine_id {
-        let numero: Option<i64> = sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(origine).fetch_one(db).await?;
+        let numero: Option<i64> = sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(origine).fetch_one(&mut *db).await?;
         liens.push(Lien {
             adresse: format!("/factures/{origine}"),
             texte: format!("Note de crédit pour la facture n° {}", numero.map(|n| n.to_string()).unwrap_or_default()),
@@ -759,17 +760,17 @@ async fn liens(db: &PgPool, f: &Facture) -> Result<Vec<Lien>, sqlx::Error> {
         "SELECT r.modele_id, COALESCE(f.date_prevue, f.date_facture) FROM factures f JOIN recurrences r ON r.id = f.recurrence_id WHERE f.id = $1",
     )
     .bind(f.id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     if let Some((modele, prevue)) = recurrence {
         liens.push(Lien { adresse: format!("/factures/{modele}/recurrence"), texte: format!("Facture récurrente prévue le {}", date_belge(prevue)) });
     }
-    let modele: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM recurrences WHERE modele_id = $1)").bind(f.id).fetch_one(db).await?;
+    let modele: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM recurrences WHERE modele_id = $1)").bind(f.id).fetch_one(&mut *db).await?;
     if modele {
         liens.push(Lien { adresse: format!("/factures/{}/recurrence", f.id), texte: "Modèle d'une récurrence".to_string() });
     }
     let notes: Vec<(i64, Option<i64>)> =
-        sqlx::query_as("SELECT id, numero FROM factures WHERE facture_origine_id = $1 ORDER BY id").bind(f.id).fetch_all(db).await?;
+        sqlx::query_as("SELECT id, numero FROM factures WHERE facture_origine_id = $1 ORDER BY id").bind(f.id).fetch_all(&mut *db).await?;
     for (id, numero) in notes {
         liens.push(Lien {
             adresse: format!("/factures/{id}"),
@@ -783,26 +784,26 @@ async fn liens(db: &PgPool, f: &Facture) -> Result<Vec<Lien>, sqlx::Error> {
 }
 
 /// Le nom du client, tel qu'il est affiché.
-pub(crate) async fn nom_client(db: &PgPool, entreprise: Option<i64>, contact: Option<i64>) -> Result<String, sqlx::Error> {
+pub(crate) async fn nom_client(db: &mut PgConnection, entreprise: Option<i64>, contact: Option<i64>) -> Result<String, sqlx::Error> {
     let nom: Option<String> = sqlx::query_scalar(
         "SELECT COALESCE((SELECT nom FROM entreprises WHERE id = $1), (SELECT trim(concat_ws(' ', prenom, nom)) FROM contacts WHERE id = $2))",
     )
     .bind(entreprise)
     .bind(contact)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
     Ok(nom.unwrap_or_default())
 }
 
-async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
-    let f = charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
-    let r = Referentiel::charger(&state.db).await?;
-    let lignes = charger_lignes(&state.db, id).await?;
-    let a_completer = if f.brouillon() { verifier(&state.db, &f, &lignes).await? } else { Vec::new() };
-    let solde = paiements::solde(&state.db, id).await?;
+async fn afficher(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
+    let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
+    let r = Referentiel::charger(&mut *db).await?;
+    let lignes = charger_lignes(&mut *db, id).await?;
+    let a_completer = if f.brouillon() { verifier(&mut *db, &f, &lignes).await? } else { Vec::new() };
+    let solde = paiements::solde(&mut *db, id).await?;
     let (libelle, classe) = statut(&solde.etat);
-    let ttc: i64 = sqlx::query_scalar("SELECT montant_ttc_cents FROM factures WHERE id = $1").bind(id).fetch_one(&state.db).await?;
-    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&state.db).await?;
+    let ttc: i64 = sqlx::query_scalar("SELECT montant_ttc_cents FROM factures WHERE id = $1").bind(id).fetch_one(&mut *db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let montants = Montants {
         ttc: format_euros(ttc),
         paye: format_euros(solde.paye_cents),
@@ -812,7 +813,7 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         reste_saisie: crate::avancement_calcul::euros_a_saisir(solde.reste_cents.max(0)),
         a_recevoir: solde.a_recevoir(),
     };
-    let methodes = paiements::methodes(&state.db).await?;
+    let methodes = paiements::methodes(&mut *db).await?;
     let form = InfosForm::depuis(&f);
     let conditions_texte = f
         .conditions_paiement_id
@@ -833,11 +834,11 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         date: date_belge(f.date_facture),
         echeance: f.date_echeance.map(date_belge).unwrap_or_default(),
         vcs: f.vcs.clone().unwrap_or_default(),
-        liens: liens(&state.db, &f).await?,
+        liens: liens(&mut *db, &f).await?,
         clients: r.choix_personnes(&form.client),
         conditions: choix_base(&r.options.conditions, &form.conditions_paiement_id),
         taux_tva: choix_base(&r.options.taux_tva, &form.taux_tva_id),
-        client: nom_client(&state.db, f.client_entreprise_id, f.client_contact_id).await?,
+        client: nom_client(&mut *db, f.client_entreprise_id, f.client_contact_id).await?,
         conditions_texte,
         a_completer,
         message_ok: retour.message_ok(),
@@ -848,24 +849,24 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(reto
         jours_retard: solde.jours_retard,
         etat: solde.etat.clone(),
         montants,
-        paiements: paiements::lignes(&state.db, id).await?,
+        paiements: paiements::lignes(&mut *db, id).await?,
         methodes: methodes.iter().enumerate().map(|(i, (v, l))| Choix { valeur: v.to_string(), libelle: l.clone(), choisi: i == 0 }).collect(),
         payer_ouvert: retour.payer == "1" && solde.a_recevoir(),
         aujourdhui: aujourdhui.to_string(),
-        historique: historique(&state.db, id).await?,
-        lien_client: if f.numero.is_some() { crate::page_client::lien(&state.db, crate::emails::Piece::Facture, id).await? } else { String::new() },
-        rappel: if solde.etat == "en_retard" { crate::rappels::resume_facture(&state.db, id).await? } else { None },
+        historique: historique(&mut *db, id).await?,
+        lien_client: if f.numero.is_some() { crate::page_client::lien(&mut *db, crate::emails::Piece::Facture, id).await? } else { String::new() },
+        rappel: if solde.etat == "en_retard" { crate::rappels::resume_facture(&mut *db, id).await? } else { None },
     };
     Ok(Html(page.render()?))
 }
 
 /// Enregistre l'en-tête d'un brouillon (date, référence, client, conditions…).
-async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(form): Form<InfosForm>) -> Result<Redirect, Erreur> {
-    let f = charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(form): Form<InfosForm>) -> Result<Redirect, Erreur> {
+    let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.brouillon() {
         return Err(Erreur::conflit("Cette facture est validée : elle ne se modifie plus. Corrige-la par une note de crédit."));
     }
-    let r = Referentiel::charger(&state.db).await?;
+    let r = Referentiel::charger(&mut *db).await?;
     let erreur = Ok(Redirect::to(&format!("/factures/{id}?erreur=infos")));
     let Ok(date) = NaiveDate::parse_from_str(form.date.trim(), "%Y-%m-%d") else { return erreur };
     let client = match form.client.trim() {
@@ -910,7 +911,7 @@ async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(fo
     .bind(taux)
     .bind(remarque)
     .bind(id)
-    .execute(&state.db)
+    .execute(&mut *db)
     .await?;
     Ok(Redirect::to(&format!("/factures/{id}?ok=infos")))
 }
@@ -918,8 +919,8 @@ async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(fo
 // ─── Lignes saisies à la main (facture simple, note de crédit) ──────────────
 
 /// La facture, si ses lignes peuvent encore être modifiées à la main.
-async fn facture_modifiable(db: &PgPool, id: i64) -> Result<Facture, Erreur> {
-    let f = charger(db, id).await?.ok_or_else(Erreur::introuvable)?;
+async fn facture_modifiable(db: &mut PgConnection, id: i64) -> Result<Facture, Erreur> {
+    let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.brouillon() {
         return Err(Erreur::conflit("Cette facture est validée : elle ne se modifie plus. Corrige-la par une note de crédit."));
     }
@@ -929,9 +930,9 @@ async fn facture_modifiable(db: &PgPool, id: i64) -> Result<Facture, Erreur> {
     Ok(f)
 }
 
-async fn rendre_lignes(db: &PgPool, id: i64, message: String, seulement_maj: bool) -> Result<Html<String>, Erreur> {
-    let lignes = charger_lignes(db, id).await?;
-    let options = crate::fiches::Options::charger(db, crate::fiches::Genre::Entreprise).await?;
+async fn rendre_lignes(db: &mut PgConnection, id: i64, message: String, seulement_maj: bool) -> Result<Html<String>, Erreur> {
+    let lignes = charger_lignes(&mut *db, id).await?;
+    let options = crate::fiches::Options::charger(&mut *db, crate::fiches::Genre::Entreprise).await?;
     let vue = construire_lignes(id, true, &lignes, &crate::fiches::taux_courts(&options.taux_tva), message);
     let html = if seulement_maj { LignesMaj { lignes: vue }.render()? } else { LignesSeules { lignes: vue }.render()? };
     Ok(Html(html))
@@ -943,14 +944,14 @@ struct Ajout {
     genre: String,
 }
 
-async fn ajouter_ligne(State(state): State<AppState>, Path(id): Path<i64>, Form(a): Form<Ajout>) -> Result<Html<String>, Erreur> {
-    let f = facture_modifiable(&state.db, id).await?;
+async fn ajouter_ligne(mut db: Base, Path(id): Path<i64>, Form(a): Form<Ajout>) -> Result<Html<String>, Erreur> {
+    let f = facture_modifiable(&mut *db, id).await?;
     let genre = match a.genre.as_str() {
         "titre" => "titre",
         "texte" => "texte",
         _ => "poste",
     };
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     let taux = match (genre, f.taux_tva_id) {
         ("poste", Some(t)) => Some(t),
         ("poste", None) => taux_par_defaut(&mut *tx).await?,
@@ -972,7 +973,7 @@ async fn ajouter_ligne(State(state): State<AppState>, Path(id): Path<i64>, Form(
     .await?;
     recalculer(&mut tx, id).await?;
     tx.commit().await?;
-    rendre_lignes(&state.db, id, String::new(), false).await
+    rendre_lignes(&mut *db, id, String::new(), false).await
 }
 
 #[derive(Deserialize, Default)]
@@ -1014,18 +1015,18 @@ fn lire_ligne(s: &SaisieLigne, est_poste: bool, taux_connus: &[(i64, String)]) -
 }
 
 async fn modifier_ligne(
-    State(state): State<AppState>,
+    mut db: Base,
     Path((id, ligne_id)): Path<(i64, i64)>,
     Form(s): Form<SaisieLigne>,
 ) -> Result<Html<String>, Erreur> {
-    facture_modifiable(&state.db, id).await?;
+    facture_modifiable(&mut *db, id).await?;
     let genre: Option<String> = sqlx::query_scalar("SELECT genre FROM facture_lignes WHERE id = $1 AND facture_id = $2")
         .bind(ligne_id)
         .bind(id)
-        .fetch_optional(&state.db)
+        .fetch_optional(&mut *db)
         .await?;
     let genre = genre.ok_or_else(Erreur::introuvable)?;
-    let options = crate::fiches::Options::charger(&state.db, crate::fiches::Genre::Entreprise).await?;
+    let options = crate::fiches::Options::charger(&mut *db, crate::fiches::Genre::Entreprise).await?;
     let message = match lire_ligne(&s, genre == "poste", &options.taux_tva) {
         Err(m) => m,
         Ok((description, quantite, unite, prix, taux)) => {
@@ -1033,7 +1034,7 @@ async fn modifier_ligne(
                 (Some(q), Some(p)) => calcul::total_ligne_cents(q, p),
                 _ => 0,
             };
-            let mut tx = state.db.begin().await?;
+            let mut tx = db.begin().await?;
             sqlx::query(
                 "UPDATE facture_lignes SET description = $1, quantite_e5 = $2, unite = $3, prix_unitaire_e5 = $4, taux_tva_id = $5,
                         taux_centiemes = (SELECT taux_centiemes FROM taux_tva WHERE id = $5), total_cents = $6
@@ -1054,22 +1055,22 @@ async fn modifier_ligne(
             String::new()
         }
     };
-    rendre_lignes(&state.db, id, message, true).await
+    rendre_lignes(&mut *db, id, message, true).await
 }
 
-async fn supprimer_ligne(State(state): State<AppState>, Path((id, ligne_id)): Path<(i64, i64)>) -> Result<Html<String>, Erreur> {
-    facture_modifiable(&state.db, id).await?;
-    let mut tx = state.db.begin().await?;
+async fn supprimer_ligne(mut db: Base, Path((id, ligne_id)): Path<(i64, i64)>) -> Result<Html<String>, Erreur> {
+    facture_modifiable(&mut *db, id).await?;
+    let mut tx = db.begin().await?;
     sqlx::query("DELETE FROM facture_lignes WHERE id = $1 AND facture_id = $2").bind(ligne_id).bind(id).execute(&mut *tx).await?;
     recalculer(&mut tx, id).await?;
     tx.commit().await?;
-    rendre_lignes(&state.db, id, String::new(), false).await
+    rendre_lignes(&mut *db, id, String::new(), false).await
 }
 
 // ─── Valider, envoyer, supprimer ────────────────────────────────────────────
 
 /// Ce qui manque pour valider le brouillon (liste vide : la facture peut être validée).
-pub(crate) async fn verifier(db: &PgPool, f: &Facture, lignes: &[LigneBase]) -> Result<Vec<String>, sqlx::Error> {
+pub(crate) async fn verifier(db: &mut PgConnection, f: &Facture, lignes: &[LigneBase]) -> Result<Vec<String>, sqlx::Error> {
     let mut manques = Vec::new();
     if f.client_entreprise_id.is_none() && f.client_contact_id.is_none() {
         manques.push("Le client".to_string());
@@ -1090,23 +1091,23 @@ pub(crate) async fn verifier(db: &PgPool, f: &Facture, lignes: &[LigneBase]) -> 
     }
     if let Some(origine) = f.facture_origine_id {
         // Une note de crédit ne rend jamais plus que ce que la facture n'a pas encore crédité.
-        let reste = reste_a_crediter(db, origine, Some(f.id)).await?;
+        let reste = reste_a_crediter(&mut *db, origine, Some(f.id)).await?;
         if t.ttc_cents > reste {
             manques.push(format!("Un total TTC d'au plus {} (ce qui reste à créditer sur la facture)", format_euros(reste)));
         }
     }
-    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     if f.date_facture > aujourdhui {
         manques.push("Une date qui n'est pas dans le futur".to_string());
     }
-    if let Some(derniere) = derniere_date(db, f.genre == "note_credit").await?
+    if let Some(derniere) = derniere_date(&mut *db, f.genre == "note_credit").await?
         && f.date_facture < derniere
     {
         manques.push(format!("Une date au plus tôt le {} (date de la dernière pièce numérotée)", date_belge(derniere)));
     }
     // La numérotation est annuelle : une année déjà close (une pièce de l'année suivante existe) ne se rouvre pas.
     let compteur = if f.genre == "note_credit" { "note_credit" } else { "facture" };
-    let annee_compteur: Option<i32> = sqlx::query_scalar("SELECT annee FROM compteurs WHERE nom = $1").bind(compteur).fetch_one(db).await?;
+    let annee_compteur: Option<i32> = sqlx::query_scalar("SELECT annee FROM compteurs WHERE nom = $1").bind(compteur).fetch_one(&mut *db).await?;
     if let Some(annee) = annee_compteur
         && f.date_facture.year() < annee
     {
@@ -1124,7 +1125,7 @@ async fn derniere_date<'e>(db: impl sqlx::PgExecutor<'e>, note_credit: bool) -> 
 }
 
 /// Le TTC de la facture moins ses notes de crédit validées (sans compter la note `sauf`).
-pub(crate) async fn reste_a_crediter(db: &PgPool, facture_id: i64, sauf: Option<i64>) -> Result<i64, sqlx::Error> {
+pub(crate) async fn reste_a_crediter(db: &mut PgConnection, facture_id: i64, sauf: Option<i64>) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar(
         "SELECT f.montant_ttc_cents - COALESCE((SELECT sum(n.montant_ttc_cents) FROM factures n
                                                 WHERE n.facture_origine_id = f.id AND n.numero IS NOT NULL
@@ -1133,7 +1134,7 @@ pub(crate) async fn reste_a_crediter(db: &PgPool, facture_id: i64, sauf: Option<
     )
     .bind(facture_id)
     .bind(sauf)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await
 }
 
@@ -1144,16 +1145,16 @@ struct ApresValidation {
     puis: String,
 }
 
-async fn valider(State(state): State<AppState>, Path(id): Path<i64>, Form(apres): Form<ApresValidation>) -> Result<Redirect, Erreur> {
+async fn valider(mut db: Base, Path(id): Path<i64>, Form(apres): Form<ApresValidation>) -> Result<Redirect, Erreur> {
     let note_credit = {
-        let f = charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
+        let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
         if !f.brouillon() {
             return Err(Erreur::conflit("Cette facture est déjà validée."));
         }
         f.genre == "note_credit"
     };
     let compteur = if note_credit { "note_credit" } else { "facture" };
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     // Verrouille le compteur d'abord : deux validations en même temps passent l'une après l'autre.
     sqlx::query("SELECT valeur FROM compteurs WHERE nom = $1 FOR UPDATE").bind(compteur).execute(&mut *tx).await?;
     sqlx::query("SELECT id FROM factures WHERE id = $1 FOR UPDATE").bind(id).execute(&mut *tx).await?;
@@ -1162,7 +1163,7 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>, Form(apres)
         return Err(Erreur::conflit("Cette facture est déjà validée."));
     }
     let lignes = charger_lignes(&mut *tx, id).await?;
-    let manques = verifier(&state.db, &f, &lignes).await?;
+    let manques = verifier(&mut *tx, &f, &lignes).await?;
     // La date de la dernière pièce, relue sous le verrou du compteur.
     let derniere = derniere_date(&mut *tx, note_credit).await?;
     if !manques.is_empty() || derniere.is_some_and(|d| f.date_facture < d) {
@@ -1212,10 +1213,10 @@ async fn valider(State(state): State<AppState>, Path(id): Path<i64>, Form(apres)
 }
 
 /// Marquer la facture comme envoyée à la main (envoyée autrement que par l'application).
-async fn marquer_envoyee(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn marquer_envoyee(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
     if !marquer_envoyee_dans(&mut tx, id, "Marquée comme envoyée (à la main)").await? {
-        charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
+        charger(&mut *tx, id).await?.ok_or_else(Erreur::introuvable)?;
         return Err(Erreur::conflit("Seule une facture validée « À envoyer » peut être marquée comme envoyée."));
     }
     tx.commit().await?;
@@ -1236,12 +1237,12 @@ pub(crate) async fn marquer_envoyee_dans(tx: &mut Transaction<'_, Postgres>, id:
 }
 
 /// Seul un brouillon (sans numéro) se supprime. La facture finale emporte l'avancement de solde créé pour elle.
-async fn supprimer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let f = charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
+async fn supprimer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.brouillon() {
         return Err(Erreur::conflit("Une facture validée ne se supprime jamais : corrige-la par une note de crédit."));
     }
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     sqlx::query("DELETE FROM factures WHERE id = $1 AND statut = 'brouillon'").bind(id).execute(&mut *tx).await?;
     if let (Some(avancement), "finale") = (f.avancement_id, f.genre.as_str()) {
         sqlx::query("DELETE FROM avancements WHERE id = $1").bind(avancement).execute(&mut *tx).await?;
@@ -1258,8 +1259,8 @@ async fn supprimer(State(state): State<AppState>, Path(id): Path<i64>) -> Result
 
 /// « Créditer » une facture validée : une note de crédit en brouillon qui reprend toutes ses lignes.
 /// Pour un crédit partiel, on ajuste ou supprime des lignes avant de valider (jamais plus que ce qui reste à créditer).
-async fn crediter(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn crediter(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM factures WHERE id = $1 FOR UPDATE").bind(id).execute(&mut *tx).await?;
     let f = charger(&mut *tx, id).await?.ok_or_else(Erreur::introuvable)?;
     let Some(numero) = f.numero.filter(|_| f.genre != "note_credit") else {
@@ -1272,7 +1273,7 @@ async fn crediter(State(state): State<AppState>, Path(id): Path<i64>) -> Result<
     if let Some(note) = brouillon {
         return Ok(Redirect::to(&format!("/factures/{note}")));
     }
-    if reste_a_crediter(&state.db, id, None).await? <= 0 {
+    if reste_a_crediter(&mut *tx, id, None).await? <= 0 {
         return Err(Erreur::conflit("Cette facture est déjà entièrement créditée."));
     }
     let note: i64 = sqlx::query_scalar(

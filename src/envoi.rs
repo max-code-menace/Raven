@@ -7,13 +7,14 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, Query, State},
+    extract::{Form, Path, Query},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::{Connection as _, PgConnection};
 
+use crate::base::Base;
 use crate::devis_statut::Action;
 use crate::emails::{self, Issue, Message};
 use crate::journal::{self, Genre};
@@ -61,7 +62,7 @@ pub(crate) fn statut_email(code: &str) -> (&'static str, &'static str) {
     }
 }
 
-pub(crate) async fn anciens(db: &PgPool, devis: Option<i64>, facture: Option<i64>) -> Result<Vec<Ancien>, sqlx::Error> {
+pub(crate) async fn anciens(db: &mut PgConnection, devis: Option<i64>, facture: Option<i64>) -> Result<Vec<Ancien>, sqlx::Error> {
     let lignes: Vec<(String, String, String, String)> = sqlx::query_as(
         "SELECT to_char(created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI'), destinataires, objet, statut
          FROM emails WHERE ($1::bigint IS NOT NULL AND devis_id = $1) OR ($2::bigint IS NOT NULL AND facture_id = $2)
@@ -69,7 +70,7 @@ pub(crate) async fn anciens(db: &PgPool, devis: Option<i64>, facture: Option<i64
     )
     .bind(devis)
     .bind(facture)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     Ok(lignes
         .into_iter()
@@ -105,11 +106,11 @@ pub(crate) fn verifier(s: &Saisie) -> Result<(Vec<String>, Vec<String>), Vec<Str
 // ─── Devis et avenants ──────────────────────────────────────────────────────
 
 /// (statut, avenant, titre « Devis N° 2026-57 »).
-async fn infos_devis(db: &PgPool, id: i64) -> Result<(String, bool, String), Erreur> {
+async fn infos_devis(db: &mut PgConnection, id: i64) -> Result<(String, bool, String), Erreur> {
     let ligne: Option<(String, Option<i64>, i64, i32)> =
         sqlx::query_as("SELECT statut::text, chantier_id, numero, extract(year FROM date_devis)::int FROM devis WHERE id = $1")
             .bind(id)
-            .fetch_optional(db)
+            .fetch_optional(&mut *db)
             .await?;
     let (statut, chantier, numero, annee) = ligne.ok_or_else(Erreur::introuvable)?;
     let avenant = chantier.is_some();
@@ -117,13 +118,13 @@ async fn infos_devis(db: &PgPool, id: i64) -> Result<(String, bool, String), Err
     Ok((statut, avenant, titre))
 }
 
-async fn page_devis(db: &PgPool, id: i64, saisie: Option<Saisie>, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
-    let (_, avenant, titre) = infos_devis(db, id).await?;
+async fn page_devis(db: &mut PgConnection, id: i64, saisie: Option<Saisie>, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
+    let (_, avenant, titre) = infos_devis(&mut *db, id).await?;
     let saisie = match saisie {
         Some(s) => s,
         None => {
-            let (variables, email) = emails::variables_devis(db, id).await?;
-            let (objet, corps) = emails::modele(db, if avenant { "avenant" } else { "devis" }).await?;
+            let (variables, email) = emails::variables_devis(&mut *db, id).await?;
+            let (objet, corps) = emails::modele(&mut *db, if avenant { "avenant" } else { "devis" }).await?;
             Saisie { destinataires: email, copie: String::new(), objet: emails::remplir(&objet, &variables), corps: emails::remplir(&corps, &variables) }
         }
     };
@@ -134,28 +135,28 @@ async fn page_devis(db: &PgPool, id: i64, saisie: Option<Saisie>, erreurs: Vec<S
         nav: if avenant { "chantiers" } else { "devis" },
         saisie,
         pieces: vec![format!("{titre} (PDF, conditions générales comprises)")],
-        avertissements: crate::devis_pdf::charger_donnees(db, id).await?.a_completer(),
+        avertissements: crate::devis_pdf::charger_donnees(&mut *db, id).await?.a_completer(),
         erreurs,
         envoi_actif: emails::envoi_actif(),
-        anciens: anciens(db, Some(id), None).await?,
+        anciens: anciens(&mut *db, Some(id), None).await?,
     };
     Ok(Html(page.render()?))
 }
 
-async fn formulaire_devis(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    page_devis(&state.db, id, None, Vec::new()).await
+async fn formulaire_devis(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+    page_devis(&mut *db, id, None, Vec::new()).await
 }
 
-async fn envoyer_devis(State(state): State<AppState>, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
-    let (_, avenant, _) = infos_devis(&state.db, id).await?;
+async fn envoyer_devis(mut db: Base, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
+    let (_, avenant, _) = infos_devis(&mut *db, id).await?;
     let (destinataires, copie) = match verifier(&s) {
         Ok(v) => v,
-        Err(erreurs) => return Ok(page_devis(&state.db, id, Some(s), erreurs).await?.into_response()),
+        Err(erreurs) => return Ok(page_devis(&mut *db, id, Some(s), erreurs).await?.into_response()),
     };
-    let (nom, pdf) = crate::devis_pdf::pdf_du_devis(&state.db, id).await?;
+    let (nom, pdf) = crate::devis_pdf::pdf_du_devis(&mut *db, id).await?;
     let a_qui = destinataires.join(", ");
     let (_, issue) = emails::envoyer(
-        &state.db,
+        &mut *db,
         Message {
             modele: if avenant { "avenant" } else { "devis" },
             devis_id: Some(id),
@@ -169,7 +170,7 @@ async fn envoyer_devis(State(state): State<AppState>, Path(id): Path<i64>, Form(
     )
     .await?;
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     let statut: String = sqlx::query_scalar("SELECT statut::text FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     let detail = match issue {
         Issue::Envoye => format!("E-mail envoyé à {a_qui}"),
@@ -202,22 +203,22 @@ async fn envoyer_devis(State(state): State<AppState>, Path(id): Path<i64>, Form(
 
 // ─── Factures et notes de crédit ────────────────────────────────────────────
 
-async fn facture_validee(db: &PgPool, id: i64) -> Result<factures::Facture, Erreur> {
-    let f = factures::charger(db, id).await?.ok_or_else(Erreur::introuvable)?;
+async fn facture_validee(db: &mut PgConnection, id: i64) -> Result<factures::Facture, Erreur> {
+    let f = factures::charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if f.numero.is_none() {
         return Err(Erreur::conflit("Valide d'abord la facture : un brouillon ne s'envoie pas."));
     }
     Ok(f)
 }
 
-async fn page_facture(db: &PgPool, f: &factures::Facture, saisie: Option<Saisie>, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
+async fn page_facture(db: &mut PgConnection, f: &factures::Facture, saisie: Option<Saisie>, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
     let titre = factures::titre(&f.genre, f.numero, f.date_facture);
     let saisie = match saisie {
         Some(s) => s,
         None => {
-            let (variables, email) = emails::variables_facture(db, f.id).await?;
+            let (variables, email) = emails::variables_facture(&mut *db, f.id).await?;
             let code = if f.genre == "note_credit" { "note_credit" } else { "facture" };
-            let (objet, corps) = emails::modele(db, code).await?;
+            let (objet, corps) = emails::modele(&mut *db, code).await?;
             Saisie { destinataires: email, copie: String::new(), objet: emails::remplir(&objet, &variables), corps: emails::remplir(&corps, &variables) }
         }
     };
@@ -231,19 +232,19 @@ async fn page_facture(db: &PgPool, f: &factures::Facture, saisie: Option<Saisie>
         avertissements: Vec::new(),
         erreurs,
         envoi_actif: emails::envoi_actif(),
-        anciens: anciens(db, None, Some(f.id)).await?,
+        anciens: anciens(&mut *db, None, Some(f.id)).await?,
     };
     Ok(Html(page.render()?))
 }
 
-async fn formulaire_facture(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    let f = facture_validee(&state.db, id).await?;
-    page_facture(&state.db, &f, None, Vec::new()).await
+async fn formulaire_facture(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+    let f = facture_validee(&mut *db, id).await?;
+    page_facture(&mut *db, &f, None, Vec::new()).await
 }
 
 /// Envoie une facture (ou un rappel) : PDF joint, journal, statut « Envoyée » si l'e-mail est parti.
 pub(crate) async fn envoyer_piece(
-    db: &PgPool,
+    db: &mut PgConnection,
     f: &factures::Facture,
     modele: &'static str,
     destinataires: Vec<String>,
@@ -251,10 +252,10 @@ pub(crate) async fn envoyer_piece(
     objet: String,
     corps: String,
 ) -> Result<Issue, Erreur> {
-    let (nom, pdf) = crate::facture_pdf::pdf_de_la_facture(db, f).await?;
+    let (nom, pdf) = crate::facture_pdf::pdf_de_la_facture(&mut *db, f).await?;
     let a_qui = destinataires.join(", ");
     let (_, issue) = emails::envoyer(
-        db,
+        &mut *db,
         Message { modele, devis_id: None, facture_id: Some(f.id), destinataires, copie, objet, corps, pieces: vec![(nom, pdf)] },
     )
     .await?;
@@ -274,14 +275,14 @@ pub(crate) async fn envoyer_piece(
     Ok(issue)
 }
 
-async fn envoyer_facture(State(state): State<AppState>, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
-    let f = facture_validee(&state.db, id).await?;
+async fn envoyer_facture(mut db: Base, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
+    let f = facture_validee(&mut *db, id).await?;
     let (destinataires, copie) = match verifier(&s) {
         Ok(v) => v,
-        Err(erreurs) => return Ok(page_facture(&state.db, &f, Some(s), erreurs).await?.into_response()),
+        Err(erreurs) => return Ok(page_facture(&mut *db, &f, Some(s), erreurs).await?.into_response()),
     };
     let modele = if f.genre == "note_credit" { "note_credit" } else { "facture" };
-    let issue = envoyer_piece(&state.db, &f, modele, destinataires, copie, s.objet.trim().to_string(), s.corps).await?;
+    let issue = envoyer_piece(&mut *db, &f, modele, destinataires, copie, s.objet.trim().to_string(), s.corps).await?;
     let suite = match issue {
         Issue::Envoye => "ok=email_envoye",
         Issue::Enregistre => "ok=email_enregistre",
@@ -336,19 +337,19 @@ struct RetourReglages {
     modele: String,
 }
 
-async fn reglages(State(state): State<AppState>, Query(r): Query<RetourReglages>) -> Result<Html<String>, Erreur> {
+async fn reglages(mut db: Base, Query(r): Query<RetourReglages>) -> Result<Html<String>, Erreur> {
     let modeles: Vec<(String, String, String, String)> =
-        sqlx::query_as("SELECT code, nom, objet, corps FROM modeles_email ORDER BY position").fetch_all(&state.db).await?;
+        sqlx::query_as("SELECT code, nom, objet, corps FROM modeles_email ORDER BY position").fetch_all(&mut *db).await?;
     let journal: Vec<(String, String, String, String, String, Vec<String>, String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
         "SELECT to_char(created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI'), modele, destinataires, objet, corps, pieces,
                 statut, erreur, devis_id, facture_id
          FROM emails ORDER BY created_at DESC, id DESC LIMIT 50",
     )
-    .fetch_all(&state.db)
+    .fetch_all(&mut *db)
     .await?;
     let noms: Vec<(String, String)> = modeles.iter().map(|(c, n, _, _)| (c.clone(), n.clone())).collect();
-    let (rappel_premier, rappel_suivant) = crate::rappels::delais(&state.db).await?;
-    let (nom_societe, email_societe, _) = emails::societe(&state.db).await?;
+    let (rappel_premier, rappel_suivant) = crate::rappels::delais(&mut *db).await?;
+    let (nom_societe, email_societe, _) = emails::societe(&mut *db).await?;
     let page = PageReglages {
         envoi_actif: emails::envoi_actif(),
         expediteur: if email_societe.is_empty() { String::new() } else { format!("{nom_societe} <{email_societe}>") },
@@ -403,8 +404,8 @@ struct SaisieModele {
     corps: String,
 }
 
-async fn enregistrer_modele(State(state): State<AppState>, Path(code): Path<String>, Form(m): Form<SaisieModele>) -> Result<Redirect, Erreur> {
-    let existe: Option<String> = sqlx::query_scalar("SELECT code FROM modeles_email WHERE code = $1").bind(&code).fetch_optional(&state.db).await?;
+async fn enregistrer_modele(mut db: Base, Path(code): Path<String>, Form(m): Form<SaisieModele>) -> Result<Redirect, Erreur> {
+    let existe: Option<String> = sqlx::query_scalar("SELECT code FROM modeles_email WHERE code = $1").bind(&code).fetch_optional(&mut *db).await?;
     let code = existe.ok_or_else(Erreur::introuvable)?;
     let objet = m.objet.trim();
     if objet.is_empty() || objet.chars().count() > emails::LONGUEUR_MAX_OBJET || m.corps.chars().count() > emails::LONGUEUR_MAX_CORPS {
@@ -414,7 +415,7 @@ async fn enregistrer_modele(State(state): State<AppState>, Path(code): Path<Stri
         .bind(objet)
         .bind(m.corps.replace("\r\n", "\n"))
         .bind(&code)
-        .execute(&state.db)
+        .execute(&mut *db)
         .await?;
     Ok(Redirect::to(&format!("/parametres/emails?ok=modele&modele={code}#modele-{code}")))
 }

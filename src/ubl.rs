@@ -9,7 +9,7 @@
 use std::fmt::Write as _;
 
 use chrono::NaiveDate;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 use crate::calcul;
 use crate::factures::{self, LigneBase};
@@ -239,14 +239,14 @@ pub(crate) fn document(d: &Document) -> String {
 }
 
 /// Charge une facture (ou note de crédit) validée et écrit son UBL. `None` pour un brouillon.
-pub async fn de_la_facture(db: &PgPool, id: i64) -> Result<Option<String>, sqlx::Error> {
-    let Some(f) = factures::charger(db, id).await? else { return Ok(None) };
+pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<String>, sqlx::Error> {
+    let Some(f) = factures::charger(&mut *db, id).await? else { return Ok(None) };
     let Some(numero) = f.numero else { return Ok(None) };
-    let lignes = factures::charger_lignes(db, id).await?;
+    let lignes = factures::charger_lignes(&mut *db, id).await?;
     let societe: Option<(String, String, String, String, String, String, Option<String>, String, String)> = sqlx::query_as(
         "SELECT nom, trim(concat_ws(' ', rue, numero)), code_postal, ville, pays, '', numero_tva, email, telephone FROM societe WHERE id = 1",
     )
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let vendeur = societe
         .map(|(nom, rue, code_postal, ville, pays, _, tva, email, telephone)| Partie {
@@ -266,14 +266,14 @@ pub async fn de_la_facture(db: &PgPool, id: i64) -> Result<Option<String>, sqlx:
     let acheteur: Option<(String, String, String, String, String, String, String, String)> = if let Some(e) = f.client_entreprise_id {
         sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT {colonnes} FROM (SELECT *, nom AS nom_affiche FROM entreprises) x WHERE id = $1")))
             .bind(e)
-            .fetch_optional(db)
+            .fetch_optional(&mut *db)
             .await?
     } else if let Some(c) = f.client_contact_id {
         sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {colonnes} FROM (SELECT *, trim(concat_ws(' ', prenom, nom)) AS nom_affiche FROM contacts) x WHERE id = $1"
         )))
         .bind(c)
-        .fetch_optional(db)
+        .fetch_optional(&mut *db)
         .await?
     } else {
         None
@@ -281,9 +281,9 @@ pub async fn de_la_facture(db: &PgPool, id: i64) -> Result<Option<String>, sqlx:
     let acheteur = acheteur
         .map(|(nom, rue, code_postal, ville, pays, tva, email, telephone)| Partie { nom, rue, code_postal, ville, pays, tva, email, telephone })
         .unwrap_or_default();
-    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(db).await?;
+    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(&mut *db).await?;
     let conditions = match f.conditions_paiement_id {
-        Some(c) => crate::fiches::Options::charger(db, crate::fiches::Genre::Entreprise)
+        Some(c) => crate::fiches::Options::charger(&mut *db, crate::fiches::Genre::Entreprise)
             .await?
             .conditions
             .into_iter()
@@ -293,7 +293,7 @@ pub async fn de_la_facture(db: &PgPool, id: i64) -> Result<Option<String>, sqlx:
         None => String::new(),
     };
     let facture_corrigee: Option<i64> = match f.facture_origine_id {
-        Some(o) => sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(o).fetch_one(db).await?,
+        Some(o) => sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(o).fetch_one(&mut *db).await?,
         None => None,
     };
     Ok(Some(document(&Document {

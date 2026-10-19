@@ -4,14 +4,15 @@
 
 use axum::{
     Router,
-    extract::{Form, Path, State},
+    extract::{Form, Path},
     response::Redirect,
     routing::post,
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
+use crate::base::Base;
 use crate::devis::statut;
 use crate::journal::{self, Genre};
 use crate::{AppState, Erreur};
@@ -84,13 +85,13 @@ fn date_belge(d: NaiveDate) -> String {
     d.format("%d/%m/%Y").to_string()
 }
 
-pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
+pub async fn charger_barre(db: &mut PgConnection, id: i64) -> Result<Barre, Erreur> {
     let ligne: Option<(String, NaiveDate, NaiveDate, Option<NaiveDate>, Option<NaiveDate>, String)> = sqlx::query_as(
         "SELECT statut::text, date_devis, (now() AT TIME ZONE 'Europe/Brussels')::date, date_acceptation, date_refus, motif_refus
          FROM devis WHERE id = $1",
     )
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let (statut_devis, date_devis, aujourdhui, acceptation, refus, motif) = ligne.ok_or_else(Erreur::introuvable)?;
     let resume = match (statut_devis.as_str(), acceptation, refus) {
@@ -103,7 +104,7 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
                 "SELECT to_char(signe_le AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI'), signe_par FROM devis WHERE id = $1",
             )
             .bind(id)
-            .fetch_one(db)
+            .fetch_one(&mut *db)
             .await?;
             match signature {
                 (Some(quand), par) => format!("Signé en ligne le {quand} par {par} : à accepter"),
@@ -113,12 +114,12 @@ pub async fn charger_barre(db: &PgPool, id: i64) -> Result<Barre, Erreur> {
         _ => String::new(),
     };
     let (numero, annee, chantier_avenant, reference): (i64, i32, Option<i64>, String) =
-        sqlx::query_as("SELECT numero, extract(year FROM date_devis)::int, chantier_id, reference FROM devis WHERE id = $1").bind(id).fetch_one(db).await?;
+        sqlx::query_as("SELECT numero, extract(year FROM date_devis)::int, chantier_id, reference FROM devis WHERE id = $1").bind(id).fetch_one(&mut *db).await?;
     let avenant = chantier_avenant.is_some();
     let chantier: Option<(i64, i64)> = sqlx::query_as("SELECT id, numero FROM chantiers WHERE devis_id = $1 OR id = $2")
         .bind(id)
         .bind(chantier_avenant)
-        .fetch_optional(db)
+        .fetch_optional(&mut *db)
         .await?;
     let titre = format!("{} N° {}", if avenant { "Avenant" } else { "Devis" }, crate::devis_lignes::numero_affiche(annee, numero, avenant));
     let retour = match (avenant, chantier) {
@@ -149,9 +150,9 @@ struct Decision {
     motif: String,
 }
 
-async fn changer(state: AppState, id: i64, action: Action, decision: Decision) -> Result<Redirect, Erreur> {
+async fn changer(mut db: Base, id: i64, action: Action, decision: Decision) -> Result<Redirect, Erreur> {
     let retour = |code: &str| Ok(Redirect::to(&format!("/devis/{id}?{code}")));
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     let ligne: Option<(String, NaiveDate, NaiveDate, bool)> = sqlx::query_as(
         "SELECT statut::text, date_devis, (now() AT TIME ZONE 'Europe/Brussels')::date, chantier_id IS NOT NULL
          FROM devis WHERE id = $1 FOR UPDATE",
@@ -219,19 +220,19 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/devis/{id}/statut/envoye",
-            post(|State(s): State<AppState>, Path(id): Path<i64>| changer(s, id, Action::MarquerEnvoye, Decision::default())),
+            post(|db: Base, Path(id): Path<i64>| changer(db, id, Action::MarquerEnvoye, Decision::default())),
         )
         .route(
             "/devis/{id}/statut/accepter",
-            post(|State(s): State<AppState>, Path(id): Path<i64>, Form(d): Form<Decision>| changer(s, id, Action::Accepter, d)),
+            post(|db: Base, Path(id): Path<i64>, Form(d): Form<Decision>| changer(db, id, Action::Accepter, d)),
         )
         .route(
             "/devis/{id}/statut/refuser",
-            post(|State(s): State<AppState>, Path(id): Path<i64>, Form(d): Form<Decision>| changer(s, id, Action::Refuser, d)),
+            post(|db: Base, Path(id): Path<i64>, Form(d): Form<Decision>| changer(db, id, Action::Refuser, d)),
         )
         .route(
             "/devis/{id}/statut/brouillon",
-            post(|State(s): State<AppState>, Path(id): Path<i64>| changer(s, id, Action::RemettreEnBrouillon, Decision::default())),
+            post(|db: Base, Path(id): Path<i64>| changer(db, id, Action::RemettreEnBrouillon, Decision::default())),
         )
 }
 

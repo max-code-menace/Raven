@@ -19,7 +19,7 @@ use axum::{
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::{Connection as _, PgConnection};
 
 use crate::commun::format_euros;
 use crate::journal::{self, Genre};
@@ -69,10 +69,10 @@ pub struct Entreprise {
     pub a_un_logo: bool,
 }
 
-async fn entreprise(db: &PgPool) -> Result<Entreprise, sqlx::Error> {
+async fn entreprise(db: &mut PgConnection) -> Result<Entreprise, sqlx::Error> {
     let ligne: Option<(String, String, String)> =
-        sqlx::query_as("SELECT nom, email, telephone FROM societe WHERE id = 1").fetch_optional(db).await?;
-    let a_un_logo: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM societe_fichiers WHERE usage = 'logo')").fetch_one(db).await?;
+        sqlx::query_as("SELECT nom, email, telephone FROM societe WHERE id = 1").fetch_optional(&mut *db).await?;
+    let a_un_logo: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM societe_fichiers WHERE usage = 'logo')").fetch_one(&mut *db).await?;
     let (nom, email, telephone) = ligne.unwrap_or_default();
     Ok(Entreprise { nom, email, telephone, a_un_logo })
 }
@@ -91,8 +91,9 @@ fn pdf(nom: String, octets: Vec<u8>) -> Result<Response, Erreur> {
 
 /// Le logo de la société, pour l'en-tête des pages client.
 async fn logo(State(state): State<AppState>) -> Result<Response, Erreur> {
+    let mut db = state.db.acquire().await?;
     let ligne: Option<(String, Vec<u8>)> =
-        sqlx::query_as("SELECT type_mime, contenu FROM societe_fichiers WHERE usage = 'logo'").fetch_optional(&state.db).await?;
+        sqlx::query_as("SELECT type_mime, contenu FROM societe_fichiers WHERE usage = 'logo'").fetch_optional(&mut *db).await?;
     let (mime, contenu) = ligne.ok_or_else(Erreur::introuvable)?;
     let mut reponse = contenu.into_response();
     reponse.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_str(&mime).map_err(|_| Erreur::introuvable())?);
@@ -115,7 +116,7 @@ struct DevisClient {
 }
 
 /// Le devis d'un jeton, s'il est visible (pas un brouillon).
-async fn devis_du_jeton(db: &PgPool, jeton: &str) -> Result<DevisClient, Erreur> {
+async fn devis_du_jeton(db: &mut PgConnection, jeton: &str) -> Result<DevisClient, Erreur> {
     let ligne: Option<(i64, String, i64, i32, Option<i64>, NaiveDate, String, String, i64, i64, Option<String>, String)> = sqlx::query_as(
         "SELECT d.id, d.statut::text, d.numero, extract(year FROM d.date_devis)::int, d.chantier_id, d.date_devis, d.reference,
                 COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), ''), ''), d.montant_ht_cents, d.montant_ttc_cents,
@@ -124,7 +125,7 @@ async fn devis_du_jeton(db: &PgPool, jeton: &str) -> Result<DevisClient, Erreur>
          WHERE d.jeton = $1",
     )
     .bind(jeton)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let (id, statut, numero, annee, chantier, date, reference, client, ht, ttc, signe_le, signe_par) = ligne.ok_or_else(Erreur::introuvable)?;
     if statut == "brouillon" {
@@ -163,13 +164,14 @@ struct Retour {
 }
 
 async fn page_devis(State(state): State<AppState>, Path(jeton): Path<String>, Query(r): Query<Retour>) -> Result<Html<String>, Erreur> {
-    let d = devis_du_jeton(&state.db, &jeton).await?;
+    let mut db = state.db.acquire().await?;
+    let d = devis_du_jeton(&mut *db, &jeton).await?;
     // La première consultation est notée dans l'historique du devis.
     // Chaque ouverture est notée (tableau de bord : « Ouvertures par vos clients »).
-    sqlx::query("INSERT INTO consultations_client (devis_id) VALUES ($1)").bind(d.id).execute(&state.db).await?;
-    let premiere = sqlx::query("UPDATE devis SET consulte_le = now() WHERE id = $1 AND consulte_le IS NULL").bind(d.id).execute(&state.db).await?;
+    sqlx::query("INSERT INTO consultations_client (devis_id) VALUES ($1)").bind(d.id).execute(&mut *db).await?;
+    let premiere = sqlx::query("UPDATE devis SET consulte_le = now() WHERE id = $1 AND consulte_le IS NULL").bind(d.id).execute(&mut *db).await?;
     if premiere.rows_affected() == 1 {
-        let mut tx = state.db.begin().await?;
+        let mut tx = db.begin().await?;
         journal::noter(&mut tx, d.id, Genre::Client, "Consulté en ligne par le client").await?;
         tx.commit().await?;
     }
@@ -181,7 +183,7 @@ async fn page_devis(State(state): State<AppState>, Path(jeton): Path<String>, Qu
         _ => "refuse",
     };
     let page = PageDevis {
-        entreprise: entreprise(&state.db).await?,
+        entreprise: entreprise(&mut *db).await?,
         jeton,
         titre: d.titre,
         date: date_belge(d.date),
@@ -204,8 +206,9 @@ async fn page_devis(State(state): State<AppState>, Path(jeton): Path<String>, Qu
 }
 
 async fn pdf_devis(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Response, Erreur> {
-    let d = devis_du_jeton(&state.db, &jeton).await?;
-    let (nom, octets) = crate::devis_pdf::pdf_du_devis(&state.db, d.id).await?;
+    let mut db = state.db.acquire().await?;
+    let d = devis_du_jeton(&mut *db, &jeton).await?;
+    let (nom, octets) = crate::devis_pdf::pdf_du_devis(&mut *db, d.id).await?;
     pdf(nom, octets)
 }
 
@@ -217,7 +220,8 @@ struct Signature {
 }
 
 async fn signer(State(state): State<AppState>, Path(jeton): Path<String>, Form(s): Form<Signature>) -> Result<Redirect, Erreur> {
-    let d = devis_du_jeton(&state.db, &jeton).await?;
+    let mut db = state.db.acquire().await?;
+    let d = devis_du_jeton(&mut *db, &jeton).await?;
     let nom = s.nom.trim();
     if nom.is_empty() || nom.chars().count() > LONGUEUR_MAX_NOM {
         return Ok(Redirect::to(&format!("/client/devis/{jeton}?erreur=nom#signer")));
@@ -225,7 +229,7 @@ async fn signer(State(state): State<AppState>, Path(jeton): Path<String>, Form(s
     if s.accord != "oui" {
         return Ok(Redirect::to(&format!("/client/devis/{jeton}?erreur=accord#signer")));
     }
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     let statut: String = sqlx::query_scalar("SELECT statut::text FROM devis WHERE id = $1 FOR UPDATE").bind(d.id).fetch_one(&mut *tx).await?;
     if !signable(&statut) {
         // Déjà signé, accepté ou refusé : rien ne change.
@@ -270,33 +274,34 @@ struct PageFacture {
     qr: String,
 }
 
-async fn facture_du_jeton(db: &PgPool, jeton: &str) -> Result<factures::Facture, Erreur> {
-    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM factures WHERE jeton = $1 AND numero IS NOT NULL").bind(jeton).fetch_optional(db).await?;
+async fn facture_du_jeton(db: &mut PgConnection, jeton: &str) -> Result<factures::Facture, Erreur> {
+    let id: Option<i64> = sqlx::query_scalar("SELECT id FROM factures WHERE jeton = $1 AND numero IS NOT NULL").bind(jeton).fetch_optional(&mut *db).await?;
     let id = id.ok_or_else(Erreur::introuvable)?;
-    factures::charger(db, id).await?.ok_or_else(Erreur::introuvable)
+    factures::charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)
 }
 
 async fn page_facture(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Html<String>, Erreur> {
-    let f = facture_du_jeton(&state.db, &jeton).await?;
-    sqlx::query("INSERT INTO consultations_client (facture_id) VALUES ($1)").bind(f.id).execute(&state.db).await?;
-    let premiere = sqlx::query("UPDATE factures SET consulte_le = now() WHERE id = $1 AND consulte_le IS NULL").bind(f.id).execute(&state.db).await?;
+    let mut db = state.db.acquire().await?;
+    let f = facture_du_jeton(&mut *db, &jeton).await?;
+    sqlx::query("INSERT INTO consultations_client (facture_id) VALUES ($1)").bind(f.id).execute(&mut *db).await?;
+    let premiere = sqlx::query("UPDATE factures SET consulte_le = now() WHERE id = $1 AND consulte_le IS NULL").bind(f.id).execute(&mut *db).await?;
     if premiere.rows_affected() == 1 {
-        let mut tx = state.db.begin().await?;
+        let mut tx = db.begin().await?;
         paiements::noter(&mut tx, f.id, "client", "Consultée en ligne par le client").await?;
         tx.commit().await?;
     }
     let (ht, ttc): (i64, i64) =
-        sqlx::query_as("SELECT montant_ht_cents, montant_ttc_cents FROM factures WHERE id = $1").bind(f.id).fetch_one(&state.db).await?;
-    let solde = paiements::solde(&state.db, f.id).await?;
+        sqlx::query_as("SELECT montant_ht_cents, montant_ttc_cents FROM factures WHERE id = $1").bind(f.id).fetch_one(&mut *db).await?;
+    let solde = paiements::solde(&mut *db, f.id).await?;
     let compte: Option<(String, Option<String>)> =
-        sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(&state.db).await?;
+        sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(&mut *db).await?;
     let (iban, bic) = compte.map(|(i, b)| (i, b.unwrap_or_default())).unwrap_or_default();
-    let entreprise = entreprise(&state.db).await?;
+    let entreprise = entreprise(&mut *db).await?;
     let note_credit = f.genre == "note_credit";
     let vcs = f.vcs.clone().unwrap_or_default();
     let reste = if note_credit { 0 } else { solde.reste_cents.max(0) };
     let qr = texte_epc(&entreprise.nom, &iban, &bic, reste, &vcs).and_then(|t| qr_svg(&t)).unwrap_or_default();
-    let client = factures::nom_client(&state.db, f.client_entreprise_id, f.client_contact_id).await?;
+    let client = factures::nom_client(&mut *db, f.client_entreprise_id, f.client_contact_id).await?;
     let page = PageFacture {
         titre: factures::titre(&f.genre, f.numero, f.date_facture),
         note_credit,
@@ -323,18 +328,19 @@ async fn page_facture(State(state): State<AppState>, Path(jeton): Path<String>) 
 }
 
 async fn pdf_facture(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Response, Erreur> {
-    let f = facture_du_jeton(&state.db, &jeton).await?;
-    let (nom, octets) = crate::facture_pdf::pdf_de_la_facture(&state.db, &f).await?;
+    let mut db = state.db.acquire().await?;
+    let f = facture_du_jeton(&mut *db, &jeton).await?;
+    let (nom, octets) = crate::facture_pdf::pdf_de_la_facture(&mut *db, &f).await?;
     pdf(nom, octets)
 }
 
 /// L'adresse de la page client d'une pièce (le jeton est créé au premier besoin).
-pub(crate) async fn lien(db: &PgPool, piece: crate::emails::Piece, id: i64) -> Result<String, sqlx::Error> {
+pub(crate) async fn lien(db: &mut PgConnection, piece: crate::emails::Piece, id: i64) -> Result<String, sqlx::Error> {
     let chemin = match piece {
         crate::emails::Piece::Devis => "devis",
         crate::emails::Piece::Facture => "facture",
     };
-    Ok(format!("{}/client/{chemin}/{}", crate::emails::adresse_publique(), crate::emails::jeton(db, piece, id).await?))
+    Ok(format!("{}/client/{chemin}/{}", crate::emails::adresse_publique(), crate::emails::jeton(&mut *db, piece, id).await?))
 }
 
 pub fn routes() -> Router<AppState> {

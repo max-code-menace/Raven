@@ -6,14 +6,15 @@
 
 use axum::{
     Router,
-    extract::{Form, Path, State},
+    extract::{Form, Path},
     response::Redirect,
     routing::post,
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 
+use crate::base::Base;
 use crate::commun::format_euros;
 use crate::fiches::euros_vers_centimes;
 use crate::{AppState, Erreur};
@@ -81,8 +82,8 @@ pub(crate) async fn solde<'e>(db: impl sqlx::PgExecutor<'e>, facture_id: i64) ->
 }
 
 /// Les méthodes de paiement proposées (id, libellé).
-pub(crate) async fn methodes(db: &PgPool) -> Result<Vec<(i64, String)>, sqlx::Error> {
-    sqlx::query_as("SELECT id, libelle FROM methodes_paiement WHERE actif ORDER BY position, id").fetch_all(db).await
+pub(crate) async fn methodes(db: &mut PgConnection) -> Result<Vec<(i64, String)>, sqlx::Error> {
+    sqlx::query_as("SELECT id, libelle FROM methodes_paiement WHERE actif ORDER BY position, id").fetch_all(&mut *db).await
 }
 
 /// Un paiement, tel que la fiche de la facture le montre.
@@ -94,14 +95,14 @@ pub struct LignePaiement {
     pub remarque: String,
 }
 
-pub(crate) async fn lignes(db: &PgPool, facture_id: i64) -> Result<Vec<LignePaiement>, sqlx::Error> {
+pub(crate) async fn lignes(db: &mut PgConnection, facture_id: i64) -> Result<Vec<LignePaiement>, sqlx::Error> {
     let lignes: Vec<(i64, NaiveDate, String, i64, String)> = sqlx::query_as(
         "SELECT p.id, p.date_paiement, m.libelle, p.montant_cents, p.remarque
          FROM paiements p JOIN methodes_paiement m ON m.id = p.methode_id
          WHERE p.facture_id = $1 ORDER BY p.date_paiement, p.id",
     )
     .bind(facture_id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     Ok(lignes
         .into_iter()
@@ -172,9 +173,9 @@ pub(crate) fn lire(p: &NouveauPaiement, reste_cents: i64, aujourdhui: NaiveDate,
     Ok((date, montant, methode, remarque))
 }
 
-async fn ajouter(State(state): State<AppState>, Path(id): Path<i64>, Form(p): Form<NouveauPaiement>) -> Result<Redirect, Erreur> {
-    let methodes = methodes(&state.db).await?;
-    let mut tx = state.db.begin().await?;
+async fn ajouter(mut db: Base, Path(id): Path<i64>, Form(p): Form<NouveauPaiement>) -> Result<Redirect, Erreur> {
+    let methodes = methodes(&mut *db).await?;
+    let mut tx = db.begin().await?;
     // Verrouille la facture : deux paiements en même temps ne dépassent pas le reste à recevoir.
     let facture: Option<(Option<i64>, String)> =
         sqlx::query_as("SELECT numero, genre::text FROM factures WHERE id = $1 FOR UPDATE").bind(id).fetch_optional(&mut *tx).await?;
@@ -213,8 +214,8 @@ async fn ajouter(State(state): State<AppState>, Path(id): Path<i64>, Form(p): Fo
 }
 
 /// Retire un paiement saisi par erreur (noté dans l'historique de la facture).
-async fn supprimer(State(state): State<AppState>, Path((id, paiement)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn supprimer(mut db: Base, Path((id, paiement)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
     let ligne: Option<(NaiveDate, i64)> =
         sqlx::query_as("DELETE FROM paiements WHERE id = $1 AND facture_id = $2 RETURNING date_paiement, montant_cents")
             .bind(paiement)

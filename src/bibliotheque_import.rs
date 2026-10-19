@@ -10,14 +10,15 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Multipart, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Query},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::{Connection as _, PgConnection};
 
+use crate::base::Base;
 use crate::bibliotheque::{self, Saisie};
 use crate::import_excel::{self, Cellule, cle};
 use crate::{AppState, Erreur};
@@ -215,7 +216,7 @@ pub(crate) fn lire_fichier(nom: &str, octets: &[u8]) -> Result<Lecture, String> 
 }
 
 /// Ajoute les ouvrages qui ne sont pas déjà dans la bibliothèque. Renvoie (ajoutés, déjà présents).
-async fn ajouter(db: &PgPool, ouvrages: &[bibliotheque::Valeurs]) -> Result<(usize, usize), sqlx::Error> {
+async fn ajouter(db: &mut PgConnection, ouvrages: &[bibliotheque::Valeurs]) -> Result<(usize, usize), sqlx::Error> {
     let mut tx = db.begin().await?;
     let (mut ajoutes, mut deja) = (0, 0);
     for v in ouvrages {
@@ -264,7 +265,7 @@ fn erreur(message: &str, ecartees: Vec<String>) -> Result<Response, Erreur> {
     Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(Page { erreur: message.to_string(), resultat: None, ecartees }.render()?)).into_response())
 }
 
-async fn recevoir(State(state): State<AppState>, mut multipart: Multipart) -> Result<Response, Erreur> {
+async fn recevoir(mut db: Base, mut multipart: Multipart) -> Result<Response, Erreur> {
     let mut recu: Option<(String, Vec<u8>)> = None;
     loop {
         match multipart.next_field().await {
@@ -291,7 +292,7 @@ async fn recevoir(State(state): State<AppState>, mut multipart: Multipart) -> Re
     if lecture.ouvrages.is_empty() {
         return erreur("Aucun ouvrage n'a pu être lu : voir les lignes écartées.", lecture.ecartees);
     }
-    let (ajoutes, deja) = ajouter(&state.db, &lecture.ouvrages).await?;
+    let (ajoutes, deja) = ajouter(&mut *db, &lecture.ouvrages).await?;
     if !lecture.ecartees.is_empty() {
         // Le résultat et les lignes écartées sur la même page (rien n'est perdu de vue).
         let page = Page { erreur: String::new(), resultat: Some((ajoutes, deja)), ecartees: lecture.ecartees };

@@ -8,14 +8,15 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, Query, State},
+    extract::{Form, Path, Query},
     http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgConnection};
 
+use crate::base::Base;
 use crate::calcul;
 use crate::commun::{Choix, echapper_like, encoder_url};
 use crate::{AppState, Erreur};
@@ -76,7 +77,7 @@ fn marge_texte(achat: Option<i64>, vente: i64) -> String {
 // ─── Liste ──────────────────────────────────────────────────────────────────
 
 #[derive(FromRow)]
-struct Base {
+struct OuvrageLu {
     id: i64,
     description: String,
     genre: String,
@@ -100,8 +101,8 @@ pub struct Ligne {
     pub vente: String,
 }
 
-impl From<Base> for Ligne {
-    fn from(b: Base) -> Self {
+impl From<OuvrageLu> for Ligne {
+    fn from(b: OuvrageLu) -> Self {
         Ligne {
             id: b.id,
             genre: libelle_genre(&b.genre),
@@ -162,7 +163,7 @@ struct Recherche {
 const DEPUIS: &str = "FROM ouvrages WHERE ($1 = '' OR description ILIKE $2 OR categorie ILIKE $2 OR fournisseur ILIKE $2)
                        AND ($3 = '' OR ($3 = '-' AND categorie = '') OR categorie = $3)";
 
-async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
+async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
     let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
     let categorie = r.categorie.trim().to_string();
@@ -170,11 +171,11 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
         .bind(&q)
         .bind(&motif)
         .bind(&categorie)
-        .fetch_one(&state.db)
+        .fetch_one(&mut *db)
         .await?;
     let pages = ((total + PAR_PAGE - 1) / PAR_PAGE).max(1);
     let page: i64 = r.page.trim().parse().unwrap_or(1).clamp(1, pages);
-    let lignes: Vec<Base> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+    let lignes: Vec<OuvrageLu> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT id, description, genre::text AS genre, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5
          {DEPUIS} ORDER BY lower(categorie), lower(description), id LIMIT $4 OFFSET $5"
     )))
@@ -183,10 +184,10 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     .bind(&categorie)
     .bind(PAR_PAGE)
     .bind((page - 1) * PAR_PAGE)
-    .fetch_all(&state.db)
+    .fetch_all(&mut *db)
     .await?;
     let groupes: Vec<(String, i64)> =
-        sqlx::query_as("SELECT categorie, count(*) FROM ouvrages GROUP BY categorie ORDER BY categorie = '', lower(categorie)").fetch_all(&state.db).await?;
+        sqlx::query_as("SELECT categorie, count(*) FROM ouvrages GROUP BY categorie ORDER BY categorie = '', lower(categorie)").fetch_all(&mut *db).await?;
     let tout: i64 = groupes.iter().map(|(_, n)| n).sum();
     let mut categories = vec![Categorie {
         nom: String::new(),
@@ -339,9 +340,9 @@ struct PageFiche {
     erreurs: Vec<String>,
 }
 
-async fn page_fiche(db: &PgPool, id: Option<i64>, saisie: Saisie, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
+async fn page_fiche(db: &mut PgConnection, id: Option<i64>, saisie: Saisie, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
     let categories: Vec<String> =
-        sqlx::query_scalar("SELECT DISTINCT categorie FROM ouvrages WHERE categorie <> '' ORDER BY categorie").fetch_all(db).await?;
+        sqlx::query_scalar("SELECT DISTINCT categorie FROM ouvrages WHERE categorie <> '' ORDER BY categorie").fetch_all(&mut *db).await?;
     let achat = calcul::lire_decimal_e5(&saisie.prix_achat);
     let marge_calculee = match calcul::lire_decimal_e5(&saisie.prix_vente) {
         Some(v) => marge_texte(achat, v),
@@ -358,11 +359,11 @@ async fn page_fiche(db: &PgPool, id: Option<i64>, saisie: Saisie, erreurs: Vec<S
     Ok(Html(page.render()?))
 }
 
-async fn nouveau(State(state): State<AppState>) -> Result<Html<String>, Erreur> {
-    page_fiche(&state.db, None, Saisie { genre: "ouvrage".into(), ..Default::default() }, Vec::new()).await
+async fn nouveau(mut db: Base) -> Result<Html<String>, Erreur> {
+    page_fiche(&mut *db, None, Saisie { genre: "ouvrage".into(), ..Default::default() }, Vec::new()).await
 }
 
-async fn enregistrer(db: &PgPool, id: Option<i64>, v: &Valeurs) -> Result<i64, sqlx::Error> {
+async fn enregistrer(db: &mut PgConnection, id: Option<i64>, v: &Valeurs) -> Result<i64, sqlx::Error> {
     let sql = match id {
         None => {
             "INSERT INTO ouvrages (description, genre, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5, remarque)
@@ -384,7 +385,7 @@ async fn enregistrer(db: &PgPool, id: Option<i64>, v: &Valeurs) -> Result<i64, s
         .bind(v.prix_vente_e5)
         .bind(&v.remarque)
         .bind(id)
-        .fetch_one(db)
+        .fetch_one(&mut *db)
         .await
 }
 
@@ -406,22 +407,22 @@ pub(crate) async fn inserer<'e>(db: impl sqlx::PgExecutor<'e>, v: &Valeurs) -> R
     .await
 }
 
-async fn creer(State(state): State<AppState>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
+async fn creer(mut db: Base, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
     match verifier(&s) {
         Ok(v) => {
-            enregistrer(&state.db, None, &v).await?;
+            enregistrer(&mut *db, None, &v).await?;
             Ok(Redirect::to("/bibliotheque?ok=cree").into_response())
         }
-        Err(erreurs) => Ok(page_fiche(&state.db, None, s, erreurs).await?.into_response()),
+        Err(erreurs) => Ok(page_fiche(&mut *db, None, s, erreurs).await?.into_response()),
     }
 }
 
-async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
     let ligne: Option<(String, String, String, String, String, Option<i64>, i64, String)> = sqlx::query_as(
         "SELECT description, genre::text, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5, remarque FROM ouvrages WHERE id = $1",
     )
     .bind(id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *db)
     .await?;
     let (description, genre, categorie, fournisseur, unite, achat, vente, remarque) = ligne.ok_or_else(Erreur::introuvable)?;
     let saisie = Saisie {
@@ -435,23 +436,23 @@ async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<
         prix_vente: calcul::ecrire_decimal_e5(vente),
         remarque,
     };
-    page_fiche(&state.db, Some(id), saisie, Vec::new()).await
+    page_fiche(&mut *db, Some(id), saisie, Vec::new()).await
 }
 
-async fn modifier(State(state): State<AppState>, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
-    let existe: Option<i64> = sqlx::query_scalar("SELECT id FROM ouvrages WHERE id = $1").bind(id).fetch_optional(&state.db).await?;
+async fn modifier(mut db: Base, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
+    let existe: Option<i64> = sqlx::query_scalar("SELECT id FROM ouvrages WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
     existe.ok_or_else(Erreur::introuvable)?;
     match verifier(&s) {
         Ok(v) => {
-            enregistrer(&state.db, Some(id), &v).await?;
+            enregistrer(&mut *db, Some(id), &v).await?;
             Ok(Redirect::to("/bibliotheque?ok=modifie").into_response())
         }
-        Err(erreurs) => Ok(page_fiche(&state.db, Some(id), s, erreurs).await?.into_response()),
+        Err(erreurs) => Ok(page_fiche(&mut *db, Some(id), s, erreurs).await?.into_response()),
     }
 }
 
-async fn supprimer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let fait = sqlx::query("DELETE FROM ouvrages WHERE id = $1").bind(id).execute(&state.db).await?;
+async fn supprimer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let fait = sqlx::query("DELETE FROM ouvrages WHERE id = $1").bind(id).execute(&mut *db).await?;
     if fait.rows_affected() == 0 {
         return Err(Erreur::introuvable());
     }
@@ -476,17 +477,17 @@ struct RechercheChoix {
 }
 
 /// Les 15 premiers ouvrages qui correspondent à la recherche, avec un bouton « Insérer » (fragment htmx).
-async fn choisir(State(state): State<AppState>, Query(r): Query<RechercheChoix>) -> Result<Html<String>, Erreur> {
+async fn choisir(mut db: Base, Query(r): Query<RechercheChoix>) -> Result<Html<String>, Erreur> {
     let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
-    let lignes: Vec<Base> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+    let lignes: Vec<OuvrageLu> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT id, description, genre::text AS genre, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5
          {DEPUIS} ORDER BY lower(description), id LIMIT 15"
     )))
     .bind(&q)
     .bind(&motif)
     .bind("")
-    .fetch_all(&state.db)
+    .fetch_all(&mut *db)
     .await?;
     Ok(Html(ChoixOuvrages { devis: r.devis, lignes: lignes.into_iter().map(Ligne::from).collect(), q }.render()?))
 }

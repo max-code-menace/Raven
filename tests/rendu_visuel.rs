@@ -11,7 +11,7 @@ async fn ecrire_les_pages_du_devis_en_png() {
     };
     dotenvy::dotenv().ok();
     let pool = ubifacture::db::connecter().await.unwrap_or_else(|e| panic!("base inaccessible : {e}"));
-    let donnees = match ubifacture::devis_pdf::charger_donnees(&pool, id.parse().unwrap()).await {
+    let donnees = match ubifacture::devis_pdf::charger_donnees(&mut *pool.acquire().await.unwrap(), id.parse().unwrap()).await {
         Ok(d) => d,
         Err(_) => panic!("devis introuvable"),
     };

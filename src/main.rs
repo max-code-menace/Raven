@@ -65,6 +65,34 @@ async fn main() {
         .expect("le serveur s'est arrêté");
 }
 
+/// L'organisation du nouvel utilisateur (`--organisation <n°>`, obligatoire s'il y en a plusieurs) et son nom (le reste).
+async fn organisation_choisie(pool: &sqlx::PgPool, reste: &[&str]) -> Result<(i64, String), String> {
+    let mut organisation = None;
+    let mut nom = Vec::new();
+    let mut i = 0;
+    while i < reste.len() {
+        if reste[i] == "--organisation" {
+            let valeur = reste.get(i + 1).and_then(|v| v.parse::<i64>().ok());
+            organisation = Some(valeur.ok_or("Après --organisation, indique le numéro de l'organisation.")?);
+            i += 2;
+        } else {
+            nom.push(reste[i]);
+            i += 1;
+        }
+    }
+    let organisation = match organisation {
+        Some(o) => o,
+        None => match connexion::liste_organisations(pool).await.map_err(|e| e.to_string())?.as_slice() {
+            [(seule, _)] => *seule,
+            liste => {
+                let noms: Vec<String> = liste.iter().map(|(id, nom)| format!("  {id}  {nom}")).collect();
+                return Err(format!("Plusieurs organisations : ajoute --organisation <n°>.\n{}", noms.join("\n")));
+            }
+        },
+    };
+    Ok((organisation, nom.join(" ")))
+}
+
 /// Demande un mot de passe deux fois, sans l'afficher à l'écran.
 fn demander_mot_de_passe() -> Option<String> {
     let premier = rpassword::prompt_password("Mot de passe (10 caractères au moins) : ").ok()?;
@@ -79,9 +107,14 @@ fn demander_mot_de_passe() -> Option<String> {
 /// `utilisateur ajouter <e-mail> [nom]`, `utilisateur mot-de-passe <e-mail>`, `utilisateur liste`.
 async fn utilisateurs(pool: &sqlx::PgPool, arguments: &[String]) -> i32 {
     let resultat = match arguments.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-        ["ajouter", email, nom @ ..] => match demander_mot_de_passe() {
-            Some(mdp) => connexion::ajouter_utilisateur(pool, email, &nom.join(" "), &mdp).await.map(|()| format!("Utilisateur {email} créé.")),
-            None => Err("Rien n'a été créé.".to_string()),
+        ["ajouter", email, reste @ ..] => match organisation_choisie(pool, reste).await {
+            Err(message) => Err(message),
+            Ok((organisation, nom)) => match demander_mot_de_passe() {
+                Some(mdp) => connexion::ajouter_utilisateur(pool, organisation, email, &nom, &mdp)
+                    .await
+                    .map(|()| format!("Utilisateur {email} créé dans l'organisation n° {organisation}.")),
+                None => Err("Rien n'a été créé.".to_string()),
+            },
         },
         ["mot-de-passe", email] => match demander_mot_de_passe() {
             Some(mdp) => connexion::changer_mot_de_passe(pool, email, &mdp)
@@ -91,9 +124,16 @@ async fn utilisateurs(pool: &sqlx::PgPool, arguments: &[String]) -> i32 {
         },
         ["liste"] => connexion::liste_utilisateurs(pool)
             .await
-            .map(|l| if l.is_empty() { "Aucun utilisateur.".to_string() } else { l.iter().map(|(e, n)| format!("{e}  {n}")).collect::<Vec<_>>().join("\n") })
+            .map(|l| {
+                if l.is_empty() {
+                    "Aucun utilisateur.".to_string()
+                } else {
+                    l.iter().map(|(e, n, o)| format!("{e}  {n}  (organisation : {o})")).collect::<Vec<_>>().join("\n")
+                }
+            })
             .map_err(|e| e.to_string()),
-        _ => Err("Commandes : utilisateur ajouter <e-mail> [nom] · utilisateur mot-de-passe <e-mail> · utilisateur liste".to_string()),
+        _ => Err("Commandes : utilisateur ajouter <e-mail> [nom] [--organisation <n°>] · utilisateur mot-de-passe <e-mail> · utilisateur liste"
+            .to_string()),
     };
     match resultat {
         Ok(message) => {

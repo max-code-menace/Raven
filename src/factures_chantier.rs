@@ -9,14 +9,15 @@
 
 use axum::{
     Router,
-    extract::{Form, Path, State},
+    extract::{Form, Path},
     response::Redirect,
     routing::post,
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 
+use crate::base::Base;
 use crate::avancement_calcul as ac;
 use crate::avancements;
 use crate::calcul;
@@ -47,7 +48,7 @@ pub struct Recap {
     pub reste_a_facturer: String,
 }
 
-pub async fn recap(db: &PgPool, chantier_id: i64, total_cents: i64) -> Result<Recap, sqlx::Error> {
+pub async fn recap(db: &mut PgConnection, chantier_id: i64, total_cents: i64) -> Result<Recap, sqlx::Error> {
     let lignes: Vec<(i64, String, Option<i64>, NaiveDate, i64, i64, String)> = sqlx::query_as(
         "SELECT f.id, f.genre::text, f.numero, f.date_facture,
                 CASE WHEN f.genre = 'note_credit' THEN -f.montant_ht_cents ELSE f.montant_ht_cents END,
@@ -57,7 +58,7 @@ pub async fn recap(db: &PgPool, chantier_id: i64, total_cents: i64) -> Result<Re
          ORDER BY f.numero IS NULL, f.date_facture, f.id",
     )
     .bind(chantier_id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     let (mut ht, mut ttc) = (0, 0);
     let factures = lignes
@@ -174,9 +175,9 @@ fn montant_acompte(a: &Acompte, total_cents: i64) -> Option<(i64, Option<i64>)> 
     (montant > 0 && montant <= total_cents).then_some((montant, pourcentage))
 }
 
-async fn creer_acompte(State(state): State<AppState>, Path(chantier_id): Path<i64>, Form(a): Form<Acompte>) -> Result<Redirect, Erreur> {
-    let total: i64 = avancements::bases_par_taux(&state.db, chantier_id).await?.iter().map(|(_, b)| b).sum();
-    let mut tx = state.db.begin().await?;
+async fn creer_acompte(mut db: Base, Path(chantier_id): Path<i64>, Form(a): Form<Acompte>) -> Result<Redirect, Erreur> {
+    let total: i64 = avancements::bases_par_taux(&mut *db, chantier_id).await?.iter().map(|(_, b)| b).sum();
+    let mut tx = db.begin().await?;
     let e = entete(&mut tx, chantier_id).await?.ok_or_else(Erreur::introuvable)?;
     if avancements::a_une_finale(&mut *tx, chantier_id).await? {
         return vers_finances(chantier_id, "finale");
@@ -184,7 +185,7 @@ async fn creer_acompte(State(state): State<AppState>, Path(chantier_id): Path<i6
     let Some((montant, pourcentage)) = montant_acompte(&a, total) else {
         return vers_finances(chantier_id, "acompte");
     };
-    let bases = avancements::bases_par_taux(&state.db, chantier_id).await?;
+    let bases = avancements::bases_par_taux(&mut *tx, chantier_id).await?;
     let valeurs: Vec<i64> = bases.iter().map(|(_, b)| *b).collect();
     let numero_acompte: i64 = sqlx::query_scalar("SELECT count(*) + 1 FROM factures WHERE chantier_id = $1 AND genre = 'acompte'")
         .bind(chantier_id)
@@ -208,8 +209,8 @@ async fn creer_acompte(State(state): State<AppState>, Path(chantier_id): Path<i6
 
 // ─── Avancement ─────────────────────────────────────────────────────────────
 
-async fn facturer_avancement(State(state): State<AppState>, Path((chantier_id, avancement_id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn facturer_avancement(mut db: Base, Path((chantier_id, avancement_id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
     let e = entete(&mut tx, chantier_id).await?.ok_or_else(Erreur::introuvable)?;
     let a: Option<(i32, String, String)> = sqlx::query_as(
         "SELECT numero, reference, statut::text FROM avancements WHERE id = $1 AND chantier_id = $2 FOR UPDATE",
@@ -226,7 +227,7 @@ async fn facturer_avancement(State(state): State<AppState>, Path((chantier_id, a
     if let Some(id) = deja {
         return Ok(Redirect::to(&format!("/factures/{id}")));
     }
-    let lignes = avancements::lignes_de_facture(&state.db, chantier_id, numero).await?;
+    let lignes = avancements::lignes_de_facture(&mut *tx, chantier_id, numero).await?;
     if lignes.is_empty() {
         return vers_finances(chantier_id, "rien");
     }
@@ -259,8 +260,8 @@ async fn acomptes_par_taux(tx: &mut Transaction<'_, Postgres>, chantier_id: i64)
     Ok((par_taux.into_iter().filter(|(_, m)| *m != 0).collect(), numeros.unwrap_or_default()))
 }
 
-async fn creer_finale(State(state): State<AppState>, Path(chantier_id): Path<i64>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn creer_finale(mut db: Base, Path(chantier_id): Path<i64>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
     let e = entete(&mut tx, chantier_id).await?.ok_or_else(Erreur::introuvable)?;
     if avancements::a_une_finale(&mut *tx, chantier_id).await? {
         return vers_finances(chantier_id, "finale");
@@ -277,7 +278,7 @@ async fn creer_finale(State(state): State<AppState>, Path(chantier_id): Path<i64
     if facture_en_brouillon(&mut *tx, chantier_id).await? {
         return vers_finances(chantier_id, "facture_brouillon");
     }
-    let (soldes, mut lignes) = avancements::preparer_solde(&state.db, chantier_id).await?;
+    let (soldes, mut lignes) = avancements::preparer_solde(&mut *tx, chantier_id).await?;
     if soldes.is_empty() {
         return vers_finances(chantier_id, "rien");
     }

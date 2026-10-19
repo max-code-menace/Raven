@@ -4,7 +4,7 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
     routing::get,
@@ -12,8 +12,9 @@ use axum::{
 use axum_extra::extract::Form;
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgConnection};
 
+use crate::base::Base;
 use crate::commun::{Choix, PAYS, choix_fixes, vide_en_none};
 use crate::devis::statut;
 use crate::devis_statut::{Barre, charger_barre};
@@ -71,15 +72,15 @@ pub(crate) struct Referentiel {
 }
 
 impl Referentiel {
-    pub(crate) async fn charger(db: &PgPool) -> Result<Self, sqlx::Error> {
+    pub(crate) async fn charger(db: &mut PgConnection) -> Result<Self, sqlx::Error> {
         // Pour une entreprise, `Options` ne charge que les conditions de paiement et les taux de TVA.
-        let options = Options::charger(db, Genre::Entreprise).await?;
+        let options = Options::charger(&mut *db, Genre::Entreprise).await?;
         let entreprises: Vec<(i64, String)> =
-            sqlx::query_as("SELECT id, nom FROM entreprises ORDER BY lower(nom), id").fetch_all(db).await?;
+            sqlx::query_as("SELECT id, nom FROM entreprises ORDER BY lower(nom), id").fetch_all(&mut *db).await?;
         let contacts: Vec<(i64, String)> = sqlx::query_as(
             "SELECT id, trim(concat_ws(' ', prenom, nom)) FROM contacts ORDER BY lower(nom), id",
         )
-        .fetch_all(db)
+        .fetch_all(&mut *db)
         .await?;
 
         let mut personnes: Vec<(Personne, String)> = entreprises
@@ -135,7 +136,7 @@ struct Devis {
     jours_ouvrables: i32,
 }
 
-async fn charger_devis(db: &PgPool, id: i64) -> Result<Option<Devis>, sqlx::Error> {
+async fn charger_devis(db: &mut PgConnection, id: i64) -> Result<Option<Devis>, sqlx::Error> {
     sqlx::query_as(
         "SELECT numero, extract(year FROM date_devis)::int AS annee, date_devis, reference, responsable,
                 statut::text AS statut, client_entreprise_id, client_contact_id, taux_tva_id,
@@ -146,7 +147,7 @@ async fn charger_devis(db: &PgPool, id: i64) -> Result<Option<Devis>, sqlx::Erro
          FROM devis WHERE id = $1",
     )
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await
 }
 
@@ -345,7 +346,7 @@ fn valider(f: &DevisForm, r: &Referentiel, avenant: bool) -> Result<Valeurs, Vec
 }
 
 /// Renvoie `false` si le devis n'est plus un brouillon (ou n'existe plus) : rien n'est modifié.
-async fn enregistrer_en_base(db: &PgPool, id: i64, v: &Valeurs) -> Result<bool, sqlx::Error> {
+async fn enregistrer_en_base(db: &mut PgConnection, id: i64, v: &Valeurs) -> Result<bool, sqlx::Error> {
     let (client_entreprise, client_contact) = Personne::colonnes(Some(v.client));
     let (facturation_entreprise, facturation_contact) = Personne::colonnes(v.facturation_client);
     let res = sqlx::query(
@@ -381,7 +382,7 @@ async fn enregistrer_en_base(db: &PgPool, id: i64, v: &Valeurs) -> Result<bool, 
     .bind(&v.remarque_2)
     .bind(id)
     .bind(v.jours_ouvrables)
-    .execute(db)
+    .execute(&mut *db)
     .await?;
     Ok(res.rows_affected() > 0)
 }
@@ -439,20 +440,20 @@ pub struct AcompteVue {
     pub classe: &'static str,
 }
 
-async fn charger_acomptes(db: &PgPool, devis_id: i64, avenant: bool) -> Result<Acomptes, sqlx::Error> {
+async fn charger_acomptes(db: &mut PgConnection, devis_id: i64, avenant: bool) -> Result<Acomptes, sqlx::Error> {
     if avenant {
         return Ok(Acomptes::default());
     }
-    let chantier: Option<i64> = sqlx::query_scalar("SELECT id FROM chantiers WHERE devis_id = $1").bind(devis_id).fetch_optional(db).await?;
+    let chantier: Option<i64> = sqlx::query_scalar("SELECT id FROM chantiers WHERE devis_id = $1").bind(devis_id).fetch_optional(&mut *db).await?;
     let mut a = Acomptes { visible: true, chantier, ..Default::default() };
     if let Some(ch) = chantier {
-        a.finale = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM factures WHERE chantier_id = $1 AND genre = 'finale')").bind(ch).fetch_one(db).await?;
+        a.finale = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM factures WHERE chantier_id = $1 AND genre = 'finale')").bind(ch).fetch_one(&mut *db).await?;
         let lignes: Vec<(i64, Option<i64>, chrono::NaiveDate, i64, String)> = sqlx::query_as(
             "SELECT f.id, f.numero, f.date_facture, f.montant_ht_cents, et.etat FROM factures f JOIN factures_etats et ON et.facture_id = f.id
              WHERE f.chantier_id = $1 AND f.genre = 'acompte' ORDER BY f.date_facture, f.id",
         )
         .bind(ch)
-        .fetch_all(db)
+        .fetch_all(&mut *db)
         .await?;
         for (id, numero, date, ht, etat) in lignes {
             let (statut, classe) = crate::factures::statut(&etat);
@@ -535,34 +536,34 @@ impl Retour {
     }
 }
 
-async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
-    let devis = charger_devis(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
-    let referentiel = Referentiel::charger(&state.db).await?;
+async fn afficher(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
+    let devis = charger_devis(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
+    let referentiel = Referentiel::charger(&mut *db).await?;
     let form = DevisForm::from(&devis);
-    let barre = charger_barre(&state.db, id).await?;
+    let barre = charger_barre(&mut *db, id).await?;
     let mut page = construire_page(id, &devis, form, Vec::new(), &retour, barre, &referentiel);
-    page.acomptes = charger_acomptes(&state.db, id, devis.chantier_id.is_some()).await?;
+    page.acomptes = charger_acomptes(&mut *db, id, devis.chantier_id.is_some()).await?;
     Ok(Html(page.render()?))
 }
 
-async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(form): Form<DevisForm>) -> Result<Response, Erreur> {
-    let devis = charger_devis(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(form): Form<DevisForm>) -> Result<Response, Erreur> {
+    let devis = charger_devis(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if devis.statut != "brouillon" {
         return Err(Erreur::conflit("Ce devis n'est plus un brouillon : il ne peut plus être modifié."));
     }
-    let referentiel = Referentiel::charger(&state.db).await?;
+    let referentiel = Referentiel::charger(&mut *db).await?;
     match valider(&form, &referentiel, devis.chantier_id.is_some()) {
         Ok(valeurs) => {
-            if enregistrer_en_base(&state.db, id, &valeurs).await? {
+            if enregistrer_en_base(&mut *db, id, &valeurs).await? {
                 Ok(Redirect::to(&format!("/devis/{id}?ok=1")).into_response())
             } else {
                 Err(Erreur::conflit("Ce devis n'est plus un brouillon : il ne peut plus être modifié."))
             }
         }
         Err(erreurs) => {
-            let barre = charger_barre(&state.db, id).await?;
+            let barre = charger_barre(&mut *db, id).await?;
             let mut page = construire_page(id, &devis, form, erreurs, &Retour::default(), barre, &referentiel);
-            page.acomptes = charger_acomptes(&state.db, id, devis.chantier_id.is_some()).await?;
+            page.acomptes = charger_acomptes(&mut *db, id, devis.chantier_id.is_some()).await?;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
         }
     }

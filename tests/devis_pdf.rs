@@ -26,7 +26,7 @@ async fn page(site: &Router, uri: &str) -> (StatusCode, String) {
 }
 
 async fn typst(pool: &PgPool, devis: i64) -> String {
-    match ubifacture::devis_pdf::charger_donnees(pool, devis).await {
+    match ubifacture::devis_pdf::charger_donnees(&mut *pool.acquire().await.unwrap(), devis).await {
         Ok(donnees) => ubifacture::devis_pdf::source_typst(&donnees).0,
         Err(_) => panic!("devis introuvable"),
     }

@@ -4,15 +4,16 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Multipart, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Query},
     http::{StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use axum_extra::extract::Form;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{Connection as _, FromRow, PgConnection};
 
+use crate::base::Base;
 use crate::commun::{Choix, PAYS, choix_fixes, email_valide, vide_en_none};
 use crate::{AppState, Erreur};
 
@@ -179,16 +180,16 @@ struct CompteLigne {
     bic: Option<String>,
 }
 
-async fn charger_formulaire(db: &PgPool) -> Result<SocieteForm, sqlx::Error> {
+async fn charger_formulaire(db: &mut PgConnection) -> Result<SocieteForm, sqlx::Error> {
     let societe: Option<SocieteLigne> = sqlx::query_as(
         "SELECT nom, nom_abrege, rue, numero, code_postal, ville, pays, email, emails_supplementaires,
                 telephone, telephones_supplementaires, site_web, numero_tva FROM societe WHERE id = 1",
     )
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let comptes: Vec<CompteLigne> =
         sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires ORDER BY par_defaut DESC, id")
-            .fetch_all(db)
+            .fetch_all(&mut *db)
             .await?;
 
     let mut form = match societe {
@@ -328,7 +329,7 @@ fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
     })
 }
 
-async fn enregistrer(db: &PgPool, v: &Valeurs) -> Result<(), sqlx::Error> {
+async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Error> {
     let mut tx = db.begin().await?;
     sqlx::query(
         "INSERT INTO societe (id, nom, nom_abrege, rue, numero, code_postal, ville, pays, email,
@@ -369,17 +370,17 @@ async fn enregistrer(db: &PgPool, v: &Valeurs) -> Result<(), sqlx::Error> {
 
 // ─── Fichiers en base ───────────────────────────────────────────────────────
 
-async fn nom_du_fichier(db: &PgPool, fichier: Fichier) -> Result<Option<String>, sqlx::Error> {
+async fn nom_du_fichier(db: &mut PgConnection, fichier: Fichier) -> Result<Option<String>, sqlx::Error> {
     sqlx::query_scalar("SELECT nom FROM societe_fichiers WHERE usage = $1")
         .bind(fichier.usage())
-        .fetch_optional(db)
+        .fetch_optional(&mut *db)
         .await
 }
 
-async fn version_du_logo(db: &PgPool) -> Result<i64, sqlx::Error> {
+async fn version_du_logo(db: &mut PgConnection) -> Result<i64, sqlx::Error> {
     let v: Option<i64> =
         sqlx::query_scalar("SELECT extract(epoch FROM updated_at)::bigint FROM societe_fichiers WHERE usage = 'logo'")
-            .fetch_optional(db)
+            .fetch_optional(&mut *db)
             .await?;
     Ok(v.unwrap_or(0))
 }
@@ -420,7 +421,7 @@ struct LigneCompte {
 }
 
 async fn construire_page(
-    db: &PgPool,
+    db: &mut PgConnection,
     form: SocieteForm,
     erreurs: Vec<String>,
     enregistre: bool,
@@ -438,9 +439,9 @@ async fn construire_page(
     Ok(PageSociete {
         pays: choix_fixes(&PAYS, &[pays_actuel]),
         comptes,
-        a_un_logo: nom_du_fichier(db, Fichier::Logo).await?.is_some(),
-        version_logo: version_du_logo(db).await?,
-        conditions_generales: nom_du_fichier(db, Fichier::ConditionsGenerales).await?,
+        a_un_logo: nom_du_fichier(&mut *db, Fichier::Logo).await?.is_some(),
+        version_logo: version_du_logo(&mut *db).await?,
+        conditions_generales: nom_du_fichier(&mut *db, Fichier::ConditionsGenerales).await?,
         form,
         erreurs,
         enregistre,
@@ -453,32 +454,32 @@ struct Confirmation {
     ok: String,
 }
 
-async fn afficher(State(state): State<AppState>, Query(q): Query<Confirmation>) -> Result<Html<String>, Erreur> {
-    let form = charger_formulaire(&state.db).await?;
-    let page = construire_page(&state.db, form, Vec::new(), q.ok == "1").await?;
+async fn afficher(mut db: Base, Query(q): Query<Confirmation>) -> Result<Html<String>, Erreur> {
+    let form = charger_formulaire(&mut *db).await?;
+    let page = construire_page(&mut *db, form, Vec::new(), q.ok == "1").await?;
     Ok(Html(page.render()?))
 }
 
-async fn sauvegarder(State(state): State<AppState>, Form(form): Form<SocieteForm>) -> Result<Response, Erreur> {
+async fn sauvegarder(mut db: Base, Form(form): Form<SocieteForm>) -> Result<Response, Erreur> {
     match valider(&form) {
         Ok(valeurs) => {
-            enregistrer(&state.db, &valeurs).await?;
+            enregistrer(&mut *db, &valeurs).await?;
             Ok(Redirect::to("/parametres/societe?ok=1").into_response())
         }
         Err(erreurs) => {
-            let page = construire_page(&state.db, form, erreurs, false).await?;
+            let page = construire_page(&mut *db, form, erreurs, false).await?;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
         }
     }
 }
 
-async fn erreur_de_fichier(db: &PgPool, message: String) -> Result<Response, Erreur> {
-    let form = charger_formulaire(db).await?;
-    let page = construire_page(db, form, vec![message], false).await?;
+async fn erreur_de_fichier(db: &mut PgConnection, message: String) -> Result<Response, Erreur> {
+    let form = charger_formulaire(&mut *db).await?;
+    let page = construire_page(&mut *db, form, vec![message], false).await?;
     Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
 }
 
-async fn televerser(fichier: Fichier, state: AppState, mut multipart: Multipart) -> Result<Response, Erreur> {
+async fn televerser(fichier: Fichier, mut db: Base, mut multipart: Multipart) -> Result<Response, Erreur> {
     let mut recu: Option<(String, Vec<u8>)> = None;
     loop {
         match multipart.next_field().await {
@@ -489,7 +490,7 @@ async fn televerser(fichier: Fichier, state: AppState, mut multipart: Multipart)
                         Ok(octets) => recu = Some((nom, octets.to_vec())),
                         Err(_) => {
                             let message = format!("{} est trop volumineux ou illisible.", fichier.nom_lisible());
-                            return erreur_de_fichier(&state.db, message).await;
+                            return erreur_de_fichier(&mut *db, message).await;
                         }
                     }
                 }
@@ -497,24 +498,24 @@ async fn televerser(fichier: Fichier, state: AppState, mut multipart: Multipart)
             Ok(None) => break,
             Err(_) => {
                 let message = format!("{} est trop volumineux ou illisible.", fichier.nom_lisible());
-                return erreur_de_fichier(&state.db, message).await;
+                return erreur_de_fichier(&mut *db, message).await;
             }
         }
     }
 
     let Some((nom_brut, contenu)) = recu.filter(|(_, c)| !c.is_empty()) else {
-        return erreur_de_fichier(&state.db, "Choisis un fichier avant de cliquer sur Envoyer.".to_string()).await;
+        return erreur_de_fichier(&mut *db, "Choisis un fichier avant de cliquer sur Envoyer.".to_string()).await;
     };
     if contenu.len() > fichier.taille_max() {
         let message = format!("{} dépasse {} Mo.", fichier.nom_lisible(), fichier.taille_max() / (1024 * 1024));
-        return erreur_de_fichier(&state.db, message).await;
+        return erreur_de_fichier(&mut *db, message).await;
     }
     let Some(type_mime) = type_du_fichier(fichier, &contenu) else {
         let attendu = match fichier {
             Fichier::Logo => "une image PNG ou JPEG",
             Fichier::ConditionsGenerales => "un fichier PDF",
         };
-        return erreur_de_fichier(&state.db, format!("{} doit être {attendu}.", fichier.nom_lisible())).await;
+        return erreur_de_fichier(&mut *db, format!("{} doit être {attendu}.", fichier.nom_lisible())).await;
     };
 
     let defaut = match fichier {
@@ -530,24 +531,24 @@ async fn televerser(fichier: Fichier, state: AppState, mut multipart: Multipart)
     .bind(nom)
     .bind(type_mime)
     .bind(contenu)
-    .execute(&state.db)
+    .execute(&mut *db)
     .await?;
     Ok(Redirect::to("/parametres/societe?ok=1").into_response())
 }
 
-async fn retirer(fichier: Fichier, state: AppState) -> Result<Redirect, Erreur> {
+async fn retirer(fichier: Fichier, mut db: Base) -> Result<Redirect, Erreur> {
     sqlx::query("DELETE FROM societe_fichiers WHERE usage = $1")
         .bind(fichier.usage())
-        .execute(&state.db)
+        .execute(&mut *db)
         .await?;
     Ok(Redirect::to("/parametres/societe?ok=1"))
 }
 
-async fn telecharger(fichier: Fichier, state: AppState) -> Result<Response, Erreur> {
+async fn telecharger(fichier: Fichier, mut db: Base) -> Result<Response, Erreur> {
     let ligne: Option<(String, String, Vec<u8>)> =
         sqlx::query_as("SELECT nom, type_mime, contenu FROM societe_fichiers WHERE usage = $1")
             .bind(fichier.usage())
-            .fetch_optional(&state.db)
+            .fetch_optional(&mut *db)
             .await?;
     let (nom, type_mime, contenu) = ligne.ok_or_else(Erreur::introuvable)?;
     Ok((
@@ -564,7 +565,7 @@ async fn telecharger(fichier: Fichier, state: AppState) -> Result<Response, Erre
 
 pub fn routes() -> Router<AppState> {
     let televersement = |fichier: Fichier| {
-        post(move |State(s): State<AppState>, m: Multipart| televerser(fichier, s, m))
+        post(move |db: Base, m: Multipart| televerser(fichier, db, m))
             .layer(DefaultBodyLimit::max(LIMITE_REQUETE))
     };
     Router::new()
@@ -598,20 +599,20 @@ pub fn routes() -> Router<AppState> {
         )
         // Réponse vide : sert au bouton « Retirer » d'une ligne ajoutée.
         .route("/parametres/societe/ligne/vide", get(|| async { Html("") }))
-        .route("/parametres/societe/logo", get(|State(s): State<AppState>| telecharger(Fichier::Logo, s)))
+        .route("/parametres/societe/logo", get(|db: Base| telecharger(Fichier::Logo, db)))
         .route("/parametres/societe/logo/envoyer", televersement(Fichier::Logo))
         .route(
             "/parametres/societe/logo/retirer",
-            post(|State(s): State<AppState>| retirer(Fichier::Logo, s)),
+            post(|db: Base| retirer(Fichier::Logo, db)),
         )
         .route(
             "/parametres/societe/conditions-generales",
-            get(|State(s): State<AppState>| telecharger(Fichier::ConditionsGenerales, s)),
+            get(|db: Base| telecharger(Fichier::ConditionsGenerales, db)),
         )
         .route("/parametres/societe/conditions-generales/envoyer", televersement(Fichier::ConditionsGenerales))
         .route(
             "/parametres/societe/conditions-generales/retirer",
-            post(|State(s): State<AppState>| retirer(Fichier::ConditionsGenerales, s)),
+            post(|db: Base| retirer(Fichier::ConditionsGenerales, db)),
         )
 }
 

@@ -4,7 +4,6 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::State,
     http::HeaderMap,
     response::{Html, Redirect},
     routing::get,
@@ -12,8 +11,9 @@ use axum::{
 use axum_extra::extract::Query;
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{Connection as _, FromRow, PgConnection};
 
+use crate::base::Base;
 use crate::commun::{Choix, echapper_like, encoder_url, format_euros};
 use crate::{AppState, Erreur};
 
@@ -43,7 +43,7 @@ pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
 
 /// Crée un devis brouillon avec le prochain numéro. Le compteur et le devis sont dans la même
 /// transaction : pas de doublon si deux personnes créent en même temps, pas de trou si ça échoue.
-pub(crate) async fn creer_brouillon(db: &PgPool) -> Result<i64, sqlx::Error> {
+pub(crate) async fn creer_brouillon(db: &mut PgConnection) -> Result<i64, sqlx::Error> {
     let mut tx = db.begin().await?;
     let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'devis' RETURNING valeur")
         .fetch_one(&mut *tx)
@@ -57,8 +57,8 @@ pub(crate) async fn creer_brouillon(db: &PgPool) -> Result<i64, sqlx::Error> {
     Ok(id)
 }
 
-async fn nouveau(State(state): State<AppState>) -> Result<Redirect, Erreur> {
-    let id = creer_brouillon(&state.db).await?;
+async fn nouveau(mut db: Base) -> Result<Redirect, Erreur> {
+    let id = creer_brouillon(&mut *db).await?;
     // On arrive directement dans l'éditeur du nouveau brouillon.
     Ok(Redirect::to(&format!("/devis/{id}")))
 }
@@ -170,7 +170,7 @@ const DEPUIS: &str = "FROM devis d
       AND ($4::date IS NULL OR d.date_devis >= $4)
       AND ($5::date IS NULL OR d.date_devis <= $5)";
 
-async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
+async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
     let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
     // Un statut inconnu est ignoré au lieu de provoquer une erreur.
@@ -187,7 +187,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     .bind(&statuts_choisis)
     .bind(du)
     .bind(au)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *db)
     .await?;
 
     let pages = ((total + PAR_PAGE - 1) / PAR_PAGE).max(1);
@@ -207,7 +207,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     .bind(au)
     .bind(PAR_PAGE)
     .bind((page - 1) * PAR_PAGE)
-    .fetch_all(&state.db)
+    .fetch_all(&mut *db)
     .await?;
 
     let mut morceaux = vec![format!("q={}", encoder_url(&q))];

@@ -8,8 +8,11 @@
 //! - Les utilisateurs se créent en ligne de commande (`cargo run -- utilisateur ajouter <e-mail>`), jamais depuis le
 //!   site : il n'y a pas de page d'inscription.
 //!
+//! - Un utilisateur est **membre** d'une organisation ; sa session est ouverte dans cette organisation et chaque page
+//!   travaille dans celle-ci (`base::Organisation`, posée par `exiger_connexion`).
+//!
 //! `crate::application` assemble le site protégé (utilisé par `main.rs`) ; `crate::app` reste le site sans
-//! connexion pour les tests des écrans.
+//! connexion pour les tests des écrans (organisation n° 1).
 
 use std::sync::LazyLock;
 
@@ -61,8 +64,9 @@ pub fn assez_long(mot_de_passe: &str) -> bool {
 
 // ─── Utilisateurs (ligne de commande) ───────────────────────────────────────
 
-/// Ajoute un utilisateur. Erreur lisible si l'e-mail existe déjà ou si le mot de passe est trop court.
-pub async fn ajouter_utilisateur(db: &PgPool, email: &str, nom: &str, mot_de_passe: &str) -> Result<(), String> {
+/// Ajoute un utilisateur, propriétaire de l'organisation donnée. Erreur lisible si l'e-mail existe déjà, si le mot
+/// de passe est trop court ou si l'organisation n'existe pas.
+pub async fn ajouter_utilisateur(db: &PgPool, organisation: i64, email: &str, nom: &str, mot_de_passe: &str) -> Result<(), String> {
     let email = email.trim();
     if !crate::commun::email_valide(email) {
         return Err(format!("« {email} » n'est pas une adresse e-mail."));
@@ -70,13 +74,29 @@ pub async fn ajouter_utilisateur(db: &PgPool, email: &str, nom: &str, mot_de_pas
     if !assez_long(mot_de_passe) {
         return Err(format!("Le mot de passe doit faire au moins {LONGUEUR_MIN} caractères."));
     }
-    sqlx::query("INSERT INTO utilisateurs (email, nom, mot_de_passe) VALUES ($1, $2, $3)")
+    let existe: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM organisations WHERE id = $1)")
+        .bind(organisation)
+        .fetch_one(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if !existe {
+        return Err(format!("Aucune organisation n° {organisation}."));
+    }
+    let mut tx = db.begin().await.map_err(|e| e.to_string())?;
+    let id: i64 = sqlx::query_scalar("INSERT INTO utilisateurs (email, nom, mot_de_passe) VALUES ($1, $2, $3) RETURNING id")
         .bind(email)
         .bind(nom.trim())
         .bind(hacher(mot_de_passe))
-        .execute(db)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| if e.to_string().contains("utilisateurs_email") { format!("{email} existe déjà.") } else { e.to_string() })?;
+    sqlx::query("INSERT INTO membres (utilisateur_id, organisation_id, role) VALUES ($1, $2, 'proprietaire')")
+        .bind(id)
+        .bind(organisation)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -96,8 +116,20 @@ pub async fn changer_mot_de_passe(db: &PgPool, email: &str, mot_de_passe: &str) 
     Ok(())
 }
 
-pub async fn liste_utilisateurs(db: &PgPool) -> Result<Vec<(String, String)>, sqlx::Error> {
-    sqlx::query_as("SELECT email, nom FROM utilisateurs ORDER BY lower(email)").fetch_all(db).await
+/// E-mail, nom et organisations (« 1 Ubique ») de chaque utilisateur.
+pub async fn liste_utilisateurs(db: &PgPool) -> Result<Vec<(String, String, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT u.email, u.nom, coalesce(string_agg(o.id || ' ' || o.nom, ', ' ORDER BY o.id), '')
+         FROM utilisateurs u LEFT JOIN membres m ON m.utilisateur_id = u.id LEFT JOIN organisations o ON o.id = m.organisation_id
+         GROUP BY u.id ORDER BY lower(u.email)",
+    )
+    .fetch_all(db)
+    .await
+}
+
+/// Les organisations (numéro et nom), pour la ligne de commande.
+pub async fn liste_organisations(db: &PgPool) -> Result<Vec<(i64, String)>, sqlx::Error> {
+    sqlx::query_as("SELECT id, nom FROM organisations ORDER BY id").fetch_all(db).await
 }
 
 // ─── Sessions ───────────────────────────────────────────────────────────────
@@ -106,15 +138,18 @@ fn empreinte(jeton: &str) -> Vec<u8> {
     Sha256::digest(jeton.as_bytes()).to_vec()
 }
 
-async fn ouvrir(db: &PgPool, utilisateur_id: i64, cookies: CookieJar) -> Result<CookieJar, sqlx::Error> {
+async fn ouvrir(db: &PgPool, utilisateur_id: i64, organisation: i64, cookies: CookieJar) -> Result<CookieJar, sqlx::Error> {
     let mut octets = [0u8; 32];
     getrandom::fill(&mut octets).expect("le système ne fournit pas de hasard");
     let jeton = hex::encode(octets);
     sqlx::query("DELETE FROM sessions WHERE expire_le < now()").execute(db).await?;
-    sqlx::query("INSERT INTO sessions (empreinte, utilisateur_id, expire_le) VALUES ($1, $2, now() + make_interval(days => $3))")
-        .bind(empreinte(&jeton))
-        .bind(utilisateur_id)
-        .bind(DUREE_JOURS)
+    sqlx::query(
+        "INSERT INTO sessions (empreinte, utilisateur_id, organisation_id, expire_le) VALUES ($1, $2, $3, now() + make_interval(days => $4))",
+    )
+    .bind(empreinte(&jeton))
+    .bind(utilisateur_id)
+    .bind(organisation)
+    .bind(DUREE_JOURS)
         .execute(db)
         .await?;
     let cookie = Cookie::build((COOKIE, jeton))
@@ -126,10 +161,10 @@ async fn ouvrir(db: &PgPool, utilisateur_id: i64, cookies: CookieJar) -> Result<
     Ok(cookies.add(cookie))
 }
 
-/// L'utilisateur connecté (id), d'après le cookie.
-async fn utilisateur(db: &PgPool, cookies: &CookieJar) -> Result<Option<i64>, sqlx::Error> {
+/// L'utilisateur connecté et l'organisation de sa session (ids), d'après le cookie.
+async fn utilisateur(db: &PgPool, cookies: &CookieJar) -> Result<Option<(i64, i64)>, sqlx::Error> {
     let Some(cookie) = cookies.get(COOKIE) else { return Ok(None) };
-    sqlx::query_scalar("SELECT utilisateur_id FROM sessions WHERE empreinte = $1 AND expire_le > now()")
+    sqlx::query_as("SELECT utilisateur_id, organisation_id FROM sessions WHERE empreinte = $1 AND expire_le > now()")
         .bind(empreinte(cookie.value()))
         .fetch_optional(db)
         .await
@@ -148,13 +183,16 @@ pub fn suite_sure(suite: &str) -> Option<&str> {
 }
 
 /// Garde de toutes les pages : sans session valable, renvoie vers la page de connexion (en retenant la page voulue).
-pub async fn exiger_connexion(State(state): State<AppState>, cookies: CookieJar, requete: Request, suite: Next) -> Response {
+pub async fn exiger_connexion(State(state): State<AppState>, cookies: CookieJar, mut requete: Request, suite: Next) -> Response {
     let chemin = requete.uri().path().to_string();
     if publique(&chemin) {
         return suite.run(requete).await;
     }
     match utilisateur(&state.db, &cookies).await {
-        Ok(Some(_)) => suite.run(requete).await,
+        Ok(Some((_, organisation))) => {
+            requete.extensions_mut().insert(crate::base::Organisation(organisation));
+            suite.run(requete).await
+        }
         Ok(None) => {
             let adresse = match suite_sure(&chemin) {
                 Some(c) if c != "/" => format!("/connexion?suite={c}"),
@@ -229,7 +267,16 @@ async fn envoyer(State(state): State<AppState>, cookies: CookieJar, Form(s): For
         .bind(&email)
         .execute(db)
         .await?;
-    let cookies = ouvrir(db, id, cookies).await?;
+    // Pour l'instant, une seule organisation par utilisateur en pratique : la plus ancienne.
+    let organisation: Option<i64> =
+        sqlx::query_scalar("SELECT organisation_id FROM membres WHERE utilisateur_id = $1 ORDER BY organisation_id LIMIT 1")
+            .bind(id)
+            .fetch_optional(db)
+            .await?;
+    let Some(organisation) = organisation else {
+        return refus(s, "Ce compte n'est rattaché à aucune organisation.");
+    };
+    let cookies = ouvrir(db, id, organisation, cookies).await?;
     let suite = suite_sure(&s.suite).unwrap_or("/").to_string();
     Ok((cookies, Redirect::to(&suite)).into_response())
 }

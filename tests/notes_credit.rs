@@ -211,7 +211,7 @@ async fn ecrire_les_pages_d_une_facture_en_png(pool: PgPool) {
     let (_, lieu) = poster(&s, &format!("/factures/{facture}/crediter"), "").await;
     let note = id_depuis(lieu);
     for (nom, id) in [("facture", facture), ("note", note)] {
-        let pages = ubifacture::facture_pdf::pages_en_png(&pool, id).await.unwrap();
+        let pages = ubifacture::facture_pdf::pages_en_png(&mut *pool.acquire().await.unwrap(), id).await.unwrap();
         for (i, png) in pages.iter().enumerate() {
             std::fs::write(format!("{dossier}/{nom}-{}.png", i + 1), png).unwrap();
         }

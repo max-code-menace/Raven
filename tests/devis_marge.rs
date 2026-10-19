@@ -377,7 +377,7 @@ async fn la_base_refuse_des_frais_generaux_hors_limites(pool: PgPool) {
 
 /// Le texte Typst qui sert à fabriquer le PDF du devis : tout ce que le client verra y figure.
 async fn typst(pool: &PgPool, devis: i64) -> String {
-    match ubifacture::devis_pdf::charger_donnees(pool, devis).await {
+    match ubifacture::devis_pdf::charger_donnees(&mut *pool.acquire().await.unwrap(), devis).await {
         Ok(donnees) => ubifacture::devis_pdf::source_typst(&donnees).0,
         Err(_) => panic!("devis introuvable"),
     }

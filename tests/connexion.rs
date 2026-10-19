@@ -75,9 +75,9 @@ async fn sans_connexion_tout_mene_a_la_page_de_connexion(pool: PgPool) {
 
 #[sqlx::test]
 async fn se_connecter_puis_se_deconnecter(pool: PgPool) {
-    connexion::ajouter_utilisateur(&pool, "max@ubique.be", "Max", "un-long-mot-de-passe").await.unwrap();
-    assert!(connexion::ajouter_utilisateur(&pool, "MAX@ubique.be", "", "un-long-mot-de-passe").await.is_err(), "pas deux fois le même e-mail");
-    assert!(connexion::ajouter_utilisateur(&pool, "autre@ubique.be", "", "court").await.is_err(), "10 caractères au moins");
+    connexion::ajouter_utilisateur(&pool, 1, "max@ubique.be", "Max", "un-long-mot-de-passe").await.unwrap();
+    assert!(connexion::ajouter_utilisateur(&pool, 1, "MAX@ubique.be", "", "un-long-mot-de-passe").await.is_err(), "pas deux fois le même e-mail");
+    assert!(connexion::ajouter_utilisateur(&pool, 1, "autre@ubique.be", "", "court").await.is_err(), "10 caractères au moins");
     let empreinte: String = sqlx::query_scalar("SELECT mot_de_passe FROM utilisateurs").fetch_one(&pool).await.unwrap();
     assert!(empreinte.starts_with("$argon2id$"), "jamais le mot de passe en clair");
     let s = site(&pool);
@@ -108,7 +108,7 @@ async fn se_connecter_puis_se_deconnecter(pool: PgPool) {
 
 #[sqlx::test]
 async fn trop_d_essais_et_changement_de_mot_de_passe(pool: PgPool) {
-    connexion::ajouter_utilisateur(&pool, "max@ubique.be", "", "un-long-mot-de-passe").await.unwrap();
+    connexion::ajouter_utilisateur(&pool, 1, "max@ubique.be", "", "un-long-mot-de-passe").await.unwrap();
     let s = site(&pool);
     let bon = "email=max%40ubique.be&mot_de_passe=un-long-mot-de-passe";
     let cookie = valeur_cookie(&poster(&s, "/connexion", bon, None).await.cookie.unwrap());

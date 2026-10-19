@@ -3,17 +3,18 @@
 
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::Path,
     response::Redirect,
     routing::post,
 };
 
+use crate::base::Base;
 use crate::devis_lignes::numero_affiche;
 use crate::journal::{self, Genre};
 use crate::{AppState, Erreur};
 
-async fn dupliquer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn dupliquer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
 
     let source: Option<(i32, i64, Option<i64>)> =
         sqlx::query_as("SELECT extract(year FROM date_devis)::int, numero, chantier_id FROM devis WHERE id = $1 FOR SHARE")

@@ -10,17 +10,18 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Multipart, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Query},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::{Connection as _, PgConnection};
 
 use crate::bibliotheque_import::grille_csv;
 use crate::commun::{PAYS, email_valide};
 use crate::import_excel::{self, Cellule, cle};
+use crate::base::Base;
 use crate::{AppState, Erreur};
 
 const TAILLE_MAX: usize = 10 * 1024 * 1024;
@@ -286,7 +287,7 @@ pub fn lire_fichier(nom: &str, octets: &[u8], genre: Genre) -> Result<Lecture, S
 }
 
 /// Ajoute les fiches absentes. Renvoie (ajoutées, déjà présentes).
-async fn ajouter(db: &PgPool, fiches: &[Fiche], genre: Genre) -> Result<(usize, usize), sqlx::Error> {
+async fn ajouter(db: &mut PgConnection, fiches: &[Fiche], genre: Genre) -> Result<(usize, usize), sqlx::Error> {
     let mut tx = db.begin().await?;
     let (mut ajoutees, mut deja) = (0, 0);
     for f in fiches {
@@ -408,7 +409,7 @@ fn refus(genre: Genre, message: &str) -> Result<Response, Erreur> {
     Ok((StatusCode::UNPROCESSABLE_ENTITY, page(genre, message.to_string(), None, Vec::new())?).into_response())
 }
 
-async fn recevoir(db: &PgPool, genre: Genre, mut multipart: Multipart) -> Result<Response, Erreur> {
+async fn recevoir(db: &mut PgConnection, genre: Genre, mut multipart: Multipart) -> Result<Response, Erreur> {
     let mut recu: Option<(String, Vec<u8>)> = None;
     loop {
         match multipart.next_field().await {
@@ -432,7 +433,7 @@ async fn recevoir(db: &PgPool, genre: Genre, mut multipart: Multipart) -> Result
         Ok(Err(m)) => return refus(genre, &m),
         Err(_) => return refus(genre, "Le fichier n'a pas pu être lu."),
     };
-    let (ajoutees, deja) = ajouter(db, &lecture.fiches, genre).await?;
+    let (ajoutees, deja) = ajouter(&mut *db, &lecture.fiches, genre).await?;
     let base = if genre == Genre::Contact { "/contacts" } else { "/entreprises" };
     if !lecture.alertes.is_empty() {
         return Ok(page(genre, String::new(), Some((ajoutees, deja)), lecture.alertes)?.into_response());
@@ -446,13 +447,13 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/entreprises/import",
             get(|Query(r): Query<Retour>| formulaire(Genre::Entreprise, r))
-                .post(|State(s): State<AppState>, m: Multipart| async move { recevoir(&s.db, Genre::Entreprise, m).await })
+                .post(|mut db: Base, m: Multipart| async move { recevoir(&mut *db, Genre::Entreprise, m).await })
                 .layer(limite.clone()),
         )
         .route(
             "/contacts/import",
             get(|Query(r): Query<Retour>| formulaire(Genre::Contact, r))
-                .post(|State(s): State<AppState>, m: Multipart| async move { recevoir(&s.db, Genre::Contact, m).await })
+                .post(|mut db: Base, m: Multipart| async move { recevoir(&mut *db, Genre::Contact, m).await })
                 .layer(limite),
         )
 }
