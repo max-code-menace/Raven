@@ -75,7 +75,7 @@ async fn recevoir(mut db: Base, Path(id): Path<i64>, mut multipart: Multipart) -
         }
     }
     let Some((nom, octets)) = recu.filter(|(_, o)| !o.is_empty()) else {
-        return erreur_envoi(&mut *db, id, "Choisis un fichier Excel avant de cliquer sur « Lire le fichier ».").await;
+        return erreur_envoi(&mut *db, id, "Choisissez un fichier Excel avant de cliquer sur « Lire le fichier ».").await;
     };
     let resultat = match tokio::task::spawn_blocking(move || import_excel::lire_xlsx(&octets)).await {
         Ok(Ok(r)) => r,
@@ -258,7 +258,7 @@ async fn importer(mut db: Base, Path((id, import)): Path<(i64, i64)>, Form(c): F
     brouillon(&mut *db, id).await?;
     let i = charger_import(&mut *db, id, import).await?;
     let Some((taux, _)) = taux_a_utiliser(&mut *db, id, i.taux_fichier).await? else {
-        return Err(Erreur::conflit("Choisis d'abord le taux de TVA par défaut du devis (onglet Informations), puis recommence l'import."));
+        return Err(Erreur::conflit("Choisissez d'abord le taux de TVA par défaut du devis (onglet Informations), puis recommencez l'import."));
     };
     let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
@@ -317,6 +317,7 @@ pub fn routes() -> Router<AppState> {
         .route("/devis/{id}/import", get(formulaire).post(recevoir).layer(DefaultBodyLimit::max(TAILLE_MAX + 64 * 1024)))
         .route("/devis/{id}/import/{import}", get(apercu).post(importer))
         .route("/devis/{id}/import/{import}/abandonner", post(abandonner))
+        .route_layer(axum::middleware::from_fn(crate::profil::exiger_import_metres))
 }
 
 #[cfg(test)]

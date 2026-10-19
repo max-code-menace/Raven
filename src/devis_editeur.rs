@@ -263,7 +263,7 @@ fn valider(f: &DevisForm, r: &Referentiel, avenant: bool) -> Result<Valeurs, Vec
 
     let client = Personne::lire(&f.client).filter(|p| r.existe(*p));
     if client.is_none() {
-        erreurs.push("Choisis le client du devis.".to_string());
+        erreurs.push("Choisissez le client du devis.".to_string());
     }
 
     let taux_tva_id = f.taux_tva_id.trim().parse::<i64>().ok().filter(|id| r.options.taux_tva.iter().any(|(i, _)| i == id));
@@ -287,7 +287,7 @@ fn valider(f: &DevisForm, r: &Referentiel, avenant: bool) -> Result<Valeurs, Vec
     } else {
         let p = Personne::lire(&f.facturation_client).filter(|p| r.existe(*p));
         if p.is_none() {
-            erreurs.push("Choisis le client de facturation, ou coche « identique au client ».".to_string());
+            erreurs.push("Choisissez le client de facturation, ou cochez « identique au client ».".to_string());
         }
         p
     };
@@ -514,14 +514,14 @@ impl Retour {
             ("envoye", true) => "L'avenant est marqué comme envoyé.",
             ("email_envoye", false) => "Le devis est envoyé par e-mail.",
             ("email_envoye", true) => "L'avenant est envoyé par e-mail.",
-            ("email_enregistre", _) => "Mode test : l'e-mail est enregistré (Réglages › E-mails) mais n'est pas parti, car aucune clé Brevo n'est configurée. Marque la pièce comme envoyée à la main si tu l'as envoyée autrement.",
+            ("email_enregistre", _) => "Mode test : l'e-mail est enregistré (Réglages › E-mails) mais n'est pas parti, car aucune clé Brevo n'est configurée. Marquez la pièce comme envoyée à la main si vous l'avez envoyée autrement.",
             ("accepte", false) => "Le devis est accepté et son chantier est créé.",
             ("accepte", true) => "L'avenant est accepté : il compte maintenant dans le total du chantier.",
             ("refuse", false) => "Le devis est refusé.",
             ("refuse", true) => "L'avenant est refusé.",
             ("brouillon", false) => "Le devis est remis en brouillon.",
             ("brouillon", true) => "L'avenant est remis en brouillon.",
-            ("avenant", _) => "L'avenant est créé en brouillon : complète ses lignes dans l'onglet Encodage.",
+            ("avenant", _) => "L'avenant est créé en brouillon : complétez ses lignes dans l'onglet Encodage.",
             _ => "",
         }
     }

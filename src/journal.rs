@@ -38,7 +38,7 @@ impl Genre {
             "statut" => "Statut",
             "pdf" => "PDF",
             "duplication" => "Duplication",
-            "chantier" => "Chantier",
+            "chantier" => crate::profil::mot("Chantier"),
             "email" => "E-mail",
             "client" => "Client",
             "import" => "Import Excel",

@@ -236,7 +236,14 @@ pub async fn exiger_connexion(State(state): State<AppState>, cookies: CookieJar,
         Ok(Some((utilisateur, organisation, _))) => {
             requete.extensions_mut().insert(crate::base::Organisation(organisation));
             requete.extensions_mut().insert(crate::base::Utilisateur(utilisateur));
-            suite.run(requete).await
+            let profil = match state.db.acquire().await {
+                Ok(mut conn) => crate::profil::charger(&mut conn, organisation).await,
+                Err(e) => Err(e),
+            };
+            match profil {
+                Ok(profil) => crate::profil::avec(profil, suite.run(requete)).await,
+                Err(e) => Erreur::from(e).into_response(),
+            }
         }
         Ok(None) => {
             let adresse = match suite_sure(&chemin) {
@@ -278,7 +285,7 @@ async fn afficher(State(state): State<AppState>, cookies: CookieJar, Query(s): Q
         return Ok(Redirect::to("/").into_response());
     }
     let message = match s.ok.as_str() {
-        "mot_de_passe" => "Ton mot de passe est changé : connecte-toi avec le nouveau.",
+        "mot_de_passe" => "Votre mot de passe est changé : connectez-vous avec le nouveau.",
         _ => "",
     };
     Ok(Html(Page { email: String::new(), suite: s.suite, erreur: "", message, non_verifie: false }.render()?).into_response())
@@ -299,7 +306,7 @@ async fn envoyer(State(state): State<AppState>, cookies: CookieJar, Form(s): For
     .fetch_one(db)
     .await?;
     if essais >= ESSAIS_MAX {
-        return refus(s, "Trop d'essais ratés : attends un quart d'heure avant de réessayer.");
+        return refus(s, "Trop d'essais ratés : attendez un quart d'heure avant de réessayer.");
     }
     let trouve: Option<(i64, String, bool)> =
         sqlx::query_as("SELECT id, mot_de_passe, email_verifie_le IS NOT NULL FROM utilisateurs WHERE lower(email) = lower($1)")
@@ -324,7 +331,7 @@ async fn envoyer(State(state): State<AppState>, cookies: CookieJar, Form(s): For
         let page = Page {
             email: email.clone(),
             suite: s.suite,
-            erreur: "Confirme d'abord ton adresse e-mail : clique sur le lien que nous t'avons envoyé.",
+            erreur: "Confirmez d'abord votre adresse e-mail : cliquez sur le lien que nous vous avons envoyé.",
             message: "",
             non_verifie: true,
         };

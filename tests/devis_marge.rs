@@ -117,7 +117,7 @@ async fn un_type_chiffre_demande_la_tva_par_defaut(options: PgPoolOptions, conne
     let s = site(&pool);
     for genre in ["ouvrage", "fourniture", "equipement", "main_oeuvre", "sous_traitant"] {
         let (_, page) = poster(&s, &format!("/devis/{d}/lignes"), &format!("genre={genre}")).await;
-        assert!(page.contains("Choisis d&#39;abord le taux de TVA"), "{genre}");
+        assert!(page.contains("Choisissez d&#39;abord le taux de TVA"), "{genre}");
     }
     let (n,): (i64,) = sqlx::query_as("SELECT count(*) FROM devis_lignes").fetch_one(&pool).await.unwrap();
     assert_eq!(n, 0);

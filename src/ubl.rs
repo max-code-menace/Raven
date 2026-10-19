@@ -80,11 +80,13 @@ fn pourcentage(centiemes: i32) -> String {
     }
 }
 
-/// La catégorie de TVA de la norme : S (taux normal ou réduit), AE (autoliquidation), Z (taux zéro).
-fn categorie(taux_centiemes: i32, autoliquidation: bool) -> &'static str {
-    match (autoliquidation, taux_centiemes) {
-        (true, _) => "AE",
-        (false, 0) => "Z",
+/// La catégorie de TVA de la norme : S (taux normal ou réduit), AE (autoliquidation), E (exonéré : franchise des
+/// petites entreprises, à confirmer avec le point d'accès Peppol), Z (taux zéro).
+fn categorie(taux_centiemes: i32, autoliquidation: bool, franchise: bool) -> &'static str {
+    match (autoliquidation, franchise, taux_centiemes) {
+        (true, _, _) => "AE",
+        (false, true, _) => "E",
+        (false, false, 0) => "Z",
         _ => "S",
     }
 }
@@ -141,6 +143,7 @@ pub(crate) fn document(d: &Document) -> String {
     };
     let t = factures::totaux(&d.lignes);
     let autoliq = |taux: i32| d.lignes.iter().any(|l| l.genre == "poste" && l.taux_centiemes == Some(taux) && l.autoliquidation);
+    let franchise = |taux: i32| d.lignes.iter().any(|l| l.genre == "poste" && l.taux_centiemes == Some(taux) && l.franchise);
     let eur = "currencyID=\"EUR\"";
 
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -179,7 +182,7 @@ pub(crate) fn document(d: &Document) -> String {
 
     let _ = write!(xml, "<cac:TaxTotal><cbc:TaxAmount {eur}>{}</cbc:TaxAmount>", montant(t.ttc_cents - t.ht_cents));
     for v in &t.tva {
-        let cat = categorie(v.taux_centiemes, autoliq(v.taux_centiemes));
+        let cat = categorie(v.taux_centiemes, autoliq(v.taux_centiemes), franchise(v.taux_centiemes));
         let _ = write!(
             xml,
             "<cac:TaxSubtotal><cbc:TaxableAmount {eur}>{}</cbc:TaxableAmount><cbc:TaxAmount {eur}>{}</cbc:TaxAmount>\
@@ -190,6 +193,9 @@ pub(crate) fn document(d: &Document) -> String {
         );
         if cat == "AE" {
             xml.push_str("<cbc:TaxExemptionReasonCode>VATEX-EU-AE</cbc:TaxExemptionReasonCode><cbc:TaxExemptionReason>Autoliquidation</cbc:TaxExemptionReason>");
+        }
+        if cat == "E" {
+            let _ = write!(xml, "<cbc:TaxExemptionReason>{}</cbc:TaxExemptionReason>", echapper(crate::societe::MENTION_FRANCHISE));
         }
         xml.push_str("<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal>");
     }
@@ -229,7 +235,7 @@ pub(crate) fn document(d: &Document) -> String {
              <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item>\
              <cac:Price><cbc:PriceAmount {eur}>{}</cbc:PriceAmount></cac:Price></cac:{ligne_nom}>",
             echapper(&nom),
-            categorie(taux, l.autoliquidation),
+            categorie(taux, l.autoliquidation, l.franchise),
             pourcentage(taux),
             montant(l.total_cents.abs())
         );
@@ -329,6 +335,7 @@ mod tests {
             taux_centiemes: Some(taux),
             total_cents: total,
             autoliquidation,
+            franchise: false,
         }
     }
 

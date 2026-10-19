@@ -20,7 +20,7 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 {% if !erreurs.is_empty() %}
 <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{% for e in erreurs %}{{ e }}{% if !loop.last %}<br>{% endif %}{% endfor %}</span></div>
@@ -63,7 +63,7 @@
       </div>
       <div class="u-col">
         {% include "_recurrence_apercu.html" %}
-        <p class="u-petit u-muet">À chaque date prévue, la facture est proposée dans Finances › Factures récurrentes (et dans « À surveiller »). Un clic sur « Préparer les factures » crée un brouillon qui reprend l'en-tête et les lignes de cette facture. Tu le relis, tu le valides (il reçoit alors son numéro) et tu l'envoies : rien ne part tout seul.</p>
+        <p class="u-petit u-muet">À chaque date prévue, la facture est proposée dans Finances › Factures récurrentes (et dans « À surveiller »). Un clic sur « Préparer les factures » crée un brouillon qui reprend l'en-tête et les lignes de cette facture. Vous le relisez, le validez (il reçoit alors son numéro) et l'envoyez : rien ne part tout seul.</p>
       </div>
     </div>
     <div class="flex flex-wrap gap-2 justify-end px-[18px] pb-4">

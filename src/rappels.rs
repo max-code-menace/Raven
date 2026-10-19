@@ -199,7 +199,7 @@ async fn afficher(mut db: Base, Query(r): Query<Retour>) -> Result<Html<String>,
         suivant,
         envoi_actif: emails::envoi_actif(),
         message_ok: r.message(),
-        message_erreur: if r.erreur == "rien" { "Coche au moins une facture à relancer." } else { "" },
+        message_erreur: if r.erreur == "rien" { "Cochez au moins une facture à relancer." } else { "" },
     };
     Ok(Html(page.render()?))
 }

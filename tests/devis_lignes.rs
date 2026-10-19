@@ -111,7 +111,7 @@ async fn un_poste_libre_demande_une_tva_par_defaut(options: PgPoolOptions, conne
     let s = site(&pool);
     let (statut, page) = poster(&s, &format!("/devis/{d}/lignes"), "genre=poste_libre").await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(page.contains("Choisis d&#39;abord le taux de TVA par défaut"));
+    assert!(page.contains("Choisissez d&#39;abord le taux de TVA par défaut"));
     assert!(ids(&pool, d).await.is_empty());
     // Un titre ne demande rien.
     assert_eq!(ajouter(&s, d, "titre").await, StatusCode::OK);

@@ -9,6 +9,6 @@
     <button type="button" class="btn btn-sm" hx-post="/devis/{{ devis }}/bibliotheque" hx-vals='{"ouvrage": "{{ l.id }}"}' hx-target="#encodage" hx-swap="outerHTML">Insérer</button>
   </div>
   {% else %}
-  <p class="u-petit u-muet py-2" style="margin:0">{% if q.is_empty() %}La bibliothèque est vide : ajoute des ouvrages dans le menu Bibliothèque.{% else %}Aucun ouvrage ne correspond.{% endif %}</p>
+  <p class="u-petit u-muet py-2" style="margin:0">{% if q.is_empty() %}La bibliothèque est vide : ajoutez des ouvrages dans le menu Bibliothèque.{% else %}Aucun ouvrage ne correspond.{% endif %}</p>
   {% endfor %}
 </div>

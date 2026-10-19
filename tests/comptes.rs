@@ -78,7 +78,7 @@ async fn s_inscrire_confirmer_puis_demarrer(options: PgPoolOptions, connexion: P
     assert!(lire(&s, "/connexion", None).await.corps.contains("href=\"/inscription\""), "lien depuis la connexion");
 
     let r = poster(&s, "/inscription", &format!("entreprise=Peinture+Dupont&email=jean%40dupont.be&mot_de_passe={MDP}&confirmation={MDP}"), None).await;
-    assert!(r.statut == StatusCode::OK && r.corps.contains("Vérifie ta boîte e-mail") && r.cookie.is_none());
+    assert!(r.statut == StatusCode::OK && r.corps.contains("Vérifiez votre boîte e-mail") && r.cookie.is_none());
     let (id, verifie, organisation, role) = compte(&pool, "jean@dupont.be").await.expect("compte créé");
     assert!(!verifie && organisation == 2 && role == "proprietaire");
     let (nom, demarre): (String, bool) =
@@ -91,9 +91,9 @@ async fn s_inscrire_confirmer_puis_demarrer(options: PgPoolOptions, connexion: P
 
     // Pas de connexion avant la confirmation (mais le bon mot de passe propose de renvoyer le lien).
     let r = poster(&s, "/connexion", &format!("email=jean%40dupont.be&mot_de_passe={MDP}"), None).await;
-    assert!(r.statut == StatusCode::UNAUTHORIZED && r.cookie.is_none() && r.corps.contains("Confirme d") && r.corps.contains("/inscription/renvoyer"));
+    assert!(r.statut == StatusCode::UNAUTHORIZED && r.cookie.is_none() && r.corps.contains("Confirmez d") && r.corps.contains("/inscription/renvoyer"));
     let r = poster(&s, "/connexion", "email=jean%40dupont.be&mot_de_passe=mauvais-mot-de-passe", None).await;
-    assert!(!r.corps.contains("Confirme d"), "rien n'est révélé sans le bon mot de passe");
+    assert!(!r.corps.contains("Confirmez d"), "rien n'est révélé sans le bon mot de passe");
 
     // Le lien de l'e-mail : la page n'utilise pas le lien, le bouton si.
     let (lien, _) = dernier_lien("jean@dupont.be");
@@ -159,12 +159,12 @@ async fn une_inscription_incomplete_ne_cree_rien(options: PgPoolOptions, connexi
     let s = application(AppState { db: pool.clone() });
     let r = poster(&s, "/inscription", "entreprise=&email=pas-un-email&mot_de_passe=court&confirmation=autre", None).await;
     assert_eq!(r.statut, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(r.corps.contains("nom de ton entreprise") && r.corps.contains("pas valable") && r.corps.contains("10 caractères"));
+    assert!(r.corps.contains("nom de votre entreprise") && r.corps.contains("pas valable") && r.corps.contains("10 caractères"));
     let r = poster(&s, "/inscription", &format!("entreprise=X&email=x%40x.be&mot_de_passe={MDP}&confirmation=un-autre-mot-de-passe"), None).await;
     assert!(r.corps.contains("pas identiques"));
     // Un robot remplit le champ invisible : même réponse, rien n'est créé.
     let r = poster(&s, "/inscription", &format!("entreprise=Robot&email=robot%40x.be&mot_de_passe={MDP}&confirmation={MDP}&site=http%3A%2F%2Fspam"), None).await;
-    assert!(r.corps.contains("Vérifie ta boîte e-mail"));
+    assert!(r.corps.contains("Vérifiez votre boîte e-mail"));
     let organisations: i64 = sqlx::query_scalar("SELECT count(*) FROM organisations").fetch_one(&pool).await.unwrap();
     let comptes: i64 = sqlx::query_scalar("SELECT count(*) FROM utilisateurs").fetch_one(&pool).await.unwrap();
     assert_eq!((organisations, comptes), (1, 0));
@@ -178,7 +178,7 @@ async fn une_adresse_deja_inscrite_ne_se_devine_pas(options: PgPoolOptions, conn
     let s = application(AppState { db: pool.clone() });
     let corps = format!("entreprise=Autre&email=DEJA%40exemple.be&mot_de_passe={MDP}&confirmation={MDP}");
     let r = poster(&s, "/inscription", &corps, None).await;
-    assert!(r.statut == StatusCode::OK && r.corps.contains("Vérifie ta boîte e-mail"), "la même réponse qu'une nouvelle adresse");
+    assert!(r.statut == StatusCode::OK && r.corps.contains("Vérifiez votre boîte e-mail"), "la même réponse qu'une nouvelle adresse");
     let organisations: i64 = sqlx::query_scalar("SELECT count(*) FROM organisations").fetch_one(&pool).await.unwrap();
     assert_eq!(organisations, 1, "pas de deuxième compte");
     let (objet, texte) = emails_systeme::boite_de_test("deja@exemple.be").pop().unwrap();
@@ -197,7 +197,7 @@ async fn renvoyer_le_lien_de_confirmation(options: PgPoolOptions, connexion: PgC
     poster(&s, "/inscription", &format!("entreprise=Jardins+Martin&email=lea%40martin.be&mot_de_passe={MDP}&confirmation={MDP}"), None).await;
     for _ in 0..4 {
         let r = poster(&s, "/inscription/renvoyer", "email=lea%40martin.be", None).await;
-        assert!(r.corps.contains("Vérifie ta boîte e-mail"));
+        assert!(r.corps.contains("Vérifiez votre boîte e-mail"));
     }
     let (lien, recus) = dernier_lien("lea@martin.be");
     assert_eq!(recus, 3, "le premier e-mail et deux renvois : 3 par heure au plus");
@@ -230,7 +230,7 @@ async fn mot_de_passe_oublie(options: PgPoolOptions, connexion: PgConnectOptions
     assert!(r.statut == StatusCode::UNPROCESSABLE_ENTITY && r.corps.contains("pas identiques"));
     let r = poster(&s, &lien, "mot_de_passe=nouveau-mot-de-passe&confirmation=nouveau-mot-de-passe", None).await;
     assert_eq!(r.lieu.as_deref(), Some("/connexion?ok=mot_de_passe"));
-    assert!(lire(&s, "/connexion?ok=mot_de_passe", None).await.corps.contains("Ton mot de passe est changé"));
+    assert!(lire(&s, "/connexion?ok=mot_de_passe", None).await.corps.contains("Votre mot de passe est changé"));
     assert_eq!(lire(&s, "/", Some(&ancienne)).await.lieu.as_deref(), Some("/connexion"), "les sessions ouvertes sont fermées");
     assert_eq!(poster(&s, "/connexion", &format!("email=max%40exemple.be&mot_de_passe={MDP}"), None).await.statut, StatusCode::UNAUTHORIZED);
     assert!(poster(&s, "/connexion", "email=max%40exemple.be&mot_de_passe=nouveau-mot-de-passe", None).await.cookie.is_some());

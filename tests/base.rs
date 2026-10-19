@@ -13,7 +13,7 @@ async fn les_taux_de_tva_de_depart_existent(options: PgPoolOptions, connexion: P
             .fetch_all(&pool)
             .await
             .unwrap();
-    assert_eq!(taux, vec![(0, true), (600, false), (2100, false)]);
+    assert_eq!(taux, vec![(0, true), (0, false), (600, false), (1200, false), (2100, false)], "dont la franchise et le 12 %");
 }
 
 #[sqlx::test]

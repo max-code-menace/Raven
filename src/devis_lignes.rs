@@ -487,7 +487,7 @@ async fn page(
     let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
     let barre = charger_barre(&mut *db, id).await?;
     let message_ok = match r.import.parse::<u32>() {
-        Ok(n) => format!("Import Excel terminé : {n} ligne(s) ajoutée(s). Vérifie les totaux ci-dessous."),
+        Ok(n) => format!("Import Excel terminé : {n} ligne(s) ajoutée(s). Vérifiez les totaux ci-dessous."),
         Err(_) => String::new(),
     };
     let page = Page { id, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", barre, enc, message_ok };
@@ -509,7 +509,7 @@ async fn ajouter(mut db: Base, Path(id): Path<i64>, Form(f): Form<NouvelleLigne>
     };
     let est_chiffre = GENRES_CHIFFRES.contains(&genre);
     if est_chiffre && entete.taux_par_defaut.is_none() {
-        let message = "Choisis d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
+        let message = "Choisissez d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
         let enc = charger_encodage(&mut *db, id, &entete, message).await?;
         return Ok(Html(Bloc { enc }.render()?));
     }
@@ -549,7 +549,7 @@ async fn ajouter_ouvrage(mut db: Base, Path(id): Path<i64>, Form(f): Form<Ouvrag
     let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
     if entete.taux_par_defaut.is_none() {
-        let message = "Choisis d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
+        let message = "Choisissez d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
         let enc = charger_encodage(&mut *db, id, &entete, message).await?;
         return Ok(Html(Bloc { enc }.render()?));
     }

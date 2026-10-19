@@ -61,9 +61,9 @@ async fn creer(mut db: Base, Path(chantier_id): Path<i64>, axum::extract::Form(c
     .bind(chantier_id)
     .fetch_one(&mut *tx)
     .await?;
-    journal::noter(&mut tx, id, Genre::Creation, &format!("Avenant créé pour le chantier n° {numero_chantier}")).await?;
+    journal::noter(&mut tx, id, Genre::Creation, &format!("Avenant créé pour le {} n° {numero_chantier}", crate::profil::mot("chantier"))).await?;
     tx.commit().await?;
-    if c.import == "1" {
+    if c.import == "1" && crate::profil::actuel().import_metres {
         return Ok(Redirect::to(&format!("/devis/{id}/import")));
     }
     Ok(Redirect::to(&format!("/devis/{id}?ok=avenant")))
@@ -140,5 +140,7 @@ pub async fn recap(db: &mut PgConnection, chantier_id: i64) -> Result<Recap, sql
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/chantiers/{id}/avenants", post(creer))
+    Router::new()
+        .route("/chantiers/{id}/avenants", post(creer))
+        .route_layer(axum::middleware::from_fn(crate::profil::exiger_avenants))
 }

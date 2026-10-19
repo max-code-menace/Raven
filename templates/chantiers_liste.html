@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}Chantiers · Ubifacture{% endblock %}
+{% block title %}{{ crate::profil::mot("Chantiers") }} · Ubifacture{% endblock %}
 {% block nav_chantiers %}actif{% endblock %}
 
 {% block entete %}
 <header class="u-top">
   <div class="u-top-ligne">
-    {% call ui::titre_liste("chantiers", "Chantiers") %}{% endcall %}
+    {% call ui::titre_liste("chantiers", crate::profil::mot("Chantiers")) %}{% endcall %}
     <div class="u-actions">
-      <span class="u-petit u-muet">Un chantier se crée en acceptant un devis.</span>
+      <span class="u-petit u-muet">Un {{ crate::profil::mot("chantier") }} se crée en acceptant un devis.</span>
       <details class="u-menu">
         <summary class="btn u-ib" style="width:36px;height:36px;border-color:#CDD1CD;background:#fff" aria-label="Plus d'options" title="Plus d'options">{% call ui::points() %}{% endcall %}</summary>
         <div class="u-menu-liste">

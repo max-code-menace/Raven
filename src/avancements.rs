@@ -410,7 +410,7 @@ struct Retour {
 impl Retour {
     fn message_ok(&self) -> &'static str {
         match self.ok.as_str() {
-            "cree" => "L'avancement est créé : saisis ce qui a été réalisé, en quantité, en % ou en €.",
+            "cree" => "L'avancement est créé : saisissez ce qui a été réalisé, en quantité, en % ou en €.",
             "infos" => "Les informations sont enregistrées.",
             "valide" => "L'avancement est validé : il ne se modifie plus.",
             "brouillon" => "L'avancement est remis en brouillon.",
@@ -422,8 +422,8 @@ impl Retour {
         match self.erreur.as_str() {
             "date" => "La date de l'avancement n'est pas valide.",
             "reference" => "La référence est obligatoire (200 caractères au maximum).",
-            "vide" => "L'avancement est vide : saisis au moins une ligne avant de le valider.",
-            "brouillon" => "Termine ou supprime d'abord l'avancement en brouillon.",
+            "vide" => "L'avancement est vide : saisissez au moins une ligne avant de le valider.",
+            "brouillon" => "Terminez ou supprimez d'abord l'avancement en brouillon.",
             _ => "",
         }
     }
@@ -895,7 +895,7 @@ pub async fn finances(db: &mut PgConnection, chantier_id: i64) -> Result<Finance
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/chantiers/{id}/avancements", post(creer))
+        .route("/chantiers/{id}/avancements", post(creer).route_layer(axum::middleware::from_fn(crate::profil::exiger_avancements)))
         .route("/chantiers/{id}/avancements/{avancement}", get(afficher))
         .route("/chantiers/{id}/avancements/{avancement}/infos", post(enregistrer_infos))
         .route("/chantiers/{id}/avancements/{avancement}/lignes/{cle}", post(saisir))

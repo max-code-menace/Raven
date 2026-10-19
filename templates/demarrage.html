@@ -4,14 +4,14 @@
 {% block content %}
       <div>
         <h2 class="font-semibold" style="margin:0">Bienvenue ! Encore quelques informations</h2>
-        <p class="u-petit u-muet" style="margin:4px 0 0">Elles apparaissent sur tes devis et tes factures. Tu pourras tout changer ensuite dans Réglages › Société.</p>
+        <p class="u-petit u-muet" style="margin:4px 0 0">Elles apparaissent sur vos devis et vos factures. Vous pourrez tout changer ensuite dans Réglages › Société.</p>
       </div>
       {% if !erreurs.is_empty() %}
       <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<div>{% for e in erreurs %}<div>{{ e }}</div>{% endfor %}</div></div>
       {% endif %}
       <form method="post" action="/demarrage" style="display:flex;flex-direction:column;gap:20px;margin:0">
         <fieldset style="display:flex;flex-direction:column;gap:12px">
-          <h3 class="font-semibold" style="margin:0">Ton entreprise</h3>
+          <h3 class="font-semibold" style="margin:0">Votre entreprise</h3>
           <label class="form-control"><span class="u-lbl">Nom *</span>
             <input class="input input-bordered w-full" name="nom" value="{{ s.nom }}" required></label>
           <div class="u-deux" style="gap:12px">
@@ -44,7 +44,7 @@
         </fieldset>
         <fieldset style="display:flex;flex-direction:column;gap:12px">
           <h3 class="font-semibold" style="margin:0">Numérotation</h3>
-          <p class="u-petit u-muet" style="margin:0">Tu viens d'un autre logiciel ? Indique les derniers numéros déjà utilisés en {{ annee }} : Ubifacture continue à partir du suivant. Sinon, laisse 0.</p>
+          <p class="u-petit u-muet" style="margin:0">Vous venez d'un autre logiciel ? Indiquez les derniers numéros déjà utilisés en {{ annee }} : Ubifacture continue à partir du suivant. Sinon, laissez 0.</p>
           <div class="u-deux" style="gap:12px">
             <label class="form-control"><span class="u-lbl">Dernier devis</span><input class="input input-bordered w-full" inputmode="numeric" name="dernier_devis" value="{{ s.dernier_devis }}"></label>
             <label class="form-control"><span class="u-lbl">Dernière facture</span><input class="input input-bordered w-full" inputmode="numeric" name="derniere_facture" value="{{ s.derniere_facture }}"></label>
@@ -52,7 +52,7 @@
           </div>
         </fieldset>
         <fieldset style="display:flex;flex-direction:column;gap:12px">
-          <h3 class="font-semibold" style="margin:0">Ton métier</h3>
+          <h3 class="font-semibold" style="margin:0">Votre métier</h3>
           <select class="select select-bordered w-full" name="profil_metier">
             {% for (valeur, libelle) in profils %}<option value="{{ valeur }}"{% if *valeur == s.profil_metier %} selected{% endif %}>{{ libelle }}</option>{% endfor %}
           </select>

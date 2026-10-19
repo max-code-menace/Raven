@@ -195,13 +195,13 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         "/", "/devis", "/factures", "/factures?statut=en_retard", "/chantiers", "/chantiers?statut=tous", "/entreprises", "/contacts",
         "/bibliotheque", "/bibliotheque/choisir?q=a", "/statistiques", "/statistiques?periode=12_mois", "/exports", "/factures/rappels",
         "/factures/recurrences", "/achats", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
-        "/parametres/societe/conditions-generales", "/parametres/equipe", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
+        "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
     ] {
         deux("GET", chemin.to_string());
     }
     for chemin in [
         "/factures/rappels", "/factures/recurrences/preparer", "/exports", "/parametres/emails/devis", "/parametres/rappels", "/demarrage",
-        "/parametres/equipe/inviter",
+        "/parametres/equipe/inviter", "/parametres/metier",
     ] {
         deux("POST", chemin.to_string());
     }
@@ -250,7 +250,7 @@ async fn connecter_b(pool: &PgPool, site: &Router) -> String {
     };
     let r = poster("/connexion", "email=b%40exemple.be&mot_de_passe=un-long-mot-de-passe", None).await.unwrap();
     let cookie = r.headers().get(header::SET_COOKIE).expect("connexion de B").to_str().unwrap().split(';').next().unwrap().to_string();
-    let demarrage = "nom=Soci%C3%A9t%C3%A9+B&pays=BE&email=b%40exemple.be&telephone=0&regime_tva=assujetti&profil_metier=peinture\
+    let demarrage = "nom=Soci%C3%A9t%C3%A9+B&pays=BE&email=b%40exemple.be&telephone=0&regime_tva=assujetti&profil_metier=batiment\
                      &dernier_devis=0&derniere_facture=0&derniere_note_credit=0";
     let r = poster("/demarrage", demarrage, Some(cookie.clone())).await.unwrap();
     assert_eq!(r.headers().get(header::LOCATION).map(|v| v.to_str().unwrap()), Some("/"), "assistant de démarrage de B");

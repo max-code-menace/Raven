@@ -36,7 +36,7 @@
     </div>
   </section>
   <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("chantiers", 17) %}{% endcall %}Mes chantiers</h2></div>
+    <div class="u-card-h"><h2>{% call ui::icone("chantiers", 17) %}{% endcall %}Mes {{ crate::profil::mot("chantiers") }}</h2></div>
     <div class="u-card-b">
       <div><span class="u-pastille s-chantier">En cours</span> <span class="u-petit u-muet">({{ chantiers_en_cours }})</span></div>
       <a class="u-grand no-underline text-[#17191C] hover:text-[#0B6371]" href="/chantiers">{{ chantiers_reste_a_facturer }}</a>

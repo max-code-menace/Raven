@@ -11,7 +11,7 @@
       <span class="u-ic">{% call ui::icone("reglages", 20) %}{% endcall %}</span>
       <div>
         <h1>Équipe</h1>
-        <div class="u-sous-titre">Réglages · les personnes qui utilisent Ubifacture pour ton entreprise ({{ places }} / {{ max }})</div>
+        <div class="u-sous-titre">Réglages · les personnes qui utilisent Ubifacture pour votre entreprise ({{ places }} / {{ max }})</div>
       </div>
     </div>
   </div>
@@ -20,10 +20,10 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 {% if !message_erreur.is_empty() %}
-<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_erreur) }}</span></div>
 {% endif %}
 
 <section class="u-card">
@@ -33,7 +33,7 @@
     <tbody>
       {% for m in membres %}
       <tr>
-        <td>{{ m.nom }}{% if m.moi %} <span class="u-petit u-muet">(toi)</span>{% endif %}</td>
+        <td>{{ m.nom }}{% if m.moi %} <span class="u-petit u-muet">(vous)</span>{% endif %}</td>
         <td>{{ m.email }}</td>
         <td>
           {% if proprietaire %}

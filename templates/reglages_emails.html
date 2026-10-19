@@ -20,10 +20,10 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 {% if !message_erreur.is_empty() %}
-<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_erreur) }}</span></div>
 {% endif %}
 
 <section class="u-card">
@@ -40,7 +40,7 @@
       <span><span class="u-cle">Adresse des liens envoyés aux clients</span><span class="mono">{{ adresse_publique }}</span></span>
     </div>
     <div>
-      <span class="u-petit u-muet">Pour envoyer vraiment : crée un compte Brevo, valide l'adresse de l'expéditeur chez Brevo, puis lance le serveur avec la variable <span class="mono">BREVO_CLE_API</span> (fichier <span class="mono">.env</span>). <span class="mono">ADRESSE_PUBLIQUE</span> donne l'adresse du site une fois en ligne.</span>
+      <span class="u-petit u-muet">Pour envoyer vraiment : créez un compte Brevo, validez l'adresse de l'expéditeur chez Brevo, puis lancez le serveur avec la variable <span class="mono">BREVO_CLE_API</span> (fichier <span class="mono">.env</span>). <span class="mono">ADRESSE_PUBLIQUE</span> donne l'adresse du site une fois en ligne.</span>
     </div>
   </div>
 </section>
@@ -80,7 +80,7 @@
     </label>
     <div class="flex items-end"><button class="btn btn-primary btn-sm" type="submit">Enregistrer les délais</button></div>
   </div>
-  <p class="u-petit u-muet px-[18px] pb-4" style="margin:0">Semi-automatique : l'application propose chaque jour les factures à relancer (écran Rappels de paiement, tableau de bord, fiche de la facture) ; rien ne part sans ton clic.</p>
+  <p class="u-petit u-muet px-[18px] pb-4" style="margin:0">Semi-automatique : l'application propose chaque jour les factures à relancer (écran Rappels de paiement, tableau de bord, fiche de la facture) ; rien ne part sans votre clic.</p>
 </form>
 
 <details class="u-card">
@@ -88,7 +88,7 @@
   <table class="u-table">
     <tbody>
       {% for (nom, sens) in variables %}
-      <tr><td class="mono nw">{{ nom }}</td><td>{{ sens }}</td></tr>
+      <tr><td class="mono nw">{{ nom }}</td><td>{{ crate::profil::adapter(sens) }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

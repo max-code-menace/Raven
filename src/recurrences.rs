@@ -258,10 +258,10 @@ fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
     let date = |t: &str| NaiveDate::parse_from_str(t.trim(), "%Y-%m-%d").ok();
     let (debut, fin) = (date(&s.date_debut), date(&s.date_fin));
     if debut.is_none() {
-        erreurs.push("Indique la date de début.".to_string());
+        erreurs.push("Indiquez la date de début.".to_string());
     }
     if fin.is_none() {
-        erreurs.push("Indique la date de fin.".to_string());
+        erreurs.push("Indiquez la date de fin.".to_string());
     }
     if let (Some(d), Some(f)) = (debut, fin) {
         if f < d {
@@ -272,7 +272,7 @@ fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
     }
     let frequence = FREQUENCES.iter().map(|(v, _, _)| *v).find(|v| *v == s.frequence.trim());
     if frequence.is_none() {
-        erreurs.push("Choisis le type de récurrence.".to_string());
+        erreurs.push("Choisissez le type de récurrence.".to_string());
     }
     let intervalle = s.intervalle.trim().parse::<i32>().ok().filter(|n| (1..=365).contains(n));
     if intervalle.is_none() {

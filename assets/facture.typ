@@ -122,8 +122,8 @@
     ..if d.responsable != "" { (text(fill: gris)[Responsable], d.responsable) } else { () },
     ..if d.echeance != "" { (text(fill: gris)[Échéance du paiement], d.echeance) } else { () },
     ..if d.devis != "" { (text(fill: gris)[Devis N°], d.devis) } else { () },
-    ..if d.chantier != "" { (text(fill: gris)[Chantier], d.chantier) } else { () },
-    ..if d.adresse_chantier != "" { (text(fill: gris)[Adresse du chantier], d.adresse_chantier) } else { () },
+    ..if d.chantier != "" { (text(fill: gris)[#d.mot_chantier], d.chantier) } else { () },
+    ..if d.adresse_chantier != "" { (text(fill: gris)[#d.mot_adresse_chantier], d.adresse_chantier) } else { () },
   )
   v(0.6cm)
 
@@ -156,6 +156,9 @@
   v(0.4cm)
   if d.autoliquidation {
     par(text(weight: "bold")[TVA acquittée par autoliquidation.])
+  }
+  if d.franchise {
+    par(text(weight: "bold")[#d.mention_franchise])
   }
   if d.paiement != none {
     block(width: 100%, inset: 10pt, stroke: 0.6pt + trait, radius: 3pt)[

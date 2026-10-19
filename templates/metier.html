@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Métier et modules · Réglages · Ubifacture{% endblock %}
+{% block nav_reglages_metier %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("reglages", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Métier et modules</h1>
+        <div class="u-sous-titre">Réglages · le vocabulaire et les parties de l'application dont votre entreprise se sert</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if enregistre %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Réglages enregistrés.</span></div>
+{% endif %}
+{% if erreur %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>Seul un propriétaire peut changer ces réglages.</span></div>
+{% endif %}
+
+<form class="u-card" method="post" action="/parametres/metier">
+  <div class="u-card-h"><h2>Votre métier</h2></div>
+  <div class="u-card-b" style="display:flex;flex-direction:column;gap:16px">
+    <label class="form-control"><span class="u-lbl">Métier</span>
+      <select class="select select-bordered w-full" name="profil_metier"{% if !proprietaire %} disabled{% endif %}>
+        {% for (valeur, libelle) in profils %}<option value="{{ valeur }}"{% if *valeur == profil_metier %} selected{% endif %}>{{ libelle }}</option>{% endfor %}
+      </select>
+    </label>
+    <div>
+      <span class="u-lbl">Un devis accepté devient</span>
+      <label class="flex gap-2 items-center"><input class="radio radio-sm" type="radio" name="vocabulaire" value="chantier"{% if vocabulaire == "chantier" %} checked{% endif %}{% if !proprietaire %} disabled{% endif %}> <span>un chantier</span></label>
+      <label class="flex gap-2 items-center"><input class="radio radio-sm" type="radio" name="vocabulaire" value="projet"{% if vocabulaire == "projet" %} checked{% endif %}{% if !proprietaire %} disabled{% endif %}> <span>un projet</span></label>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <span class="u-lbl">Modules</span>
+      {% for m in modules %}
+      <label class="flex gap-3 items-start">
+        <input class="toggle toggle-sm" type="checkbox" name="{{ m.champ }}" value="on"{% if m.allume %} checked{% endif %}{% if !proprietaire %} disabled{% endif %}>
+        <span><strong>{{ m.nom }}</strong><br><span class="u-petit u-muet">{{ m.explication }}</span></span>
+      </label>
+      {% endfor %}
+      <p class="u-petit u-muet" style="margin:0">Un module éteint disparaît des écrans ; ce qui a déjà été saisi est gardé et revient si vous le rallumez.</p>
+    </div>
+  </div>
+  {% if proprietaire %}
+  <div class="u-barre"><button class="btn btn-primary" type="submit">Enregistrer</button></div>
+  {% endif %}
+</form>
+{% endblock %}

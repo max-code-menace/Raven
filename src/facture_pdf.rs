@@ -31,6 +31,8 @@ pub(crate) struct Donnees {
     /// Le devis de base du chantier (« 2026-13 ») et l'adresse du chantier.
     pub devis: String,
     pub adresse_chantier: String,
+    /// L'organisation parle de « projet » (sinon « chantier »).
+    pub projet: bool,
     pub brouillon: bool,
     pub note_credit: bool,
     pub date: String,
@@ -96,6 +98,7 @@ pub(crate) async fn charger_donnees(db: &mut PgConnection, f: &Facture) -> Resul
         numero: f.numero.map(|n| factures::numero_affiche(f.date_facture, n)).unwrap_or_default(),
         devis,
         adresse_chantier,
+        projet: crate::profil::projet_en_base(&mut *db).await?,
         brouillon: f.brouillon(),
         note_credit,
         date: f.date_facture.format("%d/%m/%Y").to_string(),
@@ -186,6 +189,8 @@ pub(crate) fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("reference", litteral(&d.reference)),
         ("responsable", litteral(&d.responsable)),
         ("chantier", litteral(&d.chantier)),
+        ("mot_chantier", litteral(if d.projet { "Projet" } else { "Chantier" })),
+        ("mot_adresse_chantier", litteral(if d.projet { "Adresse du projet" } else { "Adresse du chantier" })),
         ("corrige", litteral(&d.corrige)),
         ("conditions", litteral(&d.conditions)),
         ("remarque", litteral(&d.remarque)),
@@ -195,6 +200,8 @@ pub(crate) fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("totaux", totaux_typst),
         ("libelle_total", litteral(if d.note_credit { "Total TTC crédité" } else { "Total TTC à payer" })),
         ("autoliquidation", totaux.autoliquidation.to_string()),
+        ("franchise", totaux.franchise.to_string()),
+        ("mention_franchise", litteral(crate::societe::MENTION_FRANCHISE)),
         ("paiement", paiement),
     ]);
     (format!("{MODELE}\n#facture({donnees})\n"), fichiers)

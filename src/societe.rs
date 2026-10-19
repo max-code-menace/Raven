@@ -159,6 +159,16 @@ pub struct SocieteForm {
     bic: Vec<String>,
 }
 
+/// La mention que la loi demande sur les documents d'une société en franchise de TVA (à faire valider par le comptable).
+pub const MENTION_FRANCHISE: &str = "Régime particulier de franchise des petites entreprises.";
+
+/// La société de l'organisation de la connexion est-elle en franchise de TVA ?
+pub(crate) async fn en_franchise(db: &mut PgConnection) -> Result<bool, sqlx::Error> {
+    let franchise: Option<bool> =
+        sqlx::query_scalar("SELECT regime_tva = 'franchise' FROM societe WHERE organisation_id = app_organisation()").fetch_optional(db).await?;
+    Ok(franchise.unwrap_or(false))
+}
+
 /// Les régimes de TVA proposés.
 pub const REGIMES_TVA: [(&str, &str); 2] = [
     ("assujetti", "Assujetti à la TVA"),
@@ -559,7 +569,7 @@ async fn televerser(fichier: Fichier, mut db: Base, mut multipart: Multipart) ->
     }
 
     let Some((nom_brut, contenu)) = recu.filter(|(_, c)| !c.is_empty()) else {
-        return erreur_de_fichier(&mut *db, "Choisis un fichier avant de cliquer sur Envoyer.".to_string()).await;
+        return erreur_de_fichier(&mut *db, "Choisissez un fichier avant de cliquer sur Envoyer.".to_string()).await;
     };
     if contenu.len() > fichier.taille_max() {
         let message = format!("{} dépasse {} Mo.", fichier.nom_lisible(), fichier.taille_max() / (1024 * 1024));

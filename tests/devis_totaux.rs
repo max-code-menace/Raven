@@ -155,8 +155,8 @@ async fn un_ajustement_invalide_est_explique_et_rien_n_est_enregistre(options: P
         ("sens=remise&mode=montant&valeur=abc", "supérieur à 0"),
         ("sens=remise&mode=montant&valeur=0", "supérieur à 0"),
         ("sens=remise&mode=montant&valeur=5,123", "2 décimales"),
-        ("sens=nimporte&mode=montant&valeur=5", "Choisis remise ou majoration."),
-        ("sens=remise&mode=autre&valeur=5", "Choisis pourcentage ou montant."),
+        ("sens=nimporte&mode=montant&valeur=5", "Choisissez remise ou majoration."),
+        ("sens=remise&mode=autre&valeur=5", "Choisissez pourcentage ou montant."),
     ] {
         let (statut, _, page) = poster(&s, &format!("/devis/{d}/ajustement"), corps).await;
         assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY, "{corps}");

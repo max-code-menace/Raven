@@ -160,7 +160,7 @@ async fn les_champs_obligatoires_sont_verifies_et_rien_n_est_enregistre(options:
         "La référence est obligatoire.",
         "Le responsable est obligatoire.",
         "La date du devis est obligatoire.",
-        "Choisis le client du devis.",
+        "Choisissez le client du devis.",
         "Le taux de TVA par défaut est obligatoire.",
         "Les conditions de paiement sont obligatoires.",
     ] {
@@ -185,7 +185,7 @@ async fn un_client_ou_un_taux_inexistant_est_refuse(options: PgPoolOptions, conn
     let s = site(&pool);
     let (statut, _, page) = poster(&s, &format!("/devis/{id}"), &formulaire("e9999", 9999, 9999)).await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(page.contains("Choisis le client du devis.") && page.contains("Le taux de TVA par défaut est obligatoire."));
+    assert!(page.contains("Choisissez le client du devis.") && page.contains("Le taux de TVA par défaut est obligatoire."));
     // Un code mal écrit ne provoque pas d'erreur serveur.
     let (statut, _, _) = poster(&s, &format!("/devis/{id}"), &formulaire("n'importe quoi", 1, 1)).await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
@@ -203,7 +203,7 @@ async fn un_autre_client_de_facturation_est_exige_si_la_case_est_decochee(option
 
     let (statut, _, page) = poster(&s, &format!("/devis/{id}"), &sans_case).await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(page.contains("Choisis le client de facturation"));
+    assert!(page.contains("Choisissez le client de facturation"));
 
     let (statut, _, _) = poster(&s, &format!("/devis/{id}"), &format!("{sans_case}&facturation_client=e{assurance}")).await;
     assert_eq!(statut, StatusCode::SEE_OTHER);

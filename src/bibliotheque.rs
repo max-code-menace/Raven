@@ -268,7 +268,7 @@ pub(crate) fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
     }
     let genre = GENRES.iter().map(|(c, _)| *c).find(|c| *c == s.genre.trim());
     if genre.is_none() {
-        erreurs.push("Choisis le type.".to_string());
+        erreurs.push("Choisissez le type.".to_string());
     }
     let court = |t: &str| t.trim().chars().count() <= LONGUEUR_MAX_COURT;
     if !court(&s.categorie) || !court(&s.fournisseur) {
@@ -302,7 +302,7 @@ pub(crate) fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
         (Ok(Some(v)), _, _) => Some(v),
         (Ok(None), Some(a), Some(m)) => Some(vente_depuis_marge(a, m)),
         (Ok(None), _, _) => {
-            erreurs.push("Indique le prix de vente, ou le prix d'achat et la marge.".to_string());
+            erreurs.push("Indiquez le prix de vente, ou le prix d'achat et la marge.".to_string());
             None
         }
         (Err(()), _, _) => {

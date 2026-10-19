@@ -210,7 +210,7 @@ async fn changer(mut db: Base, id: i64, action: Action, decision: Decision) -> R
     // Un avenant appartient déjà à son chantier : il ne crée rien.
     if let (Action::Accepter, Some(d), false) = (action, date, avenant) {
         let numero = crate::chantiers::creer(&mut tx, id, d).await?;
-        journal::noter(&mut tx, id, Genre::Chantier, &format!("Chantier n° {numero} créé")).await?;
+        journal::noter(&mut tx, id, Genre::Chantier, &format!("{} n° {numero} créé", crate::profil::mot("Chantier"))).await?;
     }
     tx.commit().await?;
     retour(&format!("ok={vers}"))

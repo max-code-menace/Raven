@@ -43,6 +43,14 @@ pub struct Societe {
 
 pub struct Donnees {
     pub id: i64,
+    /// Une ligne au taux « Franchise de TVA » : la mention légale est imprimée.
+    pub franchise: bool,
+    /// La société est en franchise de TVA.
+    pub regime_franchise: bool,
+    /// Des lignes chiffrées dont le taux ne correspond pas au régime de TVA de la société.
+    pub hors_regime: bool,
+    /// L'organisation parle de « projet » (sinon « chantier »).
+    pub projet: bool,
     pub numero: String,
     /// « Devis » ou « Avenant ».
     pub genre: &'static str,
@@ -82,14 +90,21 @@ impl Donnees {
         if !self.enc.lignes.iter().any(|l| l.est_chiffre) {
             manques.push("Au moins une ligne chiffrée (onglet Encodage)".to_string());
         }
+        if self.hors_regime {
+            manques.push(if self.regime_franchise {
+                "Des lignes au taux « Franchise de TVA » (votre société est en franchise de TVA)".to_string()
+            } else {
+                "Des lignes sans le taux « Franchise de TVA », réservé aux sociétés en franchise (Réglages › Société)".to_string()
+            });
+        }
         match &self.societe {
-            None => manques.push("Les coordonnées de ta société (menu Société)".to_string()),
+            None => manques.push("Les coordonnées de votre société (Réglages › Société)".to_string()),
             Some(s) => {
                 if s.bloc.tva.is_empty() {
-                    manques.push("Le numéro de TVA de ta société (menu Société)".to_string());
+                    manques.push("Le numéro de TVA de votre société (Réglages › Société)".to_string());
                 }
                 if s.iban.is_empty() {
-                    manques.push("Un compte bancaire par défaut (menu Société)".to_string());
+                    manques.push("Un compte bancaire par défaut (Réglages › Société)".to_string());
                 }
             }
         }
@@ -236,8 +251,28 @@ pub async fn charger_donnees(db: &mut PgConnection, id: i64) -> Result<Donnees, 
     .fetch_optional(&mut *db)
     .await?;
 
+    let projet = crate::profil::projet_en_base(&mut *db).await?;
+    let corrige = corrige.map(|c| if projet { c.replacen("Chantier", "Projet", 1) } else { c });
+    let franchise: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM devis_lignes l JOIN taux_tva t ON t.id = l.taux_tva_id WHERE l.devis_id = $1 AND t.franchise)",
+    )
+    .bind(id)
+    .fetch_one(&mut *db)
+    .await?;
+    let regime_franchise = crate::societe::en_franchise(&mut *db).await?;
+    let hors_regime: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM devis_lignes l JOIN taux_tva t ON t.id = l.taux_tva_id WHERE l.devis_id = $1 AND t.franchise <> $2)",
+    )
+    .bind(id)
+    .bind(regime_franchise)
+    .fetch_one(&mut *db)
+    .await?;
     Ok(Donnees {
         id,
+        franchise,
+        regime_franchise,
+        hors_regime,
+        projet,
         numero: entete.numero,
         genre: entete.genre,
         corrige: corrige.unwrap_or_default(),
@@ -380,6 +415,7 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("numero", litteral(&d.numero)),
         ("genre", litteral(d.genre)),
         ("corrige", litteral(&d.corrige)),
+        ("mot_chantier", litteral(if d.projet { "Projet" } else { "Chantier" })),
         ("date", litteral(&d.date)),
         ("reference", litteral(&d.reference)),
         ("responsable", litteral(&d.responsable)),
@@ -388,6 +424,8 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("facturation", d.facturation.as_ref().map(bloc_typst).unwrap_or_else(|| "none".to_string())),
         ("chantier", litteral(&d.chantier.join(", "))),
         ("conditions", litteral(&d.conditions)),
+        ("franchise", d.franchise.to_string()),
+        ("mention_franchise", litteral(crate::societe::MENTION_FRANCHISE)),
         ("remarque_1", litteral(&d.remarque_1)),
         ("remarque_2", litteral(&d.remarque_2)),
         ("segments", tableau(&segments)),

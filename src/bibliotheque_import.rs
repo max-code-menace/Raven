@@ -210,7 +210,7 @@ pub(crate) fn lire_fichier(nom: &str, octets: &[u8]) -> Result<Lecture, String> 
         Err(_) => octets.iter().map(|b| char::from(*b)).collect(),
     };
     if nom.to_lowercase().ends_with(".xls") {
-        return Err("Le format .xls (ancien Excel) n'est pas lu : enregistre le fichier en .xlsx ou en CSV.".to_string());
+        return Err("Le format .xls (ancien Excel) n'est pas lu : enregistrez le fichier en .xlsx ou en CSV.".to_string());
     }
     lire_grille(&grille_csv(&texte))
 }
@@ -282,7 +282,7 @@ async fn recevoir(mut db: Base, mut multipart: Multipart) -> Result<Response, Er
         }
     }
     let Some((nom, octets)) = recu.filter(|(_, o)| !o.is_empty()) else {
-        return erreur("Choisis un fichier avant de cliquer sur « Importer ».", Vec::new());
+        return erreur("Choisissez un fichier avant de cliquer sur « Importer ».", Vec::new());
     };
     let lecture = match tokio::task::spawn_blocking(move || lire_fichier(&nom, &octets)).await {
         Ok(Ok(l)) => l,

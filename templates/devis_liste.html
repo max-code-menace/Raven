@@ -17,9 +17,11 @@
         </div>
       </details>
       {# « Nouveau » crée un brouillon et ouvre directement l'éditeur. #}
+      {% if crate::profil::actuel().import_metres %}
       <form method="post" action="/devis/import">
         <button class="btn" type="submit" title="Crée un devis brouillon et importe le modèle Excel">{% call ui::icone("pdf", 16) %}{% endcall %}Depuis Excel</button>
       </form>
+      {% endif %}
       <form method="post" action="/devis">
         <button class="btn btn-primary" type="submit">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</button>
       </form>

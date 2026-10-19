@@ -19,7 +19,7 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 <div class="grid gap-4 2xl:grid-cols-[220px_minmax(0,1fr)] items-start">
   <nav class="u-card" aria-label="Catégories">

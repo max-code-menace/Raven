@@ -259,7 +259,7 @@ async fn saisies_refusees_et_lignes_supprimees(options: PgPoolOptions, connexion
 
     // Un taux inconnu est refusé.
     let (_, _, reponse) = poster(&s, &format!("/factures/{id}/lignes/{ligne}"), "description=x&quantite=1&prix_unitaire=1&taux_tva_id=999999").await;
-    assert!(reponse.contains("Choisis un taux de TVA"));
+    assert!(reponse.contains("Choisissez un taux de TVA"));
 
     // Un titre et un texte ne comptent pas dans les totaux ; supprimer une ligne recalcule.
     poster(&s, &format!("/factures/{id}/lignes"), "genre=titre").await;

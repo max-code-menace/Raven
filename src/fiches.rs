@@ -125,7 +125,14 @@ pub(crate) fn taux_court(libelle: &str) -> String {
         .rsplit_once('(')
         .map(|(_, reste)| reste.trim_end_matches(')').replace(",00", "").trim().to_string())
         .unwrap_or_else(|| libelle.to_string());
-    if libelle.to_lowercase().contains("autoliquidation") { format!("{taux} autoliq.") } else { taux }
+    let libelle = libelle.to_lowercase();
+    if libelle.contains("autoliquidation") {
+        format!("{taux} autoliq.")
+    } else if libelle.contains("franchise") {
+        "Franchise".to_string()
+    } else {
+        taux
+    }
 }
 
 /// Libellés courts pour toute la liste des taux.
@@ -161,7 +168,9 @@ impl Options {
             .collect();
 
         let taux: Vec<(i64, String, i32)> =
-            sqlx::query_as("SELECT id, libelle, taux_centiemes FROM taux_tva WHERE actif ORDER BY taux_centiemes")
+            // Une société en franchise n'a que le taux « Franchise de TVA » ; les autres ne l'ont jamais.
+            sqlx::query_as("SELECT id, libelle, taux_centiemes FROM taux_tva WHERE actif AND franchise = $1 ORDER BY taux_centiemes")
+                .bind(crate::societe::en_franchise(&mut *db).await?)
                 .fetch_all(&mut *db)
                 .await?;
         let taux_tva = taux

@@ -328,7 +328,7 @@ async fn le_logo_refuse_les_svg_les_pdf_et_les_fichiers_trop_gros(options: PgPoo
 
     let r = televerser(&s, uri, "logo.png", b"").await;
     assert_eq!(r.statut, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(r.texte().contains("Choisis un fichier"));
+    assert!(r.texte().contains("Choisissez un fichier"));
 
     assert_eq!(compter(&pool, "societe_fichiers").await, 0);
 }

@@ -12,7 +12,7 @@
       <a class="u-retour" href="{% if contact %}/contacts{% else %}/entreprises{% endif %}" aria-label="Retour à la liste" title="Retour à la liste">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
         <h1>Importer des {% if contact %}contacts{% else %}entreprises{% endif %}</h1>
-        <div class="u-sous-titre">Depuis l'export de Vertuoza (Contacts › {% if contact %}Contacts{% else %}Entreprises{% endif %} › « ⋯ » › Exporter) ou tout fichier Excel / CSV avec une colonne Nom.</div>
+        <div class="u-sous-titre">Depuis l'export de votre ancien logiciel ou tout fichier Excel / CSV avec une colonne Nom.</div>
       </div>
     </div>
   </div>
@@ -40,14 +40,14 @@
         <span class="u-lbl">Fichier Excel (.xlsx) ou CSV, 10 Mo au maximum <i>*</i></span>
         <input class="file-input file-input-bordered w-full" type="file" name="fichier" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
       </label>
-      <p class="u-petit u-muet" style="margin:0">Une fiche déjà présente (même nom et même e-mail{% if !contact %}, ou même numéro de TVA{% endif %}) n'est pas ajoutée une seconde fois : tu peux relancer l'import sans risque.{% if contact %} Importe d'abord les entreprises : un contact est alors relié à son entreprise.{% endif %}</p>
+      <p class="u-petit u-muet" style="margin:0">Une fiche déjà présente (même nom et même e-mail{% if !contact %}, ou même numéro de TVA{% endif %}) n'est pas ajoutée une seconde fois : vous pouvez relancer l'import sans risque.{% if contact %} Importez d'abord les entreprises : un contact est alors relié à son entreprise.{% endif %}</p>
     </div>
   </form>
   <aside class="u-card">
     <div class="u-card-h"><h2>Colonnes reconnues</h2></div>
     <div class="u-card-b text-[13.5px]">
       <span><b>Nom</b> (obligatoire){% if contact %}, <b>Prénom</b>, <b>Civilité</b>, <b>Entreprise</b>{% endif %}, <b>Profils</b>, <b>Téléphone</b>{% if contact %} (et secondaire){% endif %}, <b>E-mail</b>, <b>TVA</b>, <b>IBAN</b>, <b>BIC</b>.</span>
-      <span>L'adresse en une seule colonne, comme la liste de Vertuoza (« Rue du Beau Site 12, 1390 Grez-Doiceau Belgique »), ou en colonnes Rue, Numéro, Code postal, Ville, Pays.</span>
+      <span>L'adresse en une seule colonne (« Rue du Beau Site 12, 1390 Grez-Doiceau Belgique »), ou en colonnes Rue, Numéro, Code postal, Ville, Pays.</span>
     </div>
   </aside>
 </div>

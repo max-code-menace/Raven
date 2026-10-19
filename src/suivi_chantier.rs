@@ -231,8 +231,11 @@ async fn supprimer(mut db: Base, Path((chantier_id, achat)): Path<(i64, i64)>) -
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/achats", get(liste_achats).post(ajouter_depuis_liste))
-        .route("/chantiers/{id}/achats", post(ajouter))
+        .route(
+            "/achats",
+            get(liste_achats).post(ajouter_depuis_liste).route_layer(axum::middleware::from_fn(crate::profil::exiger_achats)),
+        )
+        .route("/chantiers/{id}/achats", post(ajouter).route_layer(axum::middleware::from_fn(crate::profil::exiger_achats)))
         .route("/chantiers/{id}/achats/{achat}/supprimer", post(supprimer))
 }
 
@@ -354,7 +357,7 @@ async fn liste_achats(mut db: Base, Query(r): Query<RechercheAchats>) -> Result<
         categories: CATEGORIES.iter().enumerate().map(|(i, (v, l))| Choix { valeur: (*v).into(), libelle: (*l).into(), choisi: i == 0 }).collect(),
         aujourdhui: aujourdhui.to_string(),
         message: if r.ok == "achat" { "L'achat est enregistré sur son chantier." } else { "" },
-        erreur: if r.erreur == "achat" { "L'achat n'est pas enregistré : choisis le chantier, la date et un montant HT (un avoir : « -50 »)." } else { "" },
+        erreur: if r.erreur == "achat" { "L'achat n'est pas enregistré : choisissez le chantier, la date et un montant HT (un avoir : « -50 »)." } else { "" },
     };
     Ok(Html(page.render()?))
 }

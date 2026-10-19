@@ -137,7 +137,7 @@
     text(fill: gris)[Référence], d.reference,
     text(fill: gris)[Date], d.date,
     text(fill: gris)[Responsable], d.responsable,
-    ..if d.chantier != "" { (text(fill: gris)[Chantier], d.chantier) } else { () },
+    ..if d.chantier != "" { (text(fill: gris)[#d.mot_chantier], d.chantier) } else { () },
   )
   v(0.6cm)
 
@@ -180,6 +180,9 @@
   ]
 
   v(0.4cm)
+  if d.franchise {
+    par(text(weight: "bold")[#d.mention_franchise])
+  }
   if d.conditions != "" {
     [#text(fill: gris)[Conditions de paiement :] #d.conditions]
     v(2pt)

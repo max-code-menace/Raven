@@ -111,7 +111,7 @@ fn numero(saisie: &str, libelle: &str, erreurs: &mut Vec<String>) -> i64 {
     match t.parse::<i64>() {
         Ok(n) if (0..=NUMERO_MAX).contains(&n) => n,
         _ => {
-            erreurs.push(format!("{libelle} : indique un nombre entier entre 0 et {NUMERO_MAX}."));
+            erreurs.push(format!("{libelle} : indiquez un nombre entier entre 0 et {NUMERO_MAX}."));
             0
         }
     }
@@ -131,7 +131,7 @@ async fn enregistrer(mut db: Base, Form(s): Form<Saisie>) -> Result<Response, Er
     let derniere_facture = numero(&s.derniere_facture, "Dernière facture", &mut erreurs);
     let derniere_note_credit = numero(&s.derniere_note_credit, "Dernière note de crédit", &mut erreurs);
     if !PROFILS.iter().any(|(v, _)| *v == s.profil_metier) {
-        erreurs.push("Choisis ton métier.".to_string());
+        erreurs.push("Choisissez votre métier.".to_string());
     }
     let Some(valeurs) = valeurs.filter(|_| erreurs.is_empty()) else {
         return Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page(s, erreurs, annee).render()?)).into_response());
@@ -169,12 +169,20 @@ async fn enregistrer(mut db: Base, Form(s): Form<Saisie>) -> Result<Response, Er
             .await?;
         }
     }
-    sqlx::query("UPDATE organisations SET nom = $2, profil_metier = $3, demarre_le = now() WHERE id = $1")
-        .bind(organisation)
-        .bind(s.nom.trim())
-        .bind(&s.profil_metier)
-        .execute(&mut *tx)
-        .await?;
+    // Les réglages conseillés pour ce métier (modifiables ensuite dans Réglages › Métier et modules).
+    let batiment = s.profil_metier == "batiment";
+    sqlx::query(
+        "UPDATE organisations SET nom = $2, profil_metier = $3, vocabulaire = $4, module_avancements = $5, module_avenants = $5,
+                                  module_achats = $5, demarre_le = now()
+         WHERE id = $1",
+    )
+    .bind(organisation)
+    .bind(s.nom.trim())
+    .bind(&s.profil_metier)
+    .bind(if batiment { "chantier" } else { "projet" })
+    .bind(batiment)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(Redirect::to("/").into_response())
 }

@@ -34,9 +34,11 @@ pub mod fiches;
 pub mod import_devis;
 pub mod import_excel;
 pub mod journal;
+pub mod metier;
 pub mod organisations;
 pub mod page_client;
 pub mod paiements;
+pub mod profil;
 pub mod pdf;
 pub mod rappels;
 pub mod recurrences;
@@ -146,6 +148,7 @@ fn pages() -> Router<AppState> {
         .merge(comptes::routes())
         .merge(demarrage::routes())
         .merge(equipe::routes())
+        .merge(metier::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
         .merge(bibliotheque_import::routes())
@@ -160,10 +163,17 @@ fn pages() -> Router<AppState> {
 /// Jamais servi par `main.rs`.
 pub fn app(state: AppState) -> Router {
     pages()
-        .layer(axum::middleware::from_fn(|mut requete: axum::extract::Request, suite: axum::middleware::Next| async move {
-            requete.extensions_mut().insert(base::Organisation(1));
-            suite.run(requete).await
-        }))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            |State(state): State<AppState>, mut requete: axum::extract::Request, suite: axum::middleware::Next| async move {
+                requete.extensions_mut().insert(base::Organisation(1));
+                let profil = match state.db.acquire().await {
+                    Ok(mut conn) => profil::charger(&mut conn, 1).await.unwrap_or(profil::Profil::BATIMENT),
+                    Err(_) => profil::Profil::BATIMENT,
+                };
+                profil::avec(profil, suite.run(requete)).await
+            },
+        ))
         .with_state(state)
 }
 

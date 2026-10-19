@@ -277,7 +277,7 @@ pub fn lire_fichier(nom: &str, octets: &[u8], genre: Genre) -> Result<Lecture, S
         return Err(derniere);
     }
     if nom.to_lowercase().ends_with(".xls") {
-        return Err("Le format .xls (ancien Excel) n'est pas lu : enregistre le fichier en .xlsx ou en CSV.".to_string());
+        return Err("Le format .xls (ancien Excel) n'est pas lu : enregistrez le fichier en .xlsx ou en CSV.".to_string());
     }
     let texte = match std::str::from_utf8(octets) {
         Ok(t) => t.to_string(),
@@ -426,7 +426,7 @@ async fn recevoir(db: &mut PgConnection, genre: Genre, mut multipart: Multipart)
         }
     }
     let Some((nom, octets)) = recu.filter(|(_, o)| !o.is_empty()) else {
-        return refus(genre, "Choisis un fichier avant de cliquer sur « Importer ».");
+        return refus(genre, "Choisissez un fichier avant de cliquer sur « Importer ».");
     };
     let lecture = match tokio::task::spawn_blocking(move || lire_fichier(&nom, &octets, genre)).await {
         Ok(Ok(l)) => l,

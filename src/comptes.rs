@@ -83,12 +83,12 @@ fn adresse(chemin: &str) -> String {
 async fn envoyer_verification(db: &PgPool, utilisateur: i64, email: &str) -> Result<(), sqlx::Error> {
     let jeton = creer_jeton(&mut *db.acquire().await?, utilisateur, Genre::Verification, VALIDITE_VERIFICATION_MINUTES).await?;
     let texte = format!(
-        "Bonjour,\n\nPour confirmer ton adresse e-mail et commencer à utiliser {site}, ouvre ce lien (valable 48 heures) :\n{lien}\n\n\
-         Si tu n'as pas demandé de compte, ne tiens pas compte de ce message.\n\n{site}",
+        "Bonjour,\n\nPour confirmer votre adresse e-mail et commencer à utiliser {site}, ouvrez ce lien (valable 48 heures) :\n{lien}\n\n\
+         Si vous n'avez pas demandé de compte, ne tenez pas compte de ce message.\n\n{site}",
         site = emails_systeme::NOM_DU_SITE,
         lien = adresse(&format!("/inscription/verifier/{jeton}")),
     );
-    emails_systeme::envoyer(db, Genre::Verification, email, "Confirme ton adresse e-mail", &texte).await
+    emails_systeme::envoyer(db, Genre::Verification, email, "Confirmez votre adresse e-mail", &texte).await
 }
 
 // ─── Pages ──────────────────────────────────────────────────────────────────
@@ -151,9 +151,9 @@ fn verifier_mot_de_passe(mot_de_passe: &str, confirmation: &str) -> Option<Strin
 fn lien_envoye(email: &str) -> Result<Response, Erreur> {
     let texte = format!(
         "Si l'adresse {email} peut recevoir un compte, un e-mail vient d'y partir avec un lien de confirmation (valable 48 heures). \
-         Pense à regarder dans les indésirables."
+         Pensez à regarder dans les indésirables."
     );
-    Ok(Html(PageMessage::texte("Vérifie ta boîte e-mail", texte).render()?).into_response())
+    Ok(Html(PageMessage::texte("Vérifiez votre boîte e-mail", texte).render()?).into_response())
 }
 
 async fn inscription(cookies: CookieJar) -> Result<Response, Erreur> {
@@ -170,7 +170,7 @@ async fn inscrire(State(state): State<AppState>, Form(f): Form<Inscription>) -> 
     let email = f.email.trim().to_string();
     let mut erreurs = Vec::new();
     if entreprise.is_empty() || entreprise.chars().count() > LONGUEUR_MAX_NOM {
-        erreurs.push("Indique le nom de ton entreprise (120 caractères au plus).".to_string());
+        erreurs.push("Indiquez le nom de votre entreprise (120 caractères au plus).".to_string());
     }
     if !email_valide(&email) {
         erreurs.push("Cette adresse e-mail n'est pas valable.".to_string());
@@ -186,7 +186,7 @@ async fn inscrire(State(state): State<AppState>, Form(f): Form<Inscription>) -> 
     let recentes: i64 =
         sqlx::query_scalar("SELECT count(*) FROM organisations WHERE created_at > now() - interval '1 hour'").fetch_one(db).await?;
     if recentes >= INSCRIPTIONS_MAX_PAR_HEURE {
-        let page = PageInscription { entreprise, email, erreurs: vec!["Beaucoup d'inscriptions en ce moment : réessaie dans une heure.".to_string()] };
+        let page = PageInscription { entreprise, email, erreurs: vec!["Beaucoup d'inscriptions en ce moment : réessayez dans une heure.".to_string()] };
         return Ok((StatusCode::TOO_MANY_REQUESTS, Html(page.render()?)).into_response());
     }
     let existe: bool =
@@ -194,13 +194,13 @@ async fn inscrire(State(state): State<AppState>, Form(f): Form<Inscription>) -> 
     if existe {
         if emails_systeme::envois_recents(db, Genre::DejaInscrit, &email).await? < ENVOIS_MAX_PAR_HEURE {
             let texte = format!(
-                "Bonjour,\n\nQuelqu'un (peut-être toi) a voulu créer un compte {site} avec cette adresse, qui en a déjà un.\n\
-                 Pour te connecter : {connexion}\nMot de passe oublié : {oubli}\n\n{site}",
+                "Bonjour,\n\nQuelqu'un (peut-être vous) a voulu créer un compte {site} avec cette adresse, qui en a déjà un.\n\
+                 Pour vous connecter : {connexion}\nMot de passe oublié : {oubli}\n\n{site}",
                 site = emails_systeme::NOM_DU_SITE,
                 connexion = adresse("/connexion"),
                 oubli = adresse("/mot-de-passe-oublie"),
             );
-            emails_systeme::envoyer(db, Genre::DejaInscrit, &email, "Tu as déjà un compte", &texte).await?;
+            emails_systeme::envoyer(db, Genre::DejaInscrit, &email, "Vous avez déjà un compte", &texte).await?;
         }
         return lien_envoye(&email);
     }
@@ -241,7 +241,7 @@ async fn page_verifier(State(state): State<AppState>, Path(jeton): Path<String>)
     }
     let page = PageMessage {
         titre: "Confirmation de l'adresse",
-        texte: "Clique sur le bouton pour confirmer ton adresse e-mail et commencer.".to_string(),
+        texte: "Cliquez sur le bouton pour confirmer votre adresse e-mail et commencer.".to_string(),
         action: format!("/inscription/verifier/{jeton}"),
         bouton: "Confirmer mon adresse",
         renvoyer: false,
@@ -306,15 +306,15 @@ async fn demander_lien(State(state): State<AppState>, Form(a): Form<Adresse>) ->
     {
         let jeton = creer_jeton(&mut *db.acquire().await?, utilisateur, Genre::MotDePasse, VALIDITE_MOT_DE_PASSE_MINUTES).await?;
         let texte = format!(
-            "Bonjour,\n\nPour choisir un nouveau mot de passe, ouvre ce lien (valable une heure) :\n{lien}\n\n\
-             Si tu n'as rien demandé, ne tiens pas compte de ce message : ton mot de passe ne change pas.\n\n{site}",
+            "Bonjour,\n\nPour choisir un nouveau mot de passe, ouvrez ce lien (valable une heure) :\n{lien}\n\n\
+             Si vous n'avez rien demandé, ne tenez pas compte de ce message : votre mot de passe ne change pas.\n\n{site}",
             lien = adresse(&format!("/mot-de-passe/{jeton}")),
             site = emails_systeme::NOM_DU_SITE,
         );
         emails_systeme::envoyer(db, Genre::MotDePasse, &email_du_compte, "Nouveau mot de passe", &texte).await?;
     }
     let texte = format!("Si un compte existe avec l'adresse {email}, un e-mail vient d'y partir avec un lien (valable une heure).");
-    Ok(Html(PageMessage::texte("Vérifie ta boîte e-mail", texte).render()?).into_response())
+    Ok(Html(PageMessage::texte("Vérifiez votre boîte e-mail", texte).render()?).into_response())
 }
 
 async fn page_nouveau(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Response, Erreur> {

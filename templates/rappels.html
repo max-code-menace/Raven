@@ -11,7 +11,7 @@
       <span class="u-ic">{% call ui::icone("cloche", 20) %}{% endcall %}</span>
       <div>
         <h1>Rappels de paiement</h1>
-        <div class="u-sous-titre">Les factures en retard. Premier rappel {{ premier }} jours après l'échéance (« Oubli de paiement ? »), puis tous les {{ suivant }} jours (« Rappel de paiement »). Rien ne part sans ton clic.</div>
+        <div class="u-sous-titre">Les factures en retard. Premier rappel {{ premier }} jours après l'échéance (« Oubli de paiement ? »), puis tous les {{ suivant }} jours (« Rappel de paiement »). Rien ne part sans votre clic.</div>
       </div>
     </div>
     <div class="u-actions">
@@ -23,10 +23,10 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 {% if !message_erreur.is_empty() %}
-<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_erreur) }}</span></div>
 {% endif %}
 {% if !envoi_actif %}
 <div role="status" class="u-bandeau alerte">
@@ -55,7 +55,7 @@
           <td>{% if l.email.is_empty() %}<input type="checkbox" class="checkbox checkbox-sm" disabled aria-label="Pas d'e-mail pour ce client">{% else %}<input type="checkbox" class="checkbox checkbox-sm" name="facture" value="{{ l.id }}" checked aria-label="Relancer la facture {{ l.numero }}">{% endif %}</td>
           <td class="mono nw"><a href="/factures/{{ l.id }}">{{ l.numero }}</a></td>
           <td class="nw">{{ l.date }}</td>
-          <td>{{ l.client }}{% if l.email.is_empty() %}<small class="block text-[#953A0A]">pas d'e-mail : complète la fiche du client</small>{% else %}<small class="block u-muet">{{ l.email }}</small>{% endif %}</td>
+          <td>{{ l.client }}{% if l.email.is_empty() %}<small class="block text-[#953A0A]">pas d'e-mail : complétez la fiche du client</small>{% else %}<small class="block u-muet">{{ l.email }}</small>{% endif %}</td>
           <td>{{ l.reference }}</td>
           <td class="n">{{ l.reste }}</td>
           <td class="nw"><span class="u-pastille s-retard">{{ l.jours_retard }} j</span></td>

@@ -221,7 +221,7 @@ async fn facturer_avancement(mut db: Base, Path((chantier_id, avancement_id)): P
     .await?;
     let (numero, reference, statut) = a.ok_or_else(Erreur::introuvable)?;
     if statut != "valide" {
-        return Err(Erreur::conflit("Valide d'abord l'avancement : seul un avancement validé se facture."));
+        return Err(Erreur::conflit("Validez d'abord l'avancement : seul un avancement validé se facture."));
     }
     let deja: Option<i64> = sqlx::query_scalar("SELECT id FROM factures WHERE avancement_id = $1").bind(avancement_id).fetch_optional(&mut *tx).await?;
     if let Some(id) = deja {

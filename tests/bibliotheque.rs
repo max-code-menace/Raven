@@ -77,7 +77,7 @@ async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: Pg
     // Erreurs : tout est gardé, rien n'est enregistré.
     let (code, _, page) = poster(&s, "/bibliotheque", "description=&genre=fourniture&prix_achat=12").await;
     assert_eq!(code, StatusCode::OK);
-    assert!(page.contains("La description est obligatoire") && page.contains("Indique le prix de vente") && page.contains("value=\"12\""));
+    assert!(page.contains("La description est obligatoire") && page.contains("Indiquez le prix de vente") && page.contains("value=\"12\""));
     assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM ouvrages").fetch_one(&pool).await.unwrap(), 2);
 
     // Modifier : un prix de vente saisi recalcule la marge.
@@ -113,7 +113,7 @@ async fn inserer_un_ouvrage_dans_un_devis(options: PgPoolOptions, connexion: PgC
     // Sans taux de TVA par défaut, le devis demande d'abord de le choisir.
     sqlx::query("UPDATE devis SET taux_tva_id = NULL WHERE id = $1").bind(devis).execute(&pool).await.unwrap();
     let (_, _, bloc) = poster(&s, &format!("/devis/{devis}/bibliotheque"), &format!("ouvrage={ouvrage}")).await;
-    assert!(bloc.contains("Choisis d&#39;abord le taux de TVA par défaut") || bloc.contains("Choisis d'abord le taux de TVA par défaut"));
+    assert!(bloc.contains("Choisissez d&#39;abord le taux de TVA par défaut") || bloc.contains("Choisissez d'abord le taux de TVA par défaut"));
 
     sqlx::query("UPDATE devis SET taux_tva_id = (SELECT id FROM taux_tva WHERE taux_centiemes = 600) WHERE id = $1").bind(devis).execute(&pool).await.unwrap();
     let (code, _, bloc) = poster(&s, &format!("/devis/{devis}/bibliotheque"), &format!("ouvrage={ouvrage}")).await;

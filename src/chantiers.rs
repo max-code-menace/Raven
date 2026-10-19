@@ -271,8 +271,8 @@ impl Retour {
             "finale" => "Ce chantier a déjà sa facture finale : plus d'avancement ni d'acompte possible.",
             "acompte" => "L'acompte doit être un pourcentage ou un montant HT positif, au plus le total devis/avenants.",
             "rien" => "Il n'y a rien à facturer.",
-            "avancement_brouillon" => "Valide ou supprime d'abord l'avancement en brouillon.",
-            "facture_brouillon" => "Valide ou supprime d'abord la facture en brouillon de ce chantier (un acompte en brouillon ne serait pas déduit).",
+            "avancement_brouillon" => "Validez ou supprimez d'abord l'avancement en brouillon.",
+            "facture_brouillon" => "Validez ou supprimez d'abord la facture en brouillon de ce chantier (un acompte en brouillon ne serait pas déduit).",
             "achat" => "L'achat n'est pas ajouté : date, catégorie et montant HT (différent de 0) sont obligatoires ; fournisseur et description 300 caractères au maximum.",
             _ => "",
         }

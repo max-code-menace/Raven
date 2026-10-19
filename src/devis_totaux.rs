@@ -61,7 +61,7 @@ fn valider(f: &AjustementForm, sous_total_cents: i64) -> Result<Valide, String> 
     let remise = match f.sens.as_str() {
         "remise" => true,
         "majoration" => false,
-        _ => return Err("Choisis remise ou majoration.".to_string()),
+        _ => return Err("Choisissez remise ou majoration.".to_string()),
     };
     let signe = if remise { -1 } else { 1 };
     let e5 = calcul::lire_decimal_e5(f.valeur.trim())
@@ -88,7 +88,7 @@ fn valider(f: &AjustementForm, sous_total_cents: i64) -> Result<Valide, String> 
             }
             Ok(Valide { libelle, mode: "montant", valeur: signe * valeur })
         }
-        _ => Err("Choisis pourcentage ou montant.".to_string()),
+        _ => Err("Choisissez pourcentage ou montant.".to_string()),
     }
 }
 

@@ -282,7 +282,7 @@ async fn la_liste_de_ce_qu_il_reste_a_completer(options: PgPoolOptions, connexio
     let pool = commun::reserve(options, connexion).await;
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(&pool).await.unwrap();
     let (_, html) = page(&site(&pool), &format!("/devis/{d}/apercu")).await;
-    for manque in ["La référence du devis", "Le responsable", "Le client", "Les conditions de paiement", "Au moins une ligne chiffrée", "Les coordonnées de ta société"] {
+    for manque in ["La référence du devis", "Le responsable", "Le client", "Les conditions de paiement", "Au moins une ligne chiffrée", "Les coordonnées de votre société"] {
         assert!(html.contains(manque), "{manque}");
     }
 
@@ -299,6 +299,6 @@ async fn la_liste_signale_une_societe_sans_tva_ni_compte(options: PgPoolOptions,
     sqlx::query("INSERT INTO societe (nom, nom_abrege, email, telephone) VALUES ('Ubique', 'Ubique', 'a@b.be', '0')").execute(&pool).await.unwrap();
     let d = devis_complet(&pool).await;
     let (_, html) = page(&site(&pool), &format!("/devis/{d}/apercu")).await;
-    assert!(html.contains("Le numéro de TVA de ta société") && html.contains("Un compte bancaire par défaut"));
-    assert!(!html.contains("Les coordonnées de ta société"));
+    assert!(html.contains("Le numéro de TVA de votre société") && html.contains("Un compte bancaire par défaut"));
+    assert!(!html.contains("Les coordonnées de votre société"));
 }

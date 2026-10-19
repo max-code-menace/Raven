@@ -37,7 +37,7 @@ fn libelle_role(role: &str) -> &'static str {
     ROLES.iter().find(|(v, _)| *v == role).map(|(_, l)| *l).unwrap_or("Membre")
 }
 
-async fn role(db: &mut PgConnection, utilisateur: i64, organisation: i64) -> Result<Option<String>, sqlx::Error> {
+pub(crate) async fn role(db: &mut PgConnection, utilisateur: i64, organisation: i64) -> Result<Option<String>, sqlx::Error> {
     sqlx::query_scalar("SELECT role::text FROM membres WHERE utilisateur_id = $1 AND organisation_id = $2")
         .bind(utilisateur)
         .bind(organisation)
@@ -142,7 +142,7 @@ async fn afficher(mut db: Base, Utilisateur(moi): Utilisateur, Query(r): Query<R
             "membre" => "Cette personne fait déjà partie de l'équipe.",
             "compte" => "Cette adresse a déjà un compte : pour l'instant, un compte ne peut appartenir qu'à une seule organisation.",
             "limite" => "L'équipe est complète (8 personnes au plus, invitations en attente comprises).",
-            "toi" => "Tu ne peux pas te retirer toi-même de l'équipe.",
+            "toi" => "Vous ne pouvez pas vous retirer vous-même de l'équipe.",
             "dernier" => "Il faut garder au moins un propriétaire.",
             _ => "",
         },
@@ -217,8 +217,8 @@ async fn inviter(
     tx.commit().await?;
     drop(db);
     let texte = format!(
-        "Bonjour,\n\n{nom_invitant} t'invite à rejoindre {nom_organisation} sur {site}, pour préparer les devis et les factures \
-         ensemble.\nPour accepter et choisir ton mot de passe, ouvre ce lien (valable 7 jours) :\n{lien}\n\n{site}",
+        "Bonjour,\n\n{nom_invitant} vous invite à rejoindre {nom_organisation} sur {site}, pour préparer les devis et les factures \
+         ensemble.\nPour accepter et choisir votre mot de passe, ouvrez ce lien (valable 7 jours) :\n{lien}\n\n{site}",
         site = emails_systeme::NOM_DU_SITE,
         lien = format!("{}/invitation/{jeton}", crate::emails::adresse_publique()),
     );
@@ -338,7 +338,7 @@ async fn invitation_valable(db: &mut PgConnection, jeton: &str, verrou: bool) ->
 }
 
 const PERIMEE: &str = "Cette invitation n'est plus valable : elle a déjà servi, elle a été annulée ou elle a plus de 7 jours. \
-                       Demande une nouvelle invitation à la personne qui t'a invité.";
+                       Demandez une nouvelle invitation à la personne qui vous a invité.";
 const COMPTE_EXISTANT: &str = "Cette adresse a déjà un compte. Pour l'instant, un compte ne peut appartenir qu'à une seule organisation.";
 
 async fn page_invitation(State(state): State<AppState>, Path(jeton): Path<String>) -> Result<Response, Erreur> {
@@ -375,7 +375,7 @@ async fn accepter(
     };
     let nom = a.nom.trim().to_string();
     let erreur = if nom.is_empty() || nom.chars().count() > LONGUEUR_MAX_NOM {
-        Some("Indique ton nom (120 caractères au plus).".to_string())
+        Some("Indiquez votre nom (120 caractères au plus).".to_string())
     } else if !assez_long(&a.mot_de_passe) {
         Some(format!("Le mot de passe doit faire au moins {LONGUEUR_MIN} caractères."))
     } else if a.mot_de_passe != a.confirmation {

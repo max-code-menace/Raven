@@ -75,9 +75,14 @@ pub(crate) fn titre(genre: &str, numero: Option<i64>, date: NaiveDate) -> String
     }
 }
 
-/// Le taux de TVA proposé par défaut : le taux normal (21 %) s'il existe, sinon le premier taux actif.
+/// Le taux de TVA proposé par défaut : le taux normal (21 %) s'il existe, sinon le premier taux actif ; pour une
+/// société en franchise, le taux « Franchise de TVA ».
 pub(crate) async fn taux_par_defaut<'e>(db: impl sqlx::PgExecutor<'e>) -> Result<Option<i64>, sqlx::Error> {
-    sqlx::query_scalar("SELECT id FROM taux_tva WHERE actif ORDER BY taux_centiemes = 2100 DESC, taux_centiemes DESC, id LIMIT 1")
+    sqlx::query_scalar(
+        "SELECT id FROM taux_tva
+         WHERE actif AND franchise = coalesce((SELECT regime_tva = 'franchise' FROM societe WHERE organisation_id = app_organisation()), false)
+         ORDER BY taux_centiemes = 2100 DESC, taux_centiemes DESC, id LIMIT 1",
+    )
         .fetch_optional(db)
         .await
 }
@@ -96,12 +101,14 @@ pub(crate) struct LigneBase {
     pub(crate) taux_centiemes: Option<i32>,
     pub(crate) total_cents: i64,
     pub(crate) autoliquidation: bool,
+    /// Au taux « Franchise de TVA ».
+    pub(crate) franchise: bool,
 }
 
 pub(crate) async fn charger_lignes<'e>(db: impl sqlx::PgExecutor<'e>, facture_id: i64) -> Result<Vec<LigneBase>, sqlx::Error> {
     sqlx::query_as(
         "SELECT l.id, l.genre, l.description, l.quantite_e5, l.unite, l.prix_unitaire_e5, l.taux_tva_id, l.taux_centiemes,
-                l.total_cents, COALESCE(t.autoliquidation, false) AS autoliquidation
+                l.total_cents, COALESCE(t.autoliquidation, false) AS autoliquidation, COALESCE(t.franchise, false) AS franchise
          FROM facture_lignes l LEFT JOIN taux_tva t ON t.id = l.taux_tva_id
          WHERE l.facture_id = $1 ORDER BY l.position",
     )
@@ -229,6 +236,8 @@ pub struct TotauxVue {
     pub ttc: String,
     /// Une ligne au taux d'autoliquidation : la mention légale doit figurer sur la facture.
     pub autoliquidation: bool,
+    /// Une ligne en franchise de TVA : la mention légale doit figurer sur la facture.
+    pub franchise: bool,
 }
 
 pub struct Lignes {
@@ -251,6 +260,7 @@ pub(crate) fn vue_totaux(lignes: &[LigneBase]) -> TotauxVue {
             .collect(),
         ttc: format_euros(t.ttc_cents),
         autoliquidation: lignes.iter().any(|l| l.genre == "poste" && l.autoliquidation),
+        franchise: lignes.iter().any(|l| l.genre == "poste" && l.franchise),
     }
 }
 
@@ -609,17 +619,17 @@ impl Retour {
             "paiement_retire" => "Le paiement est retiré.",
             "email_envoye" => "La pièce est envoyée par e-mail.",
             "rappel_envoye" => "Le rappel de paiement est envoyé.",
-            "email_enregistre" => "Mode test : l'e-mail est enregistré (Réglages › E-mails) mais n'est pas parti, car aucune clé Brevo n'est configurée. Marque la pièce comme envoyée à la main si tu l'as envoyée autrement.",
+            "email_enregistre" => "Mode test : l'e-mail est enregistré (Réglages › E-mails) mais n'est pas parti, car aucune clé Brevo n'est configurée. Marquez la pièce comme envoyée à la main si vous l'avez envoyée autrement.",
             _ => "",
         }
     }
 
     fn message_erreur(&self) -> &'static str {
         match self.erreur.as_str() {
-            "infos" => "Les informations n'ont pas été enregistrées : vérifie la date, le client, la référence (200 caractères) et la remarque (2 000 caractères).",
+            "infos" => "Les informations n'ont pas été enregistrées : vérifiez la date, le client, la référence (200 caractères) et la remarque (2 000 caractères).",
             "paiement_date" => "Le paiement n'est pas enregistré : la date est vide ou dans le futur.",
             "paiement_montant" => "Le paiement n'est pas enregistré : le montant doit être positif et ne pas dépasser le reste à recevoir.",
-            "paiement_methode" => "Le paiement n'est pas enregistré : choisis une méthode de paiement.",
+            "paiement_methode" => "Le paiement n'est pas enregistré : choisissez une méthode de paiement.",
             "paiement_remarque" => "Le paiement n'est pas enregistré : la remarque est trop longue (500 caractères au maximum).",
             "email_echec" => "L'e-mail n'a pas pu partir : le détail est dans Réglages › E-mails.",
             _ => "",
@@ -741,7 +751,7 @@ async fn liens(db: &mut PgConnection, f: &Facture) -> Result<Vec<Lien>, sqlx::Er
     let mut liens = Vec::new();
     if let Some(chantier) = f.chantier_id {
         let numero: i64 = sqlx::query_scalar("SELECT numero FROM chantiers WHERE id = $1").bind(chantier).fetch_one(&mut *db).await?;
-        liens.push(Lien { adresse: format!("/chantiers/{chantier}/finances"), texte: format!("Chantier n° {numero}") });
+        liens.push(Lien { adresse: format!("/chantiers/{chantier}/finances"), texte: format!("{} n° {numero}", crate::profil::mot("Chantier")) });
     }
     if let (Some(chantier), Some(avancement)) = (f.chantier_id, f.avancement_id) {
         let (numero, reference): (i32, String) =
@@ -864,7 +874,7 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour
 async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(form): Form<InfosForm>) -> Result<Redirect, Erreur> {
     let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.brouillon() {
-        return Err(Erreur::conflit("Cette facture est validée : elle ne se modifie plus. Corrige-la par une note de crédit."));
+        return Err(Erreur::conflit("Cette facture est validée : elle ne se modifie plus. Corrigez-la par une note de crédit."));
     }
     let r = Referentiel::charger(&mut *db).await?;
     let erreur = Ok(Redirect::to(&format!("/factures/{id}?erreur=infos")));
@@ -922,10 +932,10 @@ async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(form): Form<InfosFo
 async fn facture_modifiable(db: &mut PgConnection, id: i64) -> Result<Facture, Erreur> {
     let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.brouillon() {
-        return Err(Erreur::conflit("Cette facture est validée : elle ne se modifie plus. Corrige-la par une note de crédit."));
+        return Err(Erreur::conflit("Cette facture est validée : elle ne se modifie plus. Corrigez-la par une note de crédit."));
     }
     if !f.lignes_libres() {
-        return Err(Erreur::conflit("Les lignes de cette facture sont calculées depuis le chantier."));
+        return Err(Erreur::conflit("Les lignes de cette facture sont calculées automatiquement : elles ne se modifient pas."));
     }
     Ok(f)
 }
@@ -1009,7 +1019,7 @@ fn lire_ligne(s: &SaisieLigne, est_poste: bool, taux_connus: &[(i64, String)]) -
     }
     let taux = s.taux_tva_id.trim().parse::<i64>().ok().filter(|t| taux_connus.iter().any(|(i, _)| i == t));
     if taux.is_none() {
-        return Err("Choisis un taux de TVA.".to_string());
+        return Err("Choisissez un taux de TVA.".to_string());
     }
     Ok((description, quantite, unite, prix, taux))
 }
@@ -1084,6 +1094,14 @@ pub(crate) async fn verifier(db: &mut PgConnection, f: &Facture, lignes: &[Ligne
     }
     if postes.iter().any(|l| l.description.trim().is_empty()) {
         manques.push("La description de chaque ligne chiffrée".to_string());
+    }
+    // Le régime de TVA de la société décide des taux permis.
+    if crate::societe::en_franchise(&mut *db).await? {
+        if postes.iter().any(|l| !l.franchise) {
+            manques.push("Des lignes au taux « Franchise de TVA » (votre société est en franchise de TVA)".to_string());
+        }
+    } else if postes.iter().any(|l| l.franchise) {
+        manques.push("Des lignes sans le taux « Franchise de TVA », réservé aux sociétés en franchise (Réglages › Société)".to_string());
     }
     let t = totaux(lignes);
     if !postes.is_empty() && t.ttc_cents <= 0 {
@@ -1167,7 +1185,7 @@ async fn valider(mut db: Base, Path(id): Path<i64>, Form(apres): Form<ApresValid
     // La date de la dernière pièce, relue sous le verrou du compteur.
     let derniere = derniere_date(&mut *tx, note_credit).await?;
     if !manques.is_empty() || derniere.is_some_and(|d| f.date_facture < d) {
-        return Err(Erreur::conflit("Cette facture ne peut pas encore être validée : complète ce qui est indiqué sur la fiche."));
+        return Err(Erreur::conflit("Cette facture ne peut pas encore être validée : complétez ce qui est indiqué sur la fiche."));
     }
     // Numérotation annuelle (réglage d'Ubique dans Vertuoza) : la première pièce d'une nouvelle année repart à 1.
     let annee = f.date_facture.year();
@@ -1181,7 +1199,7 @@ async fn valider(mut db: Base, Path(id): Path<i64>, Form(apres): Form<ApresValid
     .fetch_one(&mut *tx)
     .await?;
     if annee_compteur != Some(annee) {
-        return Err(Erreur::conflit("Cette facture ne peut pas encore être validée : complète ce qui est indiqué sur la fiche."));
+        return Err(Erreur::conflit("Cette facture ne peut pas encore être validée : complétez ce qui est indiqué sur la fiche."));
     }
     let (genre_condition, jours): (String, i32) = sqlx::query_as("SELECT \"type\"::text, jours FROM conditions_paiement WHERE id = $1")
         .bind(f.conditions_paiement_id)
@@ -1240,7 +1258,7 @@ pub(crate) async fn marquer_envoyee_dans(tx: &mut Transaction<'_, Postgres>, id:
 async fn supprimer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
     let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.brouillon() {
-        return Err(Erreur::conflit("Une facture validée ne se supprime jamais : corrige-la par une note de crédit."));
+        return Err(Erreur::conflit("Une facture validée ne se supprime jamais : corrigez-la par une note de crédit."));
     }
     let mut tx = db.begin().await?;
     sqlx::query("DELETE FROM factures WHERE id = $1 AND statut = 'brouillon'").bind(id).execute(&mut *tx).await?;
@@ -1332,6 +1350,7 @@ mod tests {
             taux_centiemes: taux,
             total_cents: total,
             autoliquidation: false,
+            franchise: false,
         }
     }
 

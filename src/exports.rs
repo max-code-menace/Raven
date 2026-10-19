@@ -219,11 +219,11 @@ impl Retour {
     fn message_erreur(&self) -> &'static str {
         match self.erreur.as_str() {
             "periode" => "La période n'est pas valable : deux dates, la seconde après la première.",
-            "choix" => "Choisis un format et un contenu.",
+            "choix" => "Choisissez un format et un contenu.",
             "vide" => "Aucune pièce validée dans cette période (ou toutes déjà exportées) : rien à exporter.",
             "comptable" => "L'adresse du comptable n'est pas valable.",
-            "sans_comptable" => "Indique d'abord l'adresse e-mail du comptable.",
-            "trop_gros" => "Le dossier dépasse 10 Mo : trop gros pour un e-mail. Télécharge-le et envoie-le autrement, ou fais des périodes plus courtes.",
+            "sans_comptable" => "Indiquez d'abord l'adresse e-mail du comptable.",
+            "trop_gros" => "Le dossier dépasse 10 Mo : trop gros pour un e-mail. Téléchargez-le et envoyez-le autrement, ou faites des périodes plus courtes.",
             "echec" => "L'e-mail au comptable n'a pas pu partir : le détail est dans Réglages › E-mails.",
             _ => "",
         }

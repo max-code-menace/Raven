@@ -87,7 +87,7 @@ pub(crate) fn verifier(s: &Saisie) -> Result<(Vec<String>, Vec<String>), Vec<Str
     let destinataires = emails::lire_adresses(&s.destinataires);
     match &destinataires {
         None => erreurs.push("Une adresse du destinataire n'est pas valable.".to_string()),
-        Some(liste) if liste.is_empty() => erreurs.push("Indique au moins un destinataire.".to_string()),
+        Some(liste) if liste.is_empty() => erreurs.push("Indiquez au moins un destinataire.".to_string()),
         _ => {}
     }
     let copie = emails::lire_adresses(&s.copie);
@@ -206,7 +206,7 @@ async fn envoyer_devis(mut db: Base, Path(id): Path<i64>, Form(s): Form<Saisie>)
 async fn facture_validee(db: &mut PgConnection, id: i64) -> Result<factures::Facture, Erreur> {
     let f = factures::charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if f.numero.is_none() {
-        return Err(Erreur::conflit("Valide d'abord la facture : un brouillon ne s'envoie pas."));
+        return Err(Erreur::conflit("Validez d'abord la facture : un brouillon ne s'envoie pas."));
     }
     Ok(f)
 }
