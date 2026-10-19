@@ -41,14 +41,35 @@ pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
 
 // ─── Création ───────────────────────────────────────────────────────────────
 
-/// Crée un devis brouillon avec le prochain numéro. Le compteur et le devis sont dans la même
-/// transaction : pas de doublon si deux personnes créent en même temps, pas de trou si ça échoue.
+/// Le prochain numéro de devis pour l'année donnée. La numérotation est annuelle (comme dans Vertuoza) : le premier devis
+/// d'une nouvelle année repart à 1. À appeler dans la transaction qui crée le devis : le compteur est verrouillé, donc
+/// deux créations en même temps n'obtiennent jamais le même numéro, et une création annulée ne consomme aucun numéro.
+pub(crate) async fn prochain_numero(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, annee: i32) -> Result<i64, sqlx::Error> {
+    let (numero, annee_compteur): (i64, Option<i32>) = sqlx::query_as(
+        "UPDATE compteurs SET valeur = CASE WHEN annee IS NULL OR annee < $1 THEN 1 ELSE valeur + 1 END,
+                              annee = GREATEST(COALESCE(annee, $1), $1)
+         WHERE nom = 'devis' RETURNING valeur, annee",
+    )
+    .bind(annee)
+    .fetch_one(&mut **tx)
+    .await?;
+    if annee_compteur != Some(annee) {
+        return Err(sqlx::Error::Protocol(format!("la numérotation des devis est déjà en {annee_compteur:?} : pas de devis en {annee}")));
+    }
+    Ok(numero)
+}
+
+/// L'année d'aujourd'hui (à Bruxelles).
+pub(crate) async fn annee_courante(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<i32, sqlx::Error> {
+    sqlx::query_scalar("SELECT EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&mut **tx).await
+}
+
+/// Crée un devis brouillon avec le prochain numéro de l'année. Le compteur et le devis sont dans la même transaction.
 pub(crate) async fn creer_brouillon(db: &PgPool) -> Result<i64, sqlx::Error> {
     let mut tx = db.begin().await?;
-    let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'devis' RETURNING valeur")
-        .fetch_one(&mut *tx)
-        .await?;
-    let id: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES ($1) RETURNING id")
+    let annee = annee_courante(&mut tx).await?;
+    let numero = prochain_numero(&mut tx, annee).await?;
+    let id: i64 = sqlx::query_scalar("INSERT INTO devis (numero, date_devis) VALUES ($1, (now() AT TIME ZONE 'Europe/Brussels')::date) RETURNING id")
         .bind(numero)
         .fetch_one(&mut *tx)
         .await?;

@@ -10,7 +10,7 @@
 //! - Les factures reprises sont ensuite rattachées au chantier par `chantier_vertuoza` (la référence du chantier).
 //! - Relancer la reprise ne crée aucun doublon ; un devis créé dans Ubifacture avec le même numéro bloque tout.
 
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use serde::Deserialize;
 use sqlx::{Postgres, Transaction};
 
@@ -76,6 +76,9 @@ pub struct DevisReprise {
     /// Un avenant : le numéro du devis de base (accepté) dont il corrige le chantier.
     #[serde(default)]
     pub devis_base: Option<i64>,
+    /// Un avenant : l'année du devis de base (par défaut, celle de la date de l'avenant). La numérotation est annuelle.
+    #[serde(default)]
+    pub annee_base: Option<i32>,
     pub date: NaiveDate,
     /// brouillon, envoye, signe, accepte, refuse.
     #[serde(default = "envoye")]
@@ -178,7 +181,7 @@ pub async fn importer(tx: &mut Transaction<'_, Postgres>, pieces: &[DevisReprise
         let nom = if avenant {
             format!("Avenant n° {} (devis de base n° {})", p.numero, p.devis_base.map(|n| n.to_string()).unwrap_or_default())
         } else {
-            format!("Devis n° {}-{}", chrono::Datelike::year(&p.date), p.numero)
+            format!("Devis n° {}-{}", p.date.year(), p.numero)
         };
         if !STATUTS.contains(&p.statut.as_str()) {
             return Err(format!("{nom} : statut inconnu « {} » ({}).", p.statut, STATUTS.join(", ")));
@@ -190,14 +193,17 @@ pub async fn importer(tx: &mut Transaction<'_, Postgres>, pieces: &[DevisReprise
         // Le chantier de l'avenant : celui du devis de base.
         let chantier_avenant: Option<i64> = if avenant {
             let base = p.devis_base.ok_or_else(|| format!("{nom} : il manque le devis de base (devis_base)."))?;
+            let annee_base = p.annee_base.unwrap_or_else(|| p.date.year());
             let (base_statut, chantier): (String, Option<i64>) = sqlx::query_as(
-                "SELECT d.statut::text, ch.id FROM devis d LEFT JOIN chantiers ch ON ch.devis_id = d.id WHERE d.numero = $1 AND d.chantier_id IS NULL",
+                "SELECT d.statut::text, ch.id FROM devis d LEFT JOIN chantiers ch ON ch.devis_id = d.id
+                 WHERE d.numero = $1 AND EXTRACT(YEAR FROM d.date_devis) = $2 AND d.chantier_id IS NULL",
             )
             .bind(base)
+            .bind(f64::from(annee_base))
             .fetch_optional(&mut **tx)
             .await
             .map_err(erreur_base)?
-            .ok_or_else(|| format!("{nom} : le devis de base n° {base} n'est pas dans la reprise."))?;
+            .ok_or_else(|| format!("{nom} : le devis de base n° {annee_base}-{base} n'est pas dans la reprise."))?;
             if base_statut != "accepte" {
                 return Err(format!("{nom} : le devis de base n° {base} n'est pas accepté, il n'a pas de chantier."));
             }
@@ -218,9 +224,11 @@ pub async fn importer(tx: &mut Transaction<'_, Postgres>, pieces: &[DevisReprise
                 .await
                 .map_err(erreur_base)?,
             None => sqlx::query_as(
-                "SELECT d.id, d.reprise, ch.id FROM devis d LEFT JOIN chantiers ch ON ch.devis_id = d.id WHERE d.numero = $1 AND d.chantier_id IS NULL",
+                "SELECT d.id, d.reprise, ch.id FROM devis d LEFT JOIN chantiers ch ON ch.devis_id = d.id
+                 WHERE d.numero = $1 AND EXTRACT(YEAR FROM d.date_devis) = $2 AND d.chantier_id IS NULL",
             )
             .bind(p.numero)
+            .bind(f64::from(p.date.year()))
             .fetch_optional(&mut **tx)
             .await
             .map_err(erreur_base)?,
@@ -460,15 +468,28 @@ async fn taux_id(tx: &mut Transaction<'_, Postgres>, taux: Option<i32>) -> Resul
     sqlx::query_scalar("SELECT id FROM taux_tva WHERE taux_centiemes = $1 ORDER BY actif DESC, id LIMIT 1").bind(taux).fetch_optional(&mut **tx).await
 }
 
-/// Le compteur des devis ne redescend jamais sous le plus grand numéro de devis repris.
+/// Le compteur des devis ne redescend jamais sous le plus grand numéro de devis repris de l'année la plus récente
+/// (la numérotation est annuelle, comme celle des factures).
 pub async fn remonter_compteur(tx: &mut Transaction<'_, Postgres>, rapport: &mut Rapport) -> Result<(), sqlx::Error> {
-    let valeur: i64 = sqlx::query_scalar("SELECT valeur FROM compteurs WHERE nom = 'devis' FOR UPDATE").fetch_one(&mut **tx).await?;
-    let max: Option<i64> = sqlx::query_scalar("SELECT max(numero) FROM devis WHERE chantier_id IS NULL").fetch_one(&mut **tx).await?;
-    if let Some(n) = max
-        && n > valeur
-    {
-        rapport.alertes.push(format!("Compteur des devis : {valeur} → {n}."));
-        sqlx::query("UPDATE compteurs SET valeur = $1 WHERE nom = 'devis'").bind(n).execute(&mut **tx).await?;
+    let (valeur, annee): (i64, Option<i32>) = sqlx::query_as("SELECT valeur, annee FROM compteurs WHERE nom = 'devis' FOR UPDATE").fetch_one(&mut **tx).await?;
+    let max: Option<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(YEAR FROM date_devis)::int AS a, max(numero) FROM devis WHERE chantier_id IS NULL GROUP BY a ORDER BY a DESC LIMIT 1",
+    )
+    .fetch_optional(&mut **tx)
+    .await?;
+    if let Some((a, n)) = max {
+        let (nouvelle_valeur, nouvelle_annee) = match annee {
+            Some(x) if x > a => (valeur, x),
+            Some(x) if x == a => (valeur.max(n), x),
+            _ => (n, a),
+        };
+        if (nouvelle_valeur, Some(nouvelle_annee)) != (valeur, annee) {
+            rapport.alertes.push(format!(
+                "Compteur des devis : {valeur} ({}) → {nouvelle_valeur} ({nouvelle_annee}).",
+                annee.map(|a| a.to_string()).unwrap_or_default()
+            ));
+            sqlx::query("UPDATE compteurs SET valeur = $1, annee = $2 WHERE nom = 'devis'").bind(nouvelle_valeur).bind(nouvelle_annee).execute(&mut **tx).await?;
+        }
     }
     Ok(())
 }

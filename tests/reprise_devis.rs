@@ -244,3 +244,22 @@ async fn les_ecrans_ouvrent_les_devis_et_chantiers_repris(pool: PgPool) {
         assert!(page.contains(texte), "la page d'avancement doit montrer « {texte} »");
     }
 }
+
+/// La numérotation est annuelle : le n° 41 de 2025 et le n° 41 de 2026 sont deux devis ; le compteur suit l'année la plus récente.
+#[sqlx::test]
+async fn deux_annees_peuvent_avoir_le_meme_numero(pool: PgPool) {
+    let texte = r#"{"devis": [
+        {"numero": 41, "date": "2025-11-02", "statut": "envoye", "client": {"nom": "X"}, "totaux": {"ht": "100", "tva": "6", "ttc": "106"}},
+        {"numero": 41, "date": "2026-03-02", "statut": "envoye", "client": {"nom": "X"}, "totaux": {"ht": "200", "tva": "12", "ttc": "212"}},
+        {"numero": 3, "date": "2026-04-02", "statut": "accepte", "date_decision": "2026-04-10", "client": {"nom": "X"}, "chantier": "PL1",
+         "totaux": {"ht": "300", "tva": "18", "ttc": "318"}},
+        {"genre": "avenant", "numero": 2, "devis_base": 3, "date": "2026-05-02", "client": {"nom": "X"}, "totaux": {"ht": "50", "tva": "3", "ttc": "53"}}
+    ]}"#;
+    let r = reprise::importer(&pool, texte, true).await.unwrap();
+    assert_eq!((r.devis, r.avenants, r.chantiers), (3, 1, 1), "{r}");
+    let compteur: (i64, Option<i32>) = sqlx::query_as("SELECT valeur, annee FROM compteurs WHERE nom = 'devis'").fetch_one(&pool).await.unwrap();
+    assert_eq!(compteur, (41, Some(2026)), "le plus grand numéro de la dernière année reprise");
+    // Relancer : rien en double, même avec deux devis n° 41.
+    let r = reprise::importer(&pool, texte, true).await.unwrap();
+    assert_eq!((r.devis, r.avenants, r.devis_deja), (0, 0, 4), "{r}");
+}
