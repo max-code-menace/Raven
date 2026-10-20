@@ -10,7 +10,7 @@
     <tbody>
       {% for l in liste.lignes %}
       <tr>
-        <td class="min-w-[220px]"><a href="/bibliotheque/{{ l.id }}" class="whitespace-pre-line">{{ l.description }}</a></td>
+        <td class="min-w-[220px]">{% if liste.corbeille() %}<span class="whitespace-pre-line">{{ l.description }}</span>{% else %}<a href="/bibliotheque/{{ l.id }}" class="whitespace-pre-line">{{ l.description }}</a>{% endif %}</td>
         <td class="nw"><span class="u-type {{ l.classe_genre }}">{{ l.genre }}</span></td>
         <td class="nw">{{ l.categorie }}</td>
         <td>{{ l.fournisseur }}</td>
@@ -19,20 +19,24 @@
         <td class="n">{{ l.marge }}</td>
         <td class="n font-medium">{% if l.sans_prix %}<span class="u-pastille s-brouillon">{{ l.vente }}</span>{% else %}{{ l.vente }}{% endif %}</td>
         <td class="n">
+          {% if liste.corbeille() %}
+          <form method="post" action="/bibliotheque/{{ l.id }}/recuperer"><button class="btn btn-sm" type="submit">Récupérer</button></form>
+          {% else %}
           <div class="inline-flex gap-0.5">
             <a class="btn u-ib" href="/bibliotheque/{{ l.id }}" aria-label="Modifier" title="Modifier">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
             <details class="u-menu">
               <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
               <form method="post" action="/bibliotheque/{{ l.id }}/supprimer" class="u-menu-liste u-menu-form">
-                <span class="u-petit">Retirer cet ouvrage de la bibliothèque ? Les devis qui l'utilisent gardent leur ligne.</span>
+                <span class="u-petit">Mettre cet ouvrage dans la corbeille ? Vous pourrez le récupérer. Les devis qui l'utilisent gardent leur ligne.</span>
                 <button class="btn btn-danger btn-sm" type="submit">Supprimer</button>
               </form>
             </details>
           </div>
+          {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr class="vide"><td colspan="9">Aucun ouvrage trouvé. « Nouveau » en haut à droite pour en ajouter, ou cochez des bibliothèques dans <a class="underline" href="/parametres/bibliotheques">Réglages › Bibliothèques</a>.</td></tr>
+      <tr class="vide"><td colspan="9">{% if liste.corbeille() %}La corbeille est vide.{% else %}Aucun ouvrage trouvé. « Nouveau » en haut à droite pour en ajouter, ou cochez des bibliothèques dans <a class="underline" href="/parametres/bibliotheques">Réglages › Bibliothèques</a>.{% endif %}</td></tr>
       {% endfor %}
     </tbody>
   </table>

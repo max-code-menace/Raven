@@ -1,4 +1,5 @@
 pub mod avancement_calcul;
+pub mod administration;
 pub mod bibliotheque;
 pub mod bibliotheque_import;
 pub mod avancements;
@@ -191,6 +192,8 @@ pub fn app(state: AppState) -> Router {
 pub fn application(state: AppState) -> Router {
     pages()
         .merge(connexion::routes())
+        // Le back office de Raven (étape 4-3) : sa propre connexion (`administration::Admin`), aucune organisation.
+        .merge(administration::routes())
         .layer(axum::middleware::from_fn_with_state(state.clone(), connexion::exiger_connexion))
         .with_state(state)
 }

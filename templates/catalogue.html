@@ -25,6 +25,15 @@
 {% if !message_ok.is_empty() %}
 <div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
 {% endif %}
+{% if nouveautes > 0 %}
+<div role="status" class="u-bandeau ok">
+  {% call ui::icone("bibliotheque", 18) %}{% endcall %}
+  <span class="flex-1">{% if nouveautes == 1 %}1 nouvel ouvrage est disponible{% else %}{{ nouveautes }} nouveaux ouvrages sont disponibles{% endif %} dans les bibliothèques que vous avez cochées. Ils arrivent sans prix ; vos ouvrages actuels ne changent pas.</span>
+  {% if proprietaire %}
+  <form method="post" action="/parametres/bibliotheques/nouveautes"><button class="btn btn-sm btn-primary" type="submit">Ajouter les nouveaux ouvrages</button></form>
+  {% endif %}
+</div>
+{% endif %}
 {% if erreur %}
 <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>Seul un propriétaire peut changer les bibliothèques cochées.</span></div>
 {% endif %}
@@ -37,7 +46,7 @@
       {% for b in m.bibliotheques %}
       <label class="flex gap-3 items-center">
         <input class="checkbox checkbox-sm" type="checkbox" name="bibliotheque" value="{{ b.code }}"{% if b.cochee %} checked{% endif %}{% if !proprietaire %} disabled{% endif %}>
-        <span><strong>{{ b.nom }}</strong> <span class="u-petit u-muet">· {{ b.nombre }} ouvrages</span></span>
+        <span><strong>{{ b.nom }}</strong> <span class="u-petit u-muet">· {{ b.nombre }} ouvrages</span>{% if b.nouveaux > 0 %} <span class="u-pastille s-envoye">{% if b.nouveaux == 1 %}1 nouveau{% else %}{{ b.nouveaux }} nouveaux{% endif %}</span>{% endif %}{% if b.retiree %} <span class="u-petit u-muet">· retirée du catalogue de Raven : vous gardez vos ouvrages, mais une fois décochée, elle ne pourra plus être recochée</span>{% endif %}</span>
       </label>
       {% endfor %}
     </div>

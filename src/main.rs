@@ -17,6 +17,10 @@ async fn main() {
     if arguments.first().map(String::as_str) == Some("utilisateur") {
         std::process::exit(utilisateurs(&pool, &arguments[1..]).await);
     }
+    // `cargo run -- admin …` : les administrateurs du back office de Raven (/admin).
+    if arguments.first().map(String::as_str) == Some("admin") {
+        std::process::exit(administrateurs(&pool, &arguments[1..]).await);
+    }
     // `cargo run -- organisation creer "<nom>"` · `organisation liste`.
     if arguments.first().map(String::as_str) == Some("organisation") {
         let resultat = match arguments[1..].iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
@@ -144,6 +148,47 @@ fn demander_mot_de_passe() -> Option<String> {
         return None;
     }
     Some(premier)
+}
+
+/// `admin ajouter <e-mail> [nom]`, `admin mot-de-passe <e-mail>`, `admin retirer <e-mail>`, `admin liste`.
+async fn administrateurs(pool: &sqlx::PgPool, arguments: &[String]) -> i32 {
+    use ubifacture::administration;
+    let resultat = match arguments.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        ["ajouter", email, nom @ ..] => match demander_mot_de_passe() {
+            Some(mdp) => administration::ajouter_administrateur(pool, email, &nom.join(" "), &mdp)
+                .await
+                .map(|()| format!("Administrateur {email} créé : back office sur http://127.0.0.1:3001/admin")),
+            None => Err("Rien n'a été créé.".to_string()),
+        },
+        ["mot-de-passe", email] => match demander_mot_de_passe() {
+            Some(mdp) => administration::changer_mot_de_passe(pool, email, &mdp)
+                .await
+                .map(|()| format!("Mot de passe de l'administrateur {email} changé (ses sessions sont fermées).")),
+            None => Err("Rien n'a été changé.".to_string()),
+        },
+        ["retirer", email] => administration::retirer_administrateur(pool, email).await.map(|()| format!("Administrateur {email} retiré.")),
+        ["liste"] => administration::liste_administrateurs(pool)
+            .await
+            .map(|l| {
+                if l.is_empty() {
+                    "Aucun administrateur.".to_string()
+                } else {
+                    l.iter().map(|(e, n)| format!("{e}  {n}")).collect::<Vec<_>>().join("\n")
+                }
+            })
+            .map_err(|e| e.to_string()),
+        _ => Err("Commandes : admin ajouter <e-mail> [nom] · admin mot-de-passe <e-mail> · admin retirer <e-mail> · admin liste".to_string()),
+    };
+    match resultat {
+        Ok(message) => {
+            println!("{message}");
+            0
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            1
+        }
+    }
 }
 
 /// `utilisateur ajouter <e-mail> [nom]`, `utilisateur mot-de-passe <e-mail>`, `utilisateur liste`.

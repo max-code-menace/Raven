@@ -178,6 +178,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         deux("GET", format!("/bibliotheque/{o}"));
         deux("POST", format!("/bibliotheque/{o}"));
         deux("POST", format!("/bibliotheque/{o}/supprimer"));
+        deux("POST", format!("/bibliotheque/{o}/recuperer"));
     }
     for (genre, liste) in [("entreprises", &entreprises), ("contacts", &contacts)] {
         for &id in liste {
@@ -197,13 +198,15 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         "/", "/devis", "/factures", "/factures?statut=en_retard", "/chantiers", "/chantiers?statut=tous", "/entreprises", "/contacts",
         "/bibliotheque", "/bibliotheque/choisir?q=a", "/statistiques", "/statistiques?periode=12_mois", "/exports", "/factures/rappels",
         "/factures/recurrences", "/achats", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
-        "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/parametres/bibliotheques", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
+        "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/parametres/bibliotheques", "/bibliotheque?vue=supprimes", "/bibliotheque?vue=a_completer", "/bibliotheque?vue=miens",
+        "/admin", "/admin/catalogue", "/admin/organisations", "/admin/catalogue/graphisme.graphisme", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
     ] {
         deux("GET", chemin.to_string());
     }
     for chemin in [
         "/factures/rappels", "/factures/recurrences/preparer", "/exports", "/parametres/emails/devis", "/parametres/rappels", "/demarrage",
-        "/parametres/equipe/inviter", "/parametres/metier", "/parametres/rappels/mentions", "/parametres/bibliotheques", "/bibliotheque/vider",
+        "/parametres/equipe/inviter", "/parametres/metier", "/parametres/rappels/mentions", "/parametres/bibliotheques", "/parametres/bibliotheques/nouveautes",
+        "/admin/catalogue/publier", "/admin/catalogue/bibliotheques", "/bibliotheque/vider",
     ] {
         deux("POST", chemin.to_string());
     }
@@ -272,6 +275,8 @@ async fn b_ne_voit_ni_ne_modifie_rien_de_a_sur_aucune_page(options: PgPoolOption
             .execute(&mut *c)
             .await
             .unwrap();
+        // Et un ouvrage dans sa corbeille.
+        sqlx::query("UPDATE ouvrages SET supprime_le = now() WHERE description = 'Illustration'").execute(&mut *c).await.unwrap();
     }
     // L'archive légale des factures validées de A (fabriquée au premier téléchargement) et un dossier de preuve de
     // signature : B ne doit voir ni l'une ni l'autre.

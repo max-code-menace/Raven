@@ -220,7 +220,7 @@ async fn ajouter(db: &mut PgConnection, ouvrages: &[bibliotheque::Valeurs]) -> R
     let mut tx = db.begin().await?;
     let (mut ajoutes, mut deja) = (0, 0);
     for v in ouvrages {
-        let present: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM ouvrages WHERE lower(description) = lower($1) AND unite = $2)")
+        let present: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM ouvrages WHERE lower(description) = lower($1) AND unite = $2 AND supprime_le IS NULL)")
             .bind(&v.description)
             .bind(&v.unite)
             .fetch_one(&mut *tx)

@@ -132,15 +132,28 @@ pub struct Categorie {
     pub adresse: String,
 }
 
+/// Les vues de la bibliothèque, en plus des catégories (paramètre `vue`).
+const VUES: [(&str, &str); 3] = [("miens", "Mes ouvrages"), ("a_completer", "Prix à compléter"), ("supprimes", "Supprimés")];
+
 pub struct Liste {
     pub lignes: Vec<Ligne>,
     pub q: String,
     pub categorie: String,
     pub categories: Vec<Categorie>,
+    /// « Mes ouvrages » (créés à la main ou importés), « Prix à compléter », « Supprimés » (la corbeille).
+    pub vue: String,
+    pub vues: Vec<Categorie>,
     pub requete: String,
     pub page: i64,
     pub pages: i64,
     pub total: i64,
+}
+
+impl Liste {
+    /// La corbeille est affichée : on récupère au lieu de modifier.
+    pub fn corbeille(&self) -> bool {
+        self.vue == "supprimes"
+    }
 }
 
 #[derive(Template)]
@@ -149,8 +162,10 @@ struct PageListe {
     liste: Liste,
     message_ok: &'static str,
     message_erreur: &'static str,
-    /// Le nombre d'ouvrages de la bibliothèque (toutes catégories), pour « Vider ma bibliothèque ».
+    /// Le nombre d'ouvrages de la bibliothèque, corbeille comprise, pour « Vider ma bibliothèque ».
     tout: i64,
+    /// Les nouveaux ouvrages publiés dans les bibliothèques de Raven cochées (étape 4-4).
+    nouveautes: i64,
 }
 
 #[derive(Template)]
@@ -165,63 +180,97 @@ struct Recherche {
     q: String,
     /// Le nom d'une catégorie, « - » pour « Sans catégorie », vide pour toutes.
     categorie: String,
+    /// Une des `VUES`, vide pour la bibliothèque entière (hors corbeille).
+    vue: String,
     page: String,
     ok: String,
     erreur: String,
 }
 
-const DEPUIS: &str = "FROM ouvrages WHERE ($1 = '' OR description ILIKE $2 OR categorie ILIKE $2 OR fournisseur ILIKE $2)
-                       AND ($3 = '' OR ($3 = '-' AND categorie = '') OR categorie = $3)";
+/// $1 recherche, $2 motif, $3 catégorie, $4 vue. Hors de la vue « Supprimés », la corbeille n'est jamais montrée.
+const DEPUIS: &str = "FROM ouvrages
+    WHERE (CASE WHEN $4 = 'supprimes' THEN supprime_le IS NOT NULL ELSE supprime_le IS NULL END)
+      AND ($4 <> 'miens' OR catalogue_ouvrage_id IS NULL)
+      AND ($4 <> 'a_completer' OR prix_vente_e5 IS NULL)
+      AND ($1 = '' OR description ILIKE $2 OR categorie ILIKE $2 OR fournisseur ILIKE $2)
+      AND ($3 = '' OR ($3 = '-' AND categorie = '') OR categorie = $3)";
 
 async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
     let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
     let categorie = r.categorie.trim().to_string();
+    let vue = VUES.iter().map(|(c, _)| *c).find(|c| *c == r.vue.trim()).unwrap_or("").to_string();
     let total: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT count(*) {DEPUIS}")))
         .bind(&q)
         .bind(&motif)
         .bind(&categorie)
+        .bind(&vue)
         .fetch_one(&mut *db)
         .await?;
     let pages = ((total + PAR_PAGE - 1) / PAR_PAGE).max(1);
     let page: i64 = r.page.trim().parse().unwrap_or(1).clamp(1, pages);
     let lignes: Vec<OuvrageLu> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT id, description, genre::text AS genre, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5
-         {DEPUIS} ORDER BY lower(categorie), lower(description), id LIMIT $4 OFFSET $5"
+         {DEPUIS} ORDER BY lower(categorie), lower(description), id LIMIT $5 OFFSET $6"
     )))
     .bind(&q)
     .bind(&motif)
     .bind(&categorie)
+    .bind(&vue)
     .bind(PAR_PAGE)
     .bind((page - 1) * PAR_PAGE)
     .fetch_all(&mut *db)
     .await?;
-    let groupes: Vec<(String, i64)> =
-        sqlx::query_as("SELECT categorie, count(*) FROM ouvrages GROUP BY categorie ORDER BY categorie = '', lower(categorie)").fetch_all(&mut *db).await?;
-    let tout: i64 = groupes.iter().map(|(_, n)| n).sum();
+    let groupes: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT categorie, count(*) FROM ouvrages WHERE supprime_le IS NULL GROUP BY categorie ORDER BY categorie = '', lower(categorie)",
+    )
+    .fetch_all(&mut *db)
+    .await?;
+    let (miens, a_completer, supprimes, tout): (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE supprime_le IS NULL AND catalogue_ouvrage_id IS NULL),
+                count(*) FILTER (WHERE supprime_le IS NULL AND prix_vente_e5 IS NULL),
+                count(*) FILTER (WHERE supprime_le IS NOT NULL),
+                count(*)
+         FROM ouvrages",
+    )
+    .fetch_one(&mut *db)
+    .await?;
     let mut categories = vec![Categorie {
         nom: String::new(),
         libelle: "Toutes".to_string(),
-        nombre: tout,
-        choisie: categorie.is_empty(),
+        nombre: groupes.iter().map(|(_, n)| n).sum(),
+        choisie: categorie.is_empty() && vue.is_empty(),
         adresse: format!("/bibliotheque?q={}", encoder_url(&q)),
     }];
     categories.extend(groupes.into_iter().map(|(nom, nombre)| {
         let code = if nom.is_empty() { "-".to_string() } else { nom.clone() };
         Categorie {
             libelle: if nom.is_empty() { "Sans catégorie".to_string() } else { nom.clone() },
-            choisie: categorie == code,
+            choisie: categorie == code && vue.is_empty(),
             adresse: format!("/bibliotheque?q={}&categorie={}", encoder_url(&q), encoder_url(&code)),
             nom,
             nombre,
         }
     }));
+    let vues = VUES
+        .iter()
+        .zip([miens, a_completer, supprimes])
+        .map(|(&(code, libelle), nombre)| Categorie {
+            nom: code.to_string(),
+            libelle: libelle.to_string(),
+            nombre,
+            choisie: vue == code,
+            adresse: format!("/bibliotheque?q={}&vue={code}", encoder_url(&q)),
+        })
+        .collect();
     let liste = Liste {
         lignes: lignes.into_iter().map(Ligne::from).collect(),
-        requete: format!("q={}&categorie={}", encoder_url(&q), encoder_url(&categorie)),
+        requete: format!("q={}&categorie={}&vue={}", encoder_url(&q), encoder_url(&categorie), vue),
         q,
         categorie,
         categories,
+        vue,
+        vues,
         page,
         pages,
         total,
@@ -233,12 +282,14 @@ async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> 
         let message_ok = match r.ok.as_str() {
             "cree" => "L'ouvrage est ajouté à la bibliothèque.",
             "modifie" => "L'ouvrage est enregistré.",
-            "supprime" => "L'ouvrage est retiré de la bibliothèque (les devis qui l'utilisent ne changent pas).",
+            "supprime" => "L'ouvrage est dans la corbeille (« Supprimés ») : vous pouvez le récupérer. Les devis qui l'utilisent ne changent pas.",
+            "recupere" => "L'ouvrage est récupéré : il est de nouveau dans votre bibliothèque.",
             "vide" => "Votre bibliothèque est vide (les devis ne changent pas). Cochez des bibliothèques dans Réglages › Bibliothèques, ou ajoutez vos ouvrages.",
             _ => "",
         };
         let message_erreur = if r.erreur == "droits" { "Seul un propriétaire peut vider la bibliothèque." } else { "" };
-        PageListe { liste, message_ok, message_erreur, tout }.render()?
+        let nouveautes = crate::catalogue::nouveautes(&mut db).await?;
+        PageListe { liste, message_ok, message_erreur, tout, nouveautes }.render()?
     };
     Ok(Html(html))
 }
@@ -353,7 +404,7 @@ struct PageFiche {
 
 async fn page_fiche(db: &mut PgConnection, id: Option<i64>, saisie: Saisie, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
     let categories: Vec<String> =
-        sqlx::query_scalar("SELECT DISTINCT categorie FROM ouvrages WHERE categorie <> '' ORDER BY categorie").fetch_all(&mut *db).await?;
+        sqlx::query_scalar("SELECT DISTINCT categorie FROM ouvrages WHERE categorie <> '' AND supprime_le IS NULL ORDER BY categorie").fetch_all(&mut *db).await?;
     let achat = calcul::lire_decimal_e5(&saisie.prix_achat);
     let marge_calculee = match calcul::lire_decimal_e5(&saisie.prix_vente) {
         Some(v) => marge_texte(achat, Some(v)),
@@ -437,7 +488,7 @@ async fn creer(mut db: Base, Form(s): Form<Saisie>) -> Result<Response, Erreur> 
 
 async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
     let ligne: Option<(String, String, String, String, String, Option<i64>, Option<i64>, String)> = sqlx::query_as(
-        "SELECT description, genre::text, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5, remarque FROM ouvrages WHERE id = $1",
+        "SELECT description, genre::text, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5, remarque FROM ouvrages WHERE id = $1 AND supprime_le IS NULL",
     )
     .bind(id)
     .fetch_optional(&mut *db)
@@ -458,7 +509,8 @@ async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Err
 }
 
 async fn modifier(mut db: Base, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
-    let existe: Option<i64> = sqlx::query_scalar("SELECT id FROM ouvrages WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
+    let existe: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM ouvrages WHERE id = $1 AND supprime_le IS NULL").bind(id).fetch_optional(&mut *db).await?;
     existe.ok_or_else(Erreur::introuvable)?;
     match verifier(&s) {
         Ok(v) => {
@@ -469,12 +521,23 @@ async fn modifier(mut db: Base, Path(id): Path<i64>, Form(s): Form<Saisie>) -> R
     }
 }
 
+/// Met l'ouvrage dans la corbeille (« Supprimés ») : il se récupère.
 async fn supprimer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let fait = sqlx::query("DELETE FROM ouvrages WHERE id = $1").bind(id).execute(&mut *db).await?;
+    let fait = sqlx::query("UPDATE ouvrages SET supprime_le = now() WHERE id = $1 AND supprime_le IS NULL").bind(id).execute(&mut *db).await?;
     if fait.rows_affected() == 0 {
         return Err(Erreur::introuvable());
     }
     Ok(Redirect::to("/bibliotheque?ok=supprime"))
+}
+
+/// Sort l'ouvrage de la corbeille.
+async fn recuperer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let fait =
+        sqlx::query("UPDATE ouvrages SET supprime_le = NULL WHERE id = $1 AND supprime_le IS NOT NULL").bind(id).execute(&mut *db).await?;
+    if fait.rows_affected() == 0 {
+        return Err(Erreur::introuvable());
+    }
+    Ok(Redirect::to("/bibliotheque?ok=recupere"))
 }
 
 // ─── Choisir un ouvrage depuis l'Encodage d'un devis ────────────────────────
@@ -505,6 +568,7 @@ async fn choisir(mut db: Base, Query(r): Query<RechercheChoix>) -> Result<Html<S
     .bind(&q)
     .bind(&motif)
     .bind("")
+    .bind("")
     .fetch_all(&mut *db)
     .await?;
     Ok(Html(ChoixOuvrages { devis: r.devis, lignes: lignes.into_iter().map(Ligne::from).collect(), q }.render()?))
@@ -517,6 +581,7 @@ pub fn routes() -> Router<AppState> {
         .route("/bibliotheque/choisir", get(choisir))
         .route("/bibliotheque/{id}", get(afficher).post(modifier))
         .route("/bibliotheque/{id}/supprimer", post(supprimer))
+        .route("/bibliotheque/{id}/recuperer", post(recuperer))
 }
 
 #[cfg(test)]

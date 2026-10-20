@@ -226,3 +226,65 @@ async fn un_ouvrage_sans_prix_dans_un_devis(options: PgPoolOptions, connexion: P
         sqlx::query_as("SELECT genre::text, prix_unitaire_e5 FROM devis_lignes WHERE devis_id = $1").bind(devis).fetch_one(&mut *base).await.unwrap();
     assert_eq!((genre.as_str(), prix), ("main_oeuvre", Some(0)));
 }
+
+#[sqlx::test]
+async fn la_corbeille_et_les_filtres(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let s = application(AppState { db: pool.clone() });
+    let (b, cookie) = nouvelle_organisation(&pool, &s, "Peintre", "b@exemple.be", "peinture").await;
+    let mut base = Base::ouvrir(&pool, b).await.unwrap();
+    // Un ouvrage à lui, avec son prix.
+    let r = poster(&s, "/bibliotheque", "description=Ma+peinture+sp%C3%A9ciale&genre=ouvrage&unite=m%C2%B2&prix_vente=25", &cookie).await;
+    assert_eq!(r.lieu.as_deref(), Some("/bibliotheque?ok=cree"));
+
+    let r = lire(&s, "/bibliotheque", &cookie).await;
+    assert!(r.corps.contains("Mes ouvrages</span><small>1</small>") && r.corps.contains("Prix à compléter</span><small>26</small>"));
+    assert!(r.corps.contains("Supprimés</span><small>0</small>"));
+    let r = lire(&s, "/bibliotheque?vue=miens", &cookie).await;
+    assert!(r.corps.contains("Ma peinture spéciale") && !r.corps.contains("Laque") && r.corps.contains("1 ouvrage(s)"));
+    let r = lire(&s, "/bibliotheque?vue=a_completer", &cookie).await;
+    assert!(r.corps.contains("Laque") && !r.corps.contains("Ma peinture spéciale") && r.corps.contains("26 ouvrage(s)"));
+
+    // Supprimer : à la corbeille, plus proposé ni modifiable, mais récupérable.
+    let laque: i64 = sqlx::query_scalar("SELECT id FROM ouvrages WHERE description = 'Laque'").fetch_one(&mut *base).await.unwrap();
+    let r = poster(&s, &format!("/bibliotheque/{laque}/supprimer"), "", &cookie).await;
+    assert_eq!(r.lieu.as_deref(), Some("/bibliotheque?ok=supprime"));
+    assert!(lire(&s, "/bibliotheque?ok=supprime", &cookie).await.corps.contains("dans la corbeille"));
+    assert!(!lire(&s, "/bibliotheque?q=Laque", &cookie).await.corps.contains(">Laque<"));
+    let r = lire(&s, "/bibliotheque?vue=supprimes", &cookie).await;
+    assert!(r.corps.contains("Laque") && r.corps.contains(&format!("/bibliotheque/{laque}/recuperer")) && !r.corps.contains(&format!("href=\"/bibliotheque/{laque}\"")));
+    assert_eq!(lire(&s, &format!("/bibliotheque/{laque}"), &cookie).await.statut, StatusCode::NOT_FOUND);
+    assert_eq!(poster(&s, &format!("/bibliotheque/{laque}"), "description=Laque&genre=ouvrage", &cookie).await.statut, StatusCode::NOT_FOUND);
+    assert_eq!(poster(&s, &format!("/bibliotheque/{laque}/supprimer"), "", &cookie).await.statut, StatusCode::NOT_FOUND);
+    let r = poster(&s, "/devis", "", &cookie).await;
+    let devis: i64 = r.lieu.unwrap().strip_prefix("/devis/").unwrap().split('?').next().unwrap().parse().unwrap();
+    assert!(!lire(&s, &format!("/bibliotheque/choisir?devis={devis}&q=Laque"), &cookie).await.corps.contains("Laque"));
+    sqlx::query("UPDATE devis SET taux_tva_id = (SELECT id FROM taux_tva WHERE taux_centiemes = 2100) WHERE id = $1").bind(devis).execute(&mut *base).await.unwrap();
+    let r = poster(&s, &format!("/devis/{devis}/bibliotheque"), &format!("ouvrage={laque}"), &cookie).await;
+    assert!(r.corps.contains("Cet ouvrage n&#39;existe plus dans la bibliothèque."));
+
+    // Décocher la bibliothèque : l'ouvrage de la corbeille y reste ; recocher ne le ramène pas en double.
+    poster(&s, "/parametres/bibliotheques", "", &cookie).await;
+    let (dans_la_corbeille, ailleurs): (i64, i64) = sqlx::query_as(
+        "SELECT count(*) FILTER (WHERE supprime_le IS NOT NULL), count(*) FILTER (WHERE supprime_le IS NULL) FROM ouvrages",
+    )
+    .fetch_one(&mut *base)
+    .await
+    .unwrap();
+    assert_eq!((dans_la_corbeille, ailleurs), (1, 1), "Laque dans la corbeille, et son propre ouvrage");
+    poster(&s, "/parametres/bibliotheques", "bibliotheque=peinture.peinture", &cookie).await;
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM ouvrages WHERE description = 'Laque'").fetch_one(&mut *base).await.unwrap(), 1);
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM ouvrages WHERE supprime_le IS NULL").fetch_one(&mut *base).await.unwrap(), 26);
+
+    // Récupérer.
+    let r = poster(&s, &format!("/bibliotheque/{laque}/recuperer"), "", &cookie).await;
+    assert_eq!(r.lieu.as_deref(), Some("/bibliotheque?ok=recupere"));
+    assert!(lire(&s, "/bibliotheque?vue=supprimes", &cookie).await.corps.contains("La corbeille est vide."));
+    assert_eq!(lire(&s, &format!("/bibliotheque/{laque}"), &cookie).await.statut, StatusCode::OK);
+    assert_eq!(poster(&s, &format!("/bibliotheque/{laque}/recuperer"), "", &cookie).await.statut, StatusCode::NOT_FOUND);
+
+    // « Vider ma bibliothèque » vide aussi la corbeille.
+    poster(&s, &format!("/bibliotheque/{laque}/supprimer"), "", &cookie).await;
+    poster(&s, "/bibliotheque/vider", "confirme=oui", &cookie).await;
+    assert_eq!(etat(&pool, b).await, (Vec::new(), 0));
+}

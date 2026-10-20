@@ -561,7 +561,7 @@ async fn ajouter_ouvrage(mut db: Base, Path(id): Path<i64>, Form(f): Form<Ouvrag
                                    remarque, taux_tva_id)
          SELECT $1, COALESCE((SELECT max(position) FROM devis_lignes WHERE devis_id = $1), 0) + 1,
                 genre, description, 100000, unite, COALESCE(prix_vente_e5, 0), prix_achat_e5, remarque, $3
-         FROM ouvrages WHERE id = $2
+         FROM ouvrages WHERE id = $2 AND supprime_le IS NULL
          RETURNING (SELECT prix_vente_e5 IS NULL FROM ouvrages WHERE id = $2)",
     )
     .bind(id)
