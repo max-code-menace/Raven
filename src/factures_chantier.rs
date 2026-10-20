@@ -252,7 +252,8 @@ async fn acomptes_par_taux(tx: &mut Transaction<'_, Postgres>, chantier_id: i64)
     .fetch_all(&mut **tx)
     .await?;
     let numeros: Option<String> = sqlx::query_scalar(
-        "SELECT string_agg(numero::text, ', ' ORDER BY numero) FROM factures WHERE genre = 'acompte' AND chantier_id = $1 AND numero IS NOT NULL",
+        "SELECT string_agg(extract(year FROM date_facture)::int || '-' || numero, ', ' ORDER BY date_facture, numero)
+         FROM factures WHERE genre = 'acompte' AND chantier_id = $1 AND numero IS NOT NULL",
     )
     .bind(chantier_id)
     .fetch_one(&mut **tx)

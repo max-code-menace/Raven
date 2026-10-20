@@ -64,7 +64,8 @@ pub(crate) async fn charger_donnees(db: &mut PgConnection, f: &Facture) -> Resul
     .fetch_optional(&mut *db)
     .await?;
     let corrige: Option<String> = sqlx::query_scalar(
-        "SELECT 'Note de crédit pour la facture n° ' || numero || ' du ' || to_char(date_facture, 'DD/MM/YYYY') FROM factures WHERE id = $1",
+        "SELECT 'Note de crédit pour la facture n° ' || extract(year FROM date_facture)::int || '-' || numero || ' du ' || to_char(date_facture, 'DD/MM/YYYY')
+         FROM factures WHERE id = $1",
     )
     .bind(f.facture_origine_id)
     .fetch_optional(&mut *db)

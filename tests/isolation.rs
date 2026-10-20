@@ -68,7 +68,7 @@ async fn textes_de_a(pool: &PgPool) -> Vec<String> {
             SELECT nom AS x FROM entreprises UNION SELECT nom FROM contacts UNION SELECT reference FROM devis
             UNION SELECT reference FROM factures UNION SELECT description FROM ouvrages UNION SELECT nom FROM societe
             UNION SELECT fournisseur FROM chantier_achats UNION SELECT email_comptable FROM reglages
-            UNION SELECT description FROM devis_lignes UNION SELECT description FROM facture_lignes
+            UNION SELECT description FROM devis_lignes UNION SELECT description FROM facture_lignes UNION SELECT nom FROM devis_signatures
             UNION SELECT u.email FROM utilisateurs u JOIN membres m ON m.utilisateur_id = u.id AND m.organisation_id = 1
             UNION SELECT email FROM invitations WHERE organisation_id = 1
          ) t WHERE length(x) >= 6",
@@ -109,7 +109,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
     let mut a: Vec<(&'static str, String)> = Vec::new();
     let mut deux = |m: &'static str, chemin: String| a.push((m, chemin));
     for &d in &devis {
-        for suite in ["", "/apercu", "/historique", "/encodage", "/pdf", "/pdf?telecharger=1", "/totaux", "/email", "/import"] {
+        for suite in ["", "/apercu", "/historique", "/encodage", "/pdf", "/pdf?telecharger=1", "/totaux", "/email", "/import", "/signature/pdf"] {
             deux("GET", format!("/devis/{d}{suite}"));
         }
         for suite in [
@@ -150,7 +150,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         }
     }
     for &f in &factures {
-        for suite in ["", "/pdf", "/pdf?telecharger=1", "/email", "/rappel", "/recurrence"] {
+        for suite in ["", "/pdf", "/pdf?telecharger=1", "/email", "/rappel", "/recurrence", "/archive/pdf", "/archive/ubl"] {
             deux("GET", format!("/factures/{f}{suite}"));
         }
         for suite in [
@@ -201,7 +201,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
     }
     for chemin in [
         "/factures/rappels", "/factures/recurrences/preparer", "/exports", "/parametres/emails/devis", "/parametres/rappels", "/demarrage",
-        "/parametres/equipe/inviter", "/parametres/metier",
+        "/parametres/equipe/inviter", "/parametres/metier", "/parametres/rappels/mentions",
     ] {
         deux("POST", chemin.to_string());
     }
@@ -260,7 +260,23 @@ async fn connecter_b(pool: &PgPool, site: &Router) -> String {
 #[sqlx::test]
 async fn b_ne_voit_ni_ne_modifie_rien_de_a_sur_aucune_page(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
-    donnees::remplir(&pool, &app(AppState { db: pool.clone() })).await;
+    let site_a = app(AppState { db: pool.clone() });
+    donnees::remplir(&pool, &site_a).await;
+    // L'archive légale des factures validées de A (fabriquée au premier téléchargement) et un dossier de preuve de
+    // signature : B ne doit voir ni l'une ni l'autre.
+    for f in ids(&pool, "SELECT id FROM factures WHERE numero IS NOT NULL AND NOT reprise").await {
+        envoyer(&site_a, "GET", &format!("/factures/{f}/pdf"), "").await;
+    }
+    let archives: i64 = sqlx::query_scalar("SELECT count(*) FROM facture_documents").fetch_one(&pool).await.unwrap();
+    assert!(archives > 0, "A a des documents archivés");
+    sqlx::query(
+        "INSERT INTO devis_signatures (devis_id, nom, verification, texte_accepte, montant_ttc_cents, pdf_nom, pdf, empreinte_pdf)
+         SELECT id, 'Signataire de A', 'mode_test', 'Bon pour accord', montant_ttc_cents, 'Devis.pdf', '\\x255044462d', repeat('a', 64)
+         FROM devis WHERE statut <> 'brouillon' ORDER BY id LIMIT 1",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
     // L'équipe de A : un propriétaire, un membre et une invitation en attente.
     connexion::ajouter_utilisateur(&pool, 1, "patron.a@exemple.be", "Patron de A", "un-long-mot-de-passe").await.unwrap();
     connexion::ajouter_utilisateur(&pool, 1, "ouvrier.a@exemple.be", "Ouvrier de A", "un-long-mot-de-passe").await.unwrap();

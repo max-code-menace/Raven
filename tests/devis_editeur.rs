@@ -156,9 +156,9 @@ async fn les_champs_obligatoires_sont_verifies_et_rien_n_est_enregistre(options:
     let id = nouveau_brouillon(&pool).await;
     let (statut, _, page) = poster(&site(&pool), &format!("/devis/{id}"), "reference=&responsable=&date_devis=pas-une-date").await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(!page.contains("Le responsable est obligatoire."), "le responsable est facultatif");
     for message in [
         "La référence est obligatoire.",
-        "Le responsable est obligatoire.",
         "La date du devis est obligatoire.",
         "Choisissez le client du devis.",
         "Le taux de TVA par défaut est obligatoire.",

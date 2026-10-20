@@ -99,7 +99,8 @@ async fn la_signature_cree_un_dossier_de_preuve_complet(options: PgPoolOptions, 
     assert_eq!((nom.as_str(), email.as_str(), montant), ("Anne Claes", "anne@claes.be", 106_000));
     assert_eq!(verification, "mode_test", "sans clé d'envoi, l'adresse n'est pas vérifiée et le dossier le dit");
     assert_eq!((ip.as_str(), navigateur.as_str()), ("203.0.113.7", "Mozilla/5.0 (essai)"));
-    assert!(texte.contains("devis n°") && texte.contains("1\u{a0}060,00\u{a0}€ TVA comprise") && texte.contains("Ubique SRL") && texte.contains("adresse IP"), "{texte}");
+    assert!(texte.contains("devis n°") && texte.contains("1\u{a0}060,00\u{a0}€ TVA comprise") && texte.contains("adresse IP"), "{texte}");
+    assert!(!texte.contains("conditions générales"), "aucune condition générale déposée : le client n'en accepte pas : {texte}");
     assert!(!texte.contains("vérifiée"), "le texte ne promet pas une vérification qui n'a pas eu lieu : {texte}");
     assert!(pdf_nom.starts_with("Devis-") && pdf_nom.ends_with(".pdf"), "{pdf_nom}");
 

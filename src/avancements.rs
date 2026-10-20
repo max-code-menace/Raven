@@ -724,8 +724,9 @@ fn construire_lignes_facture(blocs: &[Bloc], precedent: &HashMap<String, i64>, p
             }
             let cumul = precedent.get(&p.cle).copied().unwrap_or(0) + m;
             let pourcent = |x: i64| ac::pourcentage_centiemes(x, p.total_cents).map(ac::pourcentage_en_texte).unwrap_or_default();
-            let nom = if p.numero.is_empty() { p.description.clone() } else { format!("{} {}", p.numero, p.description) };
-            let description = format!("{nom}\nAvancement de la période : {} (cumul : {})", pourcent(m), pourcent(cumul));
+            // La facture numérote ses propres lignes : le numéro du poste dans le devis va sur la deuxième ligne.
+            let poste = if p.numero.is_empty() { String::new() } else { format!("Poste {} · ", p.numero) };
+            let description = format!("{}\n{poste}Avancement de la période : {} (cumul : {})", p.description, pourcent(m), pourcent(cumul));
             match p.taux_tva_id {
                 Some(t) => {
                     let quantite = p.quantite_e5.and_then(|q| ac::quantite_depuis_montant(m, p.total_cents, q));

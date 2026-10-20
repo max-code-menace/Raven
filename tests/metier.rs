@@ -245,7 +245,7 @@ async fn le_pdf_du_devis_suit_le_vocabulaire_et_la_franchise(options: PgPoolOpti
     .unwrap();
     let donnees = ubifacture::devis_pdf::charger_donnees(&mut b, devis).await.unwrap_or_else(|_| panic!("devis"));
     let (source, _) = ubifacture::devis_pdf::source_typst(&donnees);
-    assert!(source.contains("mot_chantier: \"Projet\"") && source.contains("franchise: true"), "{source}");
+    assert!(source.contains("mot_chantier: \"Adresse du projet\"") && source.contains("franchise: true"), "{source}");
     assert!(source.contains("Régime particulier de franchise des petites entreprises."));
     assert!(donnees.a_completer().iter().all(|m| !m.contains("Franchise")), "les lignes suivent le régime");
 }

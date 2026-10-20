@@ -107,7 +107,9 @@ async fn crediter_entierement_une_facture(options: PgPoolOptions, connexion: PgC
             .fetch_one(&pool)
             .await
             .unwrap();
-    assert_eq!((genre.as_str(), origine, reference.as_str(), numero), ("note_credit", Some(facture), "Note de crédit pour la facture n° 125", None));
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
+    let cite = format!("Note de crédit pour la facture n° {annee}-125");
+    assert_eq!((genre.as_str(), origine, reference.as_str(), numero), ("note_credit", Some(facture), cite.as_str(), None));
     assert_eq!(ttc(&pool, note).await, 102_098, "toutes les lignes sont reprises");
 
     // Cliquer deux fois rouvre le même brouillon.
@@ -124,9 +126,8 @@ async fn crediter_entierement_une_facture(options: PgPoolOptions, connexion: PgC
     assert_eq!(compteur, 125, "une note de crédit ne consomme pas de numéro de facture");
 
     let (_, page) = lire(&s, &format!("/factures/{note}")).await;
-    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
     let titre = format!("Note de crédit N° {annee}-6");
-    for attendu in [titre.as_str(), "Note de crédit pour la facture n° 125"] {
+    for attendu in [titre.as_str(), cite.as_str()] {
         assert!(page.contains(attendu), "{attendu}");
     }
     assert!(!page.contains("Créditer (note de crédit)"), "une note de crédit ne se crédite pas");

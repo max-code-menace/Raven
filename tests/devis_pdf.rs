@@ -282,7 +282,7 @@ async fn la_liste_de_ce_qu_il_reste_a_completer(options: PgPoolOptions, connexio
     let pool = commun::reserve(options, connexion).await;
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(&pool).await.unwrap();
     let (_, html) = page(&site(&pool), &format!("/devis/{d}/apercu")).await;
-    for manque in ["La référence du devis", "Le responsable", "Le client", "Les conditions de paiement", "Au moins une ligne chiffrée", "Les coordonnées de votre société"] {
+    for manque in ["La référence du devis", "Le client", "Les conditions de paiement", "Au moins une ligne chiffrée", "Les coordonnées de votre société"] {
         assert!(html.contains(manque), "{manque}");
     }
 

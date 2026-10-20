@@ -39,7 +39,7 @@
         <div class="u-col">
           <h3>Détails {% if avenant %}de l'avenant{% else %}du devis{% endif %}</h3>
           {% call m::champ("Référence *", "reference", form.reference, "text") %}{% endcall %}
-          {% call m::champ("Responsable *", "responsable", form.responsable, "text") %}{% endcall %}
+          {% call m::champ("Responsable", "responsable", form.responsable, "text") %}{% endcall %}
           <div class="grid gap-3 sm:grid-cols-[1fr_130px]">
             {% call m::champ("Date *", "date_devis", form.date_devis, "date") %}{% endcall %}
             <label class="form-control w-full">

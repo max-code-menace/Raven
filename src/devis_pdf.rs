@@ -78,9 +78,6 @@ impl Donnees {
         if self.reference.is_empty() {
             manques.push("La référence du devis".to_string());
         }
-        if self.responsable.is_empty() {
-            manques.push("Le responsable".to_string());
-        }
         if self.client.is_none() {
             manques.push("Le client".to_string());
         }
@@ -415,7 +412,8 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("numero", litteral(&d.numero)),
         ("genre", litteral(d.genre)),
         ("corrige", litteral(&d.corrige)),
-        ("mot_chantier", litteral(if d.projet { "Projet" } else { "Chantier" })),
+        // Cette ligne porte l'adresse : « Chantier » (comme dans Vertuoza) ou, pour les autres métiers, « Adresse du projet ».
+        ("mot_chantier", litteral(if d.projet { "Adresse du projet" } else { "Chantier" })),
         ("date", litteral(&d.date)),
         ("reference", litteral(&d.reference)),
         ("responsable", litteral(&d.responsable)),

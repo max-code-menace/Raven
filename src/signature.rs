@@ -151,11 +151,14 @@ pub fn navigateur(entetes: &HeaderMap) -> String {
 }
 
 /// Le texte que le client accepte en signant : le même est affiché à l'écran et gardé dans le dossier.
-pub fn texte_accord(titre: &str, date: &str, ttc: &str, entreprise: &str, verification: Verification) -> String {
+/// `conditions_generales` : l'entreprise a déposé des conditions générales (elles sont jointes au PDF du devis) ; sans
+/// elles, le texte n'en parle pas (le client ne peut pas accepter un document qui n'existe pas).
+pub fn texte_accord(titre: &str, date: &str, ttc: &str, entreprise: &str, conditions_generales: bool, verification: Verification) -> String {
+    let conditions = if conditions_generales { format!(", ainsi que les conditions générales de {entreprise},") } else { String::new() };
     let adresse = if verification == Verification::CodeParEmail { "mon adresse e-mail vérifiée, " } else { "" };
     let exemplaire = if verification == Verification::SansEmail { "" } else { " Un exemplaire signé me sera envoyé immédiatement par e-mail." };
     format!(
-        "En cochant la case « Bon pour accord » et en cliquant sur « Signer », je reconnais avoir lu {titre} du {date} d'un montant de {ttc} TVA comprise, ainsi que les conditions générales de {entreprise}, et je l'accepte. Ma signature électronique est enregistrée avec la date, l'heure, {adresse}l'empreinte numérique du document et mon adresse IP.{exemplaire}"
+        "En cochant la case « Bon pour accord » et en cliquant sur « Signer », je reconnais avoir lu {titre} du {date} d'un montant de {ttc} TVA comprise{conditions} et je l'accepte. Ma signature électronique est enregistrée avec la date, l'heure, {adresse}l'empreinte numérique du document et mon adresse IP.{exemplaire}"
     )
 }
 
@@ -314,11 +317,13 @@ mod tests {
 
     #[test]
     fn le_texte_accepte_dit_ce_qui_est_vraiment_fait() {
-        let t = texte_accord("le devis n° 2026-61", "19/10/2026", "23 304,95 €", "Ubique SRL", Verification::CodeParEmail);
+        let t = texte_accord("le devis n° 2026-61", "19/10/2026", "23 304,95 €", "Ubique SRL", true, Verification::CodeParEmail);
+        assert!(t.contains("les conditions générales de Ubique SRL, et je l'accepte"), "{t}");
         assert!(t.contains("mon adresse e-mail vérifiée") && t.contains("Un exemplaire signé me sera envoyé"), "{t}");
-        let t = texte_accord("le devis n° 2026-61", "19/10/2026", "23 304,95 €", "Ubique SRL", Verification::ModeTest);
+        let t = texte_accord("le devis n° 2026-61", "19/10/2026", "23 304,95 €", "Ubique SRL", false, Verification::ModeTest);
+        assert!(!t.contains("conditions générales") && t.contains("TVA comprise et je l'accepte"), "pas de conditions déposées : {t}");
         assert!(!t.contains("vérifiée") && t.contains("exemplaire signé"), "{t}");
-        let t = texte_accord("l'avenant n° 2", "19/10/2026", "23 304,95 €", "Ubique SRL", Verification::SansEmail);
+        let t = texte_accord("l'avenant n° 2", "19/10/2026", "23 304,95 €", "Ubique SRL", true, Verification::SansEmail);
         assert!(!t.contains("exemplaire signé") && !t.contains("vérifiée"), "pas d'adresse : pas de promesse d'envoi : {t}");
     }
 }

@@ -74,6 +74,8 @@ pub struct Entreprise {
     pub a_un_logo: bool,
     /// L'adresse du logo, propre au lien de la page.
     pub logo: String,
+    /// L'entreprise a déposé des conditions générales (jointes au PDF du devis).
+    pub conditions_generales: bool,
 }
 
 /// La pièce d'un lien secret.
@@ -115,8 +117,13 @@ async fn entreprise(db: &mut PgConnection, lien: Lien, jeton: &str) -> Result<En
     let ligne: Option<(String, String, String)> =
         sqlx::query_as("SELECT nom, email, telephone FROM societe WHERE organisation_id = app_organisation()").fetch_optional(&mut *db).await?;
     let a_un_logo: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'logo')").fetch_one(&mut *db).await?;
+    let conditions_generales: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'conditions_generales')",
+    )
+    .fetch_one(&mut *db)
+    .await?;
     let (nom, email, telephone) = ligne.unwrap_or_default();
-    Ok(Entreprise { nom, email, telephone, a_un_logo, logo: format!("/client/{}/{jeton}/logo", lien.chemin()) })
+    Ok(Entreprise { nom, email, telephone, a_un_logo, logo: format!("/client/{}/{jeton}/logo", lien.chemin()), conditions_generales })
 }
 
 fn pdf(nom: String, octets: Vec<u8>) -> Result<Response, Erreur> {
@@ -256,7 +263,7 @@ async fn page_devis(State(state): State<AppState>, Path(jeton): Path<String>, Qu
     };
     let entreprise = entreprise(&mut *db, Lien::Devis, &jeton).await?;
     let verification = Verification::pour(emails::envoi_actif(), &d.email);
-    let texte_accord = signature::texte_accord(&designation(&d.titre), &date_belge(d.date), &format_euros(d.ttc), &entreprise.nom, verification);
+    let texte_accord = signature::texte_accord(&designation(&d.titre), &date_belge(d.date), &format_euros(d.ttc), &entreprise.nom, entreprise.conditions_generales, verification);
     let copie_signee: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM devis_signatures WHERE devis_id = $1)").bind(d.id).fetch_one(&mut *db).await?;
     let page = PageDevis {
         entreprise,
@@ -384,7 +391,7 @@ async fn signer(State(state): State<AppState>, Path(jeton): Path<String>, entete
         verification,
         ip: signature::ip_du_client(&entetes),
         navigateur: signature::navigateur(&entetes),
-        texte_accepte: signature::texte_accord(&designation(&d.titre), &date_belge(d.date), &format_euros(d.ttc), &entreprise.nom, verification),
+        texte_accepte: signature::texte_accord(&designation(&d.titre), &date_belge(d.date), &format_euros(d.ttc), &entreprise.nom, entreprise.conditions_generales, verification),
         montant_ttc_cents: d.ttc,
         pdf_nom: pdf_nom.clone(),
         pdf: pdf.clone(),
@@ -584,7 +591,7 @@ mod tests {
 
     fn page_de_test(mode: &'static str, code_envoye: bool, erreur: &'static str) -> PageDevis {
         PageDevis {
-            entreprise: Entreprise { nom: "Ubique SRL".into(), email: "info@ubique.be".into(), telephone: String::new(), a_un_logo: false, logo: String::new() },
+            entreprise: Entreprise { nom: "Ubique SRL".into(), email: "info@ubique.be".into(), telephone: String::new(), a_un_logo: false, logo: String::new(), conditions_generales: false },
             jeton: "jeton".into(),
             titre: "Devis n° 2026-61".into(),
             date: "19/10/2026".into(),

@@ -311,8 +311,19 @@ impl Issue {
     }
 }
 
+/// L'expéditeur d'un e-mail d'une organisation : (nom affiché, adresse d'envoi, adresse de réponse).
+/// Avec l'adresse du site (`EMAIL_EXPEDITEUR`, validée une fois chez Brevo), l'e-mail part de cette adresse au nom de
+/// l'organisation et les réponses vont à l'organisation : chaque organisation n'a pas à faire valider son adresse.
+/// Sans elle (installation d'une seule organisation), il part de l'adresse de la société.
+fn expediteur<'a>(nom: &'a str, email_societe: &'a str, expediteur_site: Option<&'a str>) -> (&'a str, &'a str, Option<&'a str>) {
+    match expediteur_site {
+        Some(site) => (nom, site, Some(email_societe)),
+        None => (nom, email_societe, None),
+    }
+}
+
 /// Le corps de la requête envoyée à Brevo.
-fn requete_brevo(expediteur: (&str, &str), m: &Message) -> serde_json::Value {
+fn requete_brevo(expediteur: (&str, &str, Option<&str>), m: &Message) -> serde_json::Value {
     let personnes = |liste: &[String]| liste.iter().map(|a| serde_json::json!({ "email": a })).collect::<Vec<_>>();
     let mut corps = serde_json::json!({
         "sender": { "name": expediteur.0, "email": expediteur.1 },
@@ -320,6 +331,9 @@ fn requete_brevo(expediteur: (&str, &str), m: &Message) -> serde_json::Value {
         "subject": m.objet,
         "textContent": m.corps,
     });
+    if let Some(reponse) = expediteur.2 {
+        corps["replyTo"] = serde_json::json!({ "name": expediteur.0, "email": reponse });
+    }
     if !m.copie.is_empty() {
         corps["cc"] = serde_json::Value::Array(personnes(&m.copie));
     }
@@ -362,7 +376,8 @@ pub(crate) async fn envoyer(db: &mut PgConnection, m: Message) -> Result<(i64, I
             if !email_valide(&email) {
                 (Issue::Echec, "La société n'a pas d'adresse e-mail valable (Réglages › Société).".to_string(), String::new())
             } else {
-                let corps = requete_brevo((&nom, &email), &m);
+                let site = CONFIG.get().and_then(|c| c.expediteur_site.clone());
+                let corps = requete_brevo(expediteur(&nom, &email, site.as_deref()), &m);
                 let reponse = poster_brevo(cle, corps).await;
                 match reponse {
                     Ok(v) => (Issue::Envoye, String::new(), v["messageId"].as_str().unwrap_or_default().to_string()),
@@ -435,12 +450,17 @@ mod tests {
             corps: "Bonjour".into(),
             pieces: vec![("Facture-125.pdf".into(), b"%PDF".to_vec())],
         };
-        let r = requete_brevo(("Ubique", "info@exemple.be"), &m);
+        let r = requete_brevo(expediteur("Ubique", "info@exemple.be", None), &m);
         assert_eq!(r["sender"]["email"], "info@exemple.be");
+        assert!(r.get("replyTo").is_none());
         assert_eq!(r["to"][0]["email"], "client@exemple.be");
         assert_eq!(r["attachment"][0]["name"], "Facture-125.pdf");
         assert_eq!(r["attachment"][0]["content"], "JVBERg==");
         assert!(r.get("cc").is_none());
+        // En SaaS : l'adresse du site envoie, au nom de l'organisation, et les réponses vont à l'organisation.
+        let r = requete_brevo(expediteur("Ubique", "info@exemple.be", Some("envoi@raven.be")), &m);
+        assert_eq!((r["sender"]["name"].as_str(), r["sender"]["email"].as_str()), (Some("Ubique"), Some("envoi@raven.be")));
+        assert_eq!(r["replyTo"]["email"], "info@exemple.be");
     }
 
     #[test]

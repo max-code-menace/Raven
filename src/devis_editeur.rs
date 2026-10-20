@@ -253,10 +253,8 @@ fn valider(f: &DevisForm, r: &Referentiel, avenant: bool, annee_numero: Option<i
     if reference.is_empty() {
         erreurs.push("La référence est obligatoire.".to_string());
     }
+    // Facultatif : un indépendant seul n'a pas à se nommer ; vide, il n'apparaît pas sur le PDF.
     let responsable = f.responsable.trim().to_string();
-    if responsable.is_empty() {
-        erreurs.push("Le responsable est obligatoire.".to_string());
-    }
     let date_devis = NaiveDate::parse_from_str(f.date_devis.trim(), "%Y-%m-%d").ok();
     if date_devis.is_none() {
         erreurs.push("La date du devis est obligatoire.".to_string());

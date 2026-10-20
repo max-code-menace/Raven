@@ -761,10 +761,11 @@ async fn liens(db: &mut PgConnection, f: &Facture) -> Result<Vec<Lien>, sqlx::Er
         liens.push(Lien { adresse: format!("/chantiers/{chantier}/avancements/{avancement}"), texte: format!("Avancement n° {numero} ({reference})") });
     }
     if let Some(origine) = f.facture_origine_id {
-        let numero: Option<i64> = sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(origine).fetch_one(&mut *db).await?;
+        let (numero, date): (Option<i64>, NaiveDate) =
+            sqlx::query_as("SELECT numero, date_facture FROM factures WHERE id = $1").bind(origine).fetch_one(&mut *db).await?;
         liens.push(Lien {
             adresse: format!("/factures/{origine}"),
-            texte: format!("Note de crédit pour la facture n° {}", numero.map(|n| n.to_string()).unwrap_or_default()),
+            texte: format!("Note de crédit pour la facture n° {}", numero.map(|n| numero_affiche(date, n)).unwrap_or_default()),
         });
     }
     // Facture préparée par une récurrence, ou modèle d'une récurrence.
@@ -1315,7 +1316,7 @@ async fn crediter(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur>
          FROM factures WHERE id = $1 RETURNING id",
     )
     .bind(id)
-    .bind(format!("Note de crédit pour la facture n° {numero}"))
+    .bind(format!("Note de crédit pour la facture n° {}", numero_affiche(f.date_facture, numero)))
     .fetch_one(&mut *tx)
     .await?;
     sqlx::query(

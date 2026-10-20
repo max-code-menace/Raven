@@ -169,7 +169,7 @@ async fn l_exemple_reel_avancement_puis_facture_finale(options: PgPoolOptions, c
     assert_eq!((genre.as_str(), reference.as_str(), client.is_some(), avancement), ("avancement", "Avancement n° 1", true, Some(av)));
     assert_eq!(montants(&pool, fa).await, (363_447, 21_807, 385_254));
     let (_, page) = lire(&s, &format!("/factures/{fa}")).await;
-    for attendu in ["Facture d&#39;avancement", "Devis 2026-57", "1.1 Carrelage", "Avancement de la période : 50,00 %", "Chantier n° 1"] {
+    for attendu in ["Facture d&#39;avancement", "Devis 2026-57", "Carrelage", "Poste 1.1 · Avancement de la période : 50,00 %", "Chantier n° 1"] {
         assert!(page.contains(attendu) || page.contains(&attendu.replace("&#39;", "'")), "{attendu}");
     }
     assert!(!page.contains("name=\"quantite\""), "les lignes d'avancement ne se saisissent pas");
@@ -240,7 +240,8 @@ async fn l_acompte_est_deduit_de_la_facture_finale(options: PgPoolOptions, conne
     assert_eq!(ht, 462_264);
     assert_eq!((tva, ttc), (27_736, 490_000));
     let (_, page) = lire(&s, &format!("/factures/{finale}")).await;
-    assert!(page.contains("Déduction des acomptes (facture n° 125)"));
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
+    assert!(page.contains(&format!("Déduction des acomptes (facture n° {annee}-125)")));
     assert_eq!(valider_facture(&pool, &s, finale).await, 126);
     // Total facturé HT = total du chantier.
     let total: i64 = sqlx::query_scalar("SELECT sum(montant_ht_cents)::bigint FROM factures WHERE chantier_id = $1")

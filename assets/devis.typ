@@ -136,7 +136,7 @@
     ..if d.corrige != "" { (text(fill: gris)[Corrige], d.corrige) } else { () },
     text(fill: gris)[Référence], d.reference,
     text(fill: gris)[Date], d.date,
-    text(fill: gris)[Responsable], d.responsable,
+    ..if d.responsable != "" { (text(fill: gris)[Responsable], d.responsable) } else { () },
     ..if d.chantier != "" { (text(fill: gris)[#d.mot_chantier], d.chantier) } else { () },
   )
   v(0.6cm)
