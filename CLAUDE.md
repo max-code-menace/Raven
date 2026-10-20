@@ -275,10 +275,13 @@ Après la V1, seulement si les utilisateurs le demandent : réception Peppol (fa
   - **Vouvoiement** dans tous les écrans, messages et e-mails du site (inscription, mot de passe, invitation).
   - Tests : `tests/metier.rs` (projet et modules éteints puis rallumés, membre sans droit, bâtiment, import gardé pour Ubique, franchise de bout en bout avec UBL et PDF, 12 %, ligne hors régime refusée, PDF du devis) ; le test d'isolation couvre Réglages › Métier et modules (B y est du bâtiment pour couvrir toutes les adresses).
 - [ ] V1 de Raven, étape 4 : bibliothèque par secteur.
+- [ ] V1 de Raven, étape 5 : envoi Peppol.
+  - [x] 5-0 : comparaison des points d'accès (20/10/2026, `docs/peppol-points-acces.md`). Recommandation de Claude : Recommand (belge, prix publiés, toutes les organisations dans un compte), e-invoice.be en rechange ; devis à demander à Digiteal et Scrada. Raven n'inscrit pas l'organisation en réception (V1 : envoi seulement). **En attente du choix de Mahx** et des réponses des prestataires (10 questions dans le document).
 
 ## Fichiers de documentation
 - `docs/vertuoza-releve.md` : relevé complet de Vertuoza et décisions de Mahx.
 - `docs/vertuoza-formulaires.md` : détail des formulaires et exemple chiffré.
 - `docs/vertuoza-inventaire.md` : inventaire du 17/10/2026 (ce qu'Ubique utilise, comparaison avec Ubifacture, ajouts).
+- `docs/peppol-points-acces.md` : comparaison des points d'accès Peppol (étape 5), questions à poser aux prestataires.
 - `docs/conformite.md` : règles belges (TVA, rappels, signature, archivage) : ce qui est fait, les choix, les questions pour le comptable et l'avocat.
 - `docs/plan-vertuoza-rust.html` : première version du plan, **dépassée** par ce fichier.
