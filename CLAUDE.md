@@ -116,7 +116,9 @@ Après la V1, seulement si les utilisateurs le demandent : réception Peppol (fa
 **Installé chez Mahx le 19/10/2026** (Raven étapes 1 à 3) : branche récupérée (`eb8d42b`), `cargo test` sur Windows : 387 réussis, 0 échec ; sauvegarde de la vraie base faite avant la migration (`ubifacture-avant-raven.backup` sur le Bureau, 112 Ko, format `pg_dump -F c`, restauration avec `pg_restore`) ; `cargo run` lancé, migrations 0025 à 0029 appliquées aux données d'Ubique, Mahx a confirmé que tout va bien. `pg_dump` : `C:\Program Files\PostgreSQL\16\bin\pg_dump.exe`. Toujours lancer PowerShell normal (pas administrateur) dans le dossier du projet.
 
 **Questions ouvertes à Mahx** :
-- Étape 4, contenu de la bibliothèque par secteur : une liste type préparée par Claude (descriptions et unités, sans prix) ou la bibliothèque d'Ubique (209 ouvrages, `docs/vertuoza/captures/inventaire/bibliotheque-vertuoza.csv`) nettoyée et classée ?
+- **À la prochaine session, en premier** : étape 4, contenu de la bibliothèque par secteur. Trois choix proposés le 20/10/2026 : (1) une liste type préparée par Claude pour chaque métier (descriptions et unités, sans prix) ; (2) la bibliothèque d'Ubique (209 ouvrages, `docs/vertuoza/captures/inventaire/bibliotheque-vertuoza.csv`) nettoyée et classée, bâtiment seulement ; (3) **conseillé par Claude** : les ouvrages d'Ubique pour le bâtiment et une liste type pour les autres métiers. Réponse de Mahx attendue.
+- Mahx doit vérifier à l'œil, sur http://127.0.0.1:3001, que les devis, factures et chantiers d'Ubique sont intacts après les migrations 0030 à 0034.
+- Le dépôt Raven est **public** alors que la marque n'est pas vérifiée : à passer en privé si Mahx le souhaite. Les anciennes branches (`claude/stoic-allen-z04f7l`, `claude/great-gauss-bo8bhb`) peuvent être supprimées.
 - À faire valider : mention de franchise « Régime particulier de franchise des petites entreprises. » (comptable) ; catégorie UBL « E » pour la franchise (prestataire Peppol, étape 5).
 - Choix de Claude à confirmer : un compte = une organisation ; import de métrés Excel éteint par défaut pour les nouvelles organisations (allumé pour Ubique).
 
