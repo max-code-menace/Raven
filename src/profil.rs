@@ -77,6 +77,31 @@ fn mot_pour(projet: bool, forme: &str) -> &'static str {
     }
 }
 
+/// Le nom d'un type de ligne (« Main d'œuvre », « Sous-traitant »…) pour l'organisation : les métiers « Projet »
+/// parlent de « Prestation » et de « Sous-traitance » (choix de Mahx du 20/10/2026 : des mots du métier, pas du
+/// chantier). Le type lui-même, et donc les calculs (heures, rentabilité), ne changent pas.
+pub fn type_ligne(libelle: &'static str) -> &'static str {
+    type_ligne_pour(actuel().projet, libelle)
+}
+
+fn type_ligne_pour(projet: bool, libelle: &'static str) -> &'static str {
+    match (projet, libelle) {
+        (true, "Main d'œuvre") => "Prestation",
+        (true, "Sous-traitant") => "Sous-traitance",
+        _ => libelle,
+    }
+}
+
+/// Le nom d'une catégorie de postes, au pluriel (rentabilité, achats, suivi) : « Main d'œuvre » devient
+/// « Prestations », « Sous-traitants » devient « Sous-traitance » pour les métiers « Projet ».
+pub fn categorie(libelle: &'static str) -> &'static str {
+    match (actuel().projet, libelle) {
+        (true, "Main d'œuvre") => "Prestations",
+        (true, "Sous-traitants") => "Sous-traitance",
+        _ => libelle,
+    }
+}
+
 /// Remplace « chantier » (toutes ses formes, en mot entier) par le mot de l'organisation dans un texte écrit par
 /// l'application (jamais dans un texte saisi par l'utilisateur).
 pub fn adapter(texte: &str) -> String {
@@ -121,9 +146,12 @@ mod tests {
                 "Projet n° 3 · Nouveau projet · 2 projets · Projets en cours · Achats du projet"
             );
             assert_eq!(adapter("chantiers_liste et Préchantier"), "chantiers_liste et Préchantier", "mots entiers seulement");
+            assert_eq!((type_ligne("Main d'œuvre"), type_ligne("Sous-traitant"), type_ligne("Fourniture")), ("Prestation", "Sous-traitance", "Fourniture"));
+            assert_eq!((categorie("Main d'œuvre"), categorie("Sous-traitants"), categorie("Équipements")), ("Prestations", "Sous-traitance", "Équipements"));
         })
         .await;
         assert_eq!(adapter("Chantier"), "Chantier");
+        assert_eq!((type_ligne("Main d'œuvre"), categorie("Main d'œuvre")), ("Main d'œuvre", "Main d'œuvre"), "bâtiment");
     }
 }
 

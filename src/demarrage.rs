@@ -22,7 +22,7 @@ use crate::commun::{Choix, PAYS, choix_fixes};
 use crate::societe::{self, REGIMES_TVA, SocieteForm};
 use crate::{AppState, Erreur};
 
-/// Les métiers proposés (le profil règlera le vocabulaire et les modules à l'étape 3, la bibliothèque à l'étape 4).
+/// Les métiers proposés : ils règlent le vocabulaire, les modules et les bibliothèques de Raven cochées au départ.
 pub const PROFILS: [(&str, &str); 5] = [
     ("batiment", "Bâtiment (rénovation, menuiserie, gyproc, maçonnerie…)"),
     ("espaces_verts", "Espaces verts (jardin, élagage, abattage…)"),
@@ -180,6 +180,8 @@ async fn enregistrer(mut db: Base, Form(s): Form<Saisie>) -> Result<Response, Er
     .bind(batiment)
     .execute(&mut *tx)
     .await?;
+    // Les bibliothèques de Raven de ce métier (sans prix ; modifiables dans Réglages › Bibliothèques).
+    crate::catalogue::cocher_metier(&mut tx, &s.profil_metier).await?;
     tx.commit().await?;
     Ok(Redirect::to("/").into_response())
 }

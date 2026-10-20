@@ -71,7 +71,9 @@ async fn textes_de_a(pool: &PgPool) -> Vec<String> {
             UNION SELECT description FROM devis_lignes UNION SELECT description FROM facture_lignes UNION SELECT nom FROM devis_signatures
             UNION SELECT u.email FROM utilisateurs u JOIN membres m ON m.utilisateur_id = u.id AND m.organisation_id = 1
             UNION SELECT email FROM invitations WHERE organisation_id = 1
-         ) t WHERE length(x) >= 6",
+         ) t WHERE length(x) >= 6
+           -- Les textes du catalogue commun de Raven (noms des bibliothèques, ouvrages) sont les mêmes pour tous.
+           AND x NOT IN (SELECT nom FROM catalogue_bibliotheques UNION SELECT description FROM catalogue_ouvrages)",
     )
     .fetch_all(pool)
     .await
@@ -195,13 +197,13 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         "/", "/devis", "/factures", "/factures?statut=en_retard", "/chantiers", "/chantiers?statut=tous", "/entreprises", "/contacts",
         "/bibliotheque", "/bibliotheque/choisir?q=a", "/statistiques", "/statistiques?periode=12_mois", "/exports", "/factures/rappels",
         "/factures/recurrences", "/achats", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
-        "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
+        "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/parametres/bibliotheques", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
     ] {
         deux("GET", chemin.to_string());
     }
     for chemin in [
         "/factures/rappels", "/factures/recurrences/preparer", "/exports", "/parametres/emails/devis", "/parametres/rappels", "/demarrage",
-        "/parametres/equipe/inviter", "/parametres/metier", "/parametres/rappels/mentions",
+        "/parametres/equipe/inviter", "/parametres/metier", "/parametres/rappels/mentions", "/parametres/bibliotheques", "/bibliotheque/vider",
     ] {
         deux("POST", chemin.to_string());
     }
@@ -213,7 +215,7 @@ const FORMULAIRE: &str = "date=2026-10-01&reference=Intrus&responsable=Intrus&no
 &quantite=1&unite=h&prix_unitaire=1&pourcentage=50&montant=1&mode=pourcentage&valeur=10&libelle=Intrus&email=intrus%40exemple.be\
 &destinataires=intrus%40exemple.be&objet=Intrus&corps=Intrus&debut=2026-01-01&fin=2026-12-31&format=les_deux&contenu=toutes\
 &date_debut=2026-10-01&date_fin=2027-10-01&frequence=mois&intervalle=1&jours_avance=0&categorie=fourniture&fournisseur=Intrus\
-&prix_vente=1&prix_achat=1&marge=10&remplacer=oui&rappel_premier_jours=3&rappel_suivant_jours=3&motif=Intrus&q=a";
+&prix_vente=1&prix_achat=1&marge=10&remplacer=oui&rappel_premier_jours=3&rappel_suivant_jours=3&motif=Intrus&q=a&confirme=oui";
 
 struct Reponse {
     statut: StatusCode,
@@ -262,6 +264,15 @@ async fn b_ne_voit_ni_ne_modifie_rien_de_a_sur_aucune_page(options: PgPoolOption
     let pool = commun::reserve(options, connexion).await;
     let site_a = app(AppState { db: pool.clone() });
     donnees::remplir(&pool, &site_a).await;
+    // A a coché une bibliothèque de Raven (B, du bâtiment, ne l'a pas) et a mis son prix sur un de ses ouvrages.
+    {
+        let mut c = pool.acquire().await.unwrap();
+        ubifacture::catalogue::cocher(&mut c, "graphisme.graphisme").await.unwrap();
+        sqlx::query("UPDATE ouvrages SET prix_vente_e5 = 90_000_000, personnalise = true WHERE description = 'Création de logo'")
+            .execute(&mut *c)
+            .await
+            .unwrap();
+    }
     // L'archive légale des factures validées de A (fabriquée au premier téléchargement) et un dossier de preuve de
     // signature : B ne doit voir ni l'une ni l'autre.
     for f in ids(&pool, "SELECT id FROM factures WHERE numero IS NOT NULL AND NOT reprise").await {

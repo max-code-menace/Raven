@@ -12,6 +12,7 @@ pub mod contacts_import;
 pub mod db;
 pub mod demarrage;
 pub mod calcul;
+pub mod catalogue;
 pub mod devis;
 pub mod devis_apercu;
 pub mod devis_copie;
@@ -156,6 +157,7 @@ fn pages() -> Router<AppState> {
         .merge(demarrage::routes())
         .merge(equipe::routes())
         .merge(metier::routes())
+        .merge(catalogue::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
         .merge(bibliotheque_import::routes())

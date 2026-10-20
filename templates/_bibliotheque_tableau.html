@@ -17,7 +17,7 @@
         <td class="nw">{{ l.unite }}</td>
         <td class="n">{{ l.achat }}</td>
         <td class="n">{{ l.marge }}</td>
-        <td class="n font-medium">{{ l.vente }}</td>
+        <td class="n font-medium">{% if l.sans_prix %}<span class="u-pastille s-brouillon">{{ l.vente }}</span>{% else %}{{ l.vente }}{% endif %}</td>
         <td class="n">
           <div class="inline-flex gap-0.5">
             <a class="btn u-ib" href="/bibliotheque/{{ l.id }}" aria-label="Modifier" title="Modifier">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
@@ -32,7 +32,7 @@
         </td>
       </tr>
       {% else %}
-      <tr class="vide"><td colspan="9">Aucun ouvrage trouvé. « Nouveau » en haut à droite pour en ajouter.</td></tr>
+      <tr class="vide"><td colspan="9">Aucun ouvrage trouvé. « Nouveau » en haut à droite pour en ajouter, ou cochez des bibliothèques dans <a class="underline" href="/parametres/bibliotheques">Réglages › Bibliothèques</a>.</td></tr>
       {% endfor %}
     </tbody>
   </table>

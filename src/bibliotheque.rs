@@ -37,8 +37,11 @@ pub(crate) const GENRES: [(&str, &str); 6] = [
 ];
 
 fn libelle_genre(code: &str) -> &'static str {
-    GENRES.iter().find(|(c, _)| *c == code).map(|(_, l)| *l).unwrap_or("Ouvrage")
+    crate::profil::type_ligne(GENRES.iter().find(|(c, _)| *c == code).map(|(_, l)| *l).unwrap_or("Ouvrage"))
 }
+
+/// Ce qu'affiche un prix de vente vide.
+pub(crate) const PRIX_A_COMPLETER: &str = "À compléter";
 
 /// « 42,5 » € → « 42,50 € ».
 fn prix(e5: i64) -> String {
@@ -64,8 +67,8 @@ pub(crate) fn vente_depuis_marge(achat_e5: i64, marge_e5: i64) -> i64 {
     ((n + d / 2).div_euclid(d)) as i64
 }
 
-fn marge_texte(achat: Option<i64>, vente: i64) -> String {
-    match achat.and_then(|a| marge_e5(a, vente)) {
+fn marge_texte(achat: Option<i64>, vente: Option<i64>) -> String {
+    match achat.zip(vente).and_then(|(a, v)| marge_e5(a, v)) {
         Some(m) => {
             let centiemes = (m + if m >= 0 { 500 } else { -500 }) / 1_000;
             calcul::taux_en_texte(centiemes as i32)
@@ -85,7 +88,7 @@ struct OuvrageLu {
     fournisseur: String,
     unite: String,
     pub(crate) prix_achat_e5: Option<i64>,
-    pub(crate) prix_vente_e5: i64,
+    pub(crate) prix_vente_e5: Option<i64>,
 }
 
 pub struct Ligne {
@@ -99,6 +102,8 @@ pub struct Ligne {
     pub achat: String,
     pub marge: String,
     pub vente: String,
+    /// Le prix de vente est vide : « À compléter ».
+    pub sans_prix: bool,
 }
 
 impl From<OuvrageLu> for Ligne {
@@ -109,7 +114,8 @@ impl From<OuvrageLu> for Ligne {
             classe_genre: format!("u-type-{}", b.genre),
             achat: b.prix_achat_e5.map(prix).unwrap_or_else(|| "—".to_string()),
             marge: marge_texte(b.prix_achat_e5, b.prix_vente_e5),
-            vente: prix(b.prix_vente_e5),
+            vente: b.prix_vente_e5.map(prix).unwrap_or_else(|| PRIX_A_COMPLETER.to_string()),
+            sans_prix: b.prix_vente_e5.is_none(),
             description: b.description,
             categorie: b.categorie,
             fournisseur: b.fournisseur,
@@ -142,6 +148,9 @@ pub struct Liste {
 struct PageListe {
     liste: Liste,
     message_ok: &'static str,
+    message_erreur: &'static str,
+    /// Le nombre d'ouvrages de la bibliothèque (toutes catégories), pour « Vider ma bibliothèque ».
+    tout: i64,
 }
 
 #[derive(Template)]
@@ -158,6 +167,7 @@ struct Recherche {
     categorie: String,
     page: String,
     ok: String,
+    erreur: String,
 }
 
 const DEPUIS: &str = "FROM ouvrages WHERE ($1 = '' OR description ILIKE $2 OR categorie ILIKE $2 OR fournisseur ILIKE $2)
@@ -224,9 +234,11 @@ async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> 
             "cree" => "L'ouvrage est ajouté à la bibliothèque.",
             "modifie" => "L'ouvrage est enregistré.",
             "supprime" => "L'ouvrage est retiré de la bibliothèque (les devis qui l'utilisent ne changent pas).",
+            "vide" => "Votre bibliothèque est vide (les devis ne changent pas). Cochez des bibliothèques dans Réglages › Bibliothèques, ou ajoutez vos ouvrages.",
             _ => "",
         };
-        PageListe { liste, message_ok }.render()?
+        let message_erreur = if r.erreur == "droits" { "Seul un propriétaire peut vider la bibliothèque." } else { "" };
+        PageListe { liste, message_ok, message_erreur, tout }.render()?
     };
     Ok(Html(html))
 }
@@ -255,7 +267,8 @@ pub(crate) struct Valeurs {
     pub(crate) fournisseur: String,
     pub(crate) unite: String,
     pub(crate) prix_achat_e5: Option<i64>,
-    pub(crate) prix_vente_e5: i64,
+    /// Vide : « Prix à compléter ».
+    pub(crate) prix_vente_e5: Option<i64>,
     pub(crate) remarque: String,
 }
 
@@ -298,13 +311,11 @@ pub(crate) fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
         erreurs.push("La marge n'est pas un nombre.".to_string());
         None
     });
+    // Ni prix de vente, ni prix d'achat et marge : le prix reste vide (« à compléter »).
     let vente = match (nombre(&s.prix_vente), achat, marge) {
         (Ok(Some(v)), _, _) => Some(v),
         (Ok(None), Some(a), Some(m)) => Some(vente_depuis_marge(a, m)),
-        (Ok(None), _, _) => {
-            erreurs.push("Indiquez le prix de vente, ou le prix d'achat et la marge.".to_string());
-            None
-        }
+        (Ok(None), _, _) => None,
         (Err(()), _, _) => {
             erreurs.push("Le prix de vente n'est pas un nombre.".to_string());
             None
@@ -314,15 +325,15 @@ pub(crate) fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
     if remarque.chars().count() > LONGUEUR_MAX_DESCRIPTION {
         erreurs.push("La remarque est trop longue (5 000 caractères au maximum).".to_string());
     }
-    match (erreurs.is_empty(), genre, vente) {
-        (true, Some(genre), Some(prix_vente_e5)) => Ok(Valeurs {
+    match (erreurs.is_empty(), genre) {
+        (true, Some(genre)) => Ok(Valeurs {
             description,
             genre,
             categorie: s.categorie.trim().to_string(),
             fournisseur: s.fournisseur.trim().to_string(),
             unite: s.unite.trim().to_string(),
             prix_achat_e5: achat,
-            prix_vente_e5,
+            prix_vente_e5: vente,
             remarque,
         }),
         _ => Err(erreurs),
@@ -345,12 +356,15 @@ async fn page_fiche(db: &mut PgConnection, id: Option<i64>, saisie: Saisie, erre
         sqlx::query_scalar("SELECT DISTINCT categorie FROM ouvrages WHERE categorie <> '' ORDER BY categorie").fetch_all(&mut *db).await?;
     let achat = calcul::lire_decimal_e5(&saisie.prix_achat);
     let marge_calculee = match calcul::lire_decimal_e5(&saisie.prix_vente) {
-        Some(v) => marge_texte(achat, v),
+        Some(v) => marge_texte(achat, Some(v)),
         None => String::new(),
     };
     let page = PageFiche {
         id,
-        genres: GENRES.iter().map(|(v, l)| Choix { valeur: (*v).into(), libelle: (*l).into(), choisi: *v == saisie.genre }).collect(),
+        genres: GENRES
+            .iter()
+            .map(|(v, l)| Choix { valeur: (*v).into(), libelle: crate::profil::type_ligne(l).into(), choisi: *v == saisie.genre })
+            .collect(),
         categories,
         marge_calculee,
         erreurs,
@@ -370,8 +384,12 @@ async fn enregistrer(db: &mut PgConnection, id: Option<i64>, v: &Valeurs) -> Res
              VALUES ($1, $2::text::genre_ligne, $3, $4, $5, $6, $7, $8) RETURNING id"
         }
         Some(_) => {
+            // Un ouvrage venu d'une bibliothèque de Raven et changé ici est « personnalisé » : il reste si l'on décoche
+            // sa bibliothèque (Réglages › Bibliothèques).
             "UPDATE ouvrages SET description = $1, genre = $2::text::genre_ligne, categorie = $3, fournisseur = $4, unite = $5,
-                    prix_achat_e5 = $6, prix_vente_e5 = $7, remarque = $8, updated_at = now()
+                    prix_achat_e5 = $6, prix_vente_e5 = $7, remarque = $8, updated_at = now(),
+                    personnalise = personnalise OR (description, genre::text, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5, remarque)
+                                   IS DISTINCT FROM ($1, $2, $3, $4, $5, $6, $7, $8)
              WHERE id = $9 RETURNING id"
         }
     };
@@ -418,7 +436,7 @@ async fn creer(mut db: Base, Form(s): Form<Saisie>) -> Result<Response, Erreur> 
 }
 
 async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    let ligne: Option<(String, String, String, String, String, Option<i64>, i64, String)> = sqlx::query_as(
+    let ligne: Option<(String, String, String, String, String, Option<i64>, Option<i64>, String)> = sqlx::query_as(
         "SELECT description, genre::text, categorie, fournisseur, unite, prix_achat_e5, prix_vente_e5, remarque FROM ouvrages WHERE id = $1",
     )
     .bind(id)
@@ -433,7 +451,7 @@ async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Err
         unite,
         prix_achat: achat.map(calcul::ecrire_decimal_e5).unwrap_or_default(),
         marge: String::new(),
-        prix_vente: calcul::ecrire_decimal_e5(vente),
+        prix_vente: vente.map(calcul::ecrire_decimal_e5).unwrap_or_default(),
         remarque,
     };
     page_fiche(&mut *db, Some(id), saisie, Vec::new()).await
@@ -521,8 +539,9 @@ mod tests {
     fn la_marge_et_le_prix_de_vente() {
         // 29 € d'achat, 42,50 € de vente : 46,55 % de marge.
         assert_eq!(marge_e5(2_900_000, 4_250_000), Some(4_655_172));
-        assert_eq!(marge_texte(Some(2_900_000), 4_250_000), "46,55 %");
-        assert_eq!(marge_texte(None, 4_250_000), "—");
+        assert_eq!(marge_texte(Some(2_900_000), Some(4_250_000)), "46,55 %");
+        assert_eq!(marge_texte(None, Some(4_250_000)), "—");
+        assert_eq!(marge_texte(Some(2_900_000), None), "—", "prix de vente à compléter");
         // 28 € + 60 % = 44,80 €.
         assert_eq!(vente_depuis_marge(2_800_000, 6_000_000), 4_480_000);
     }
@@ -530,11 +549,13 @@ mod tests {
     #[test]
     fn la_saisie_d_un_ouvrage() {
         let v = verifier(&saisie("28", "60", "")).unwrap();
-        assert_eq!((v.prix_achat_e5, v.prix_vente_e5, v.genre), (Some(2_800_000), 4_480_000, "fourniture"));
+        assert_eq!((v.prix_achat_e5, v.prix_vente_e5, v.genre), (Some(2_800_000), Some(4_480_000), "fourniture"));
         // Le prix de vente saisi l'emporte sur la marge.
-        assert_eq!(verifier(&saisie("28", "60", "45")).unwrap().prix_vente_e5, 4_500_000);
+        assert_eq!(verifier(&saisie("28", "60", "45")).unwrap().prix_vente_e5, Some(4_500_000));
         assert_eq!(verifier(&saisie("", "", "45")).unwrap().prix_achat_e5, None);
-        assert!(verifier(&saisie("28", "", "")).is_err(), "ni prix de vente ni marge");
+        // Sans prix de vente (ni marge), il reste vide : « à compléter », jamais 0 €.
+        assert_eq!(verifier(&saisie("28", "", "")).unwrap().prix_vente_e5, None);
+        assert_eq!(verifier(&saisie("", "", "")).unwrap().prix_vente_e5, None);
         assert!(verifier(&saisie("-1", "", "45")).is_err());
         assert!(verifier(&saisie("abc", "", "45")).is_err());
         assert!(verifier(&Saisie { genre: "titre".into(), ..saisie("", "", "45") }).is_err(), "un titre n'est pas un ouvrage");

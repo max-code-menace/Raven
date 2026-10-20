@@ -32,7 +32,7 @@ Décisions fermes, à ne pas remettre en question :
 - **Vouvoiement** dans tout le produit (écrans, messages, e-mails, pages publiques) : décision de Mahx du 19/10/2026. Les explications de Claude à Mahx et la ligne de commande restent au tutoiement.
 
 ## Décisions de Mahx (20/10/2026, étape 4 : bibliothèques)
-- **Bibliothèque d'Ubique supprimée** (jamais utilisée) : Mahx la vide lui-même par un bouton « Vider ma bibliothèque » (avec confirmation, pour toutes les organisations), pas par une migration. Le fichier des 209 ouvrages de Vertuoza n'est pas repris et sort du dépôt.
+- **Bibliothèque d'Ubique supprimée** (jamais utilisée) : Mahx la vide lui-même par un bouton « Vider ma bibliothèque » (avec confirmation, pour toutes les organisations), pas par une migration. Le fichier des 209 ouvrages de Vertuoza n'est pas repris (il n'a jamais été versionné).
 - **Catalogue commun de Raven dans la base** (tables communes, pas dans le code), en arbre métier › sous-catégorie. Départ : Bâtiment (maçonnerie et gros œuvre, gyproc et plafonnage, menuiserie, électricité, plomberie et chauffage, toiture, carrelage), Espaces verts (entretien, élagage et abattage (bûcheronnage compris), aménagement), Peinture, Graphisme. Listes à relire par Mahx : https://claude.ai/code/artifact/ae2015cf-f632-4be0-b082-ea623cbd5fb4
 - **Cocher / décocher par sous-catégorie**, ouvert à tous (le métier choisi à l'inscription coche d'avance, modifiable dans Réglages › Bibliothèques). Cocher **copie** les ouvrages dans la bibliothèque de l'organisation : ils sont à elle seule (RLS, test d'isolation), modifiables (description, unité, type, catégorie, prix). Décocher retire les ouvrages non modifiés et **garde ceux que l'utilisateur a modifiés**.
 - **Aucun prix dans le catalogue** : produit, description, unité, type. Les cases de prix sont **vides (pas 0 €)** : filtre « Prix à compléter » et alerte à l'insertion dans un devis d'un ouvrage sans prix.
@@ -40,7 +40,8 @@ Décisions fermes, à ne pas remettre en question :
 - **Mises à jour du catalogue** : « N nouveaux ouvrages disponibles : ajouter ? », sans jamais toucher aux ouvrages déjà copiés.
 - **« Ma bibliothèque »** (ouvrages créés à la main ou importés) plus visible, à côté des bibliothèques Raven.
 - **Back office dans la V1**, très petit et protégé (rôle « administrateur Raven » à part, connexion séparée) : le catalogue (ajouter, corriger, retirer, publier une mise à jour) et la liste des organisations (nom, inscription, métier, utilisateurs, formule, essai ou payé), **jamais leurs devis ni leurs factures**.
-- Découpage proposé : 4-1 catalogue, cocher / décocher, copie, prix vides, « Vider ma bibliothèque » ; 4-2 corbeille et « Prix à compléter » ; 4-3 back office ; 4-4 mises à jour du catalogue.
+- **Types de ligne des métiers « Projet »** (demande de Mahx : des mots du métier, pas du chantier) : « Prestation » au lieu de « Main d'œuvre », « Sous-traitance » au lieu de « Sous-traitant » (`profil::type_ligne`, `profil::categorie` : « Prestations » au pluriel) ; Fourniture et Équipements inchangés ; les calculs ne changent pas.
+- Découpage : 4-1 catalogue, cocher / décocher, copie, prix vides, « Vider ma bibliothèque » ; 4-2 corbeille et « Prix à compléter » ; 4-3 back office ; 4-4 mises à jour du catalogue.
 
 ## Décisions de Mahx (15/10/2026)
 - **Page client en ligne** (consulter, signer, payer par QR code) : **oui, dès la phase 1**.
@@ -119,17 +120,19 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés. Dossier du proj
 
 Après la V1, seulement si les utilisateurs le demandent : réception Peppol (factures fournisseurs à valider et rattacher), CodaBox (extraits CODA, rapprochement par la communication structurée), statistiques avancées.
 
-## Prochaine session (point de reprise, 19/10/2026)
-**Où on en est** : étapes 0 à 3 de la V1 de Raven faites, branche `claude/stoic-allen-z04f7l` (poussée, arbre propre), 387 tests réussis, 0 avertissement. Migrations jusqu'à `0029`.
+## Prochaine session (point de reprise, 20/10/2026)
+**Où on en est** : étapes 0 à 3 de la V1 de Raven faites, plus l'étape 4-1 (bibliothèques de Raven), branche `claude/funny-hawking-jda6so`, 443 tests réussis, 0 avertissement. Migrations jusqu'à `0035`.
+
+**À faire chez Mahx pour 4-1** : récupérer la branche, `cargo test`, `cargo run` (migration 0035), puis dans Bibliothèque, menu « ⋯ » › « Vider ma bibliothèque » (case « Je confirme ») pour supprimer la bibliothèque d'Ubique, et cocher ce qui sert dans Réglages › Bibliothèques.
 
 **Installé chez Mahx le 19/10/2026** : branche récupérée (`eb8d42b`), `cargo test` sur Windows : 387 réussis, 0 échec ; sauvegarde de la vraie base faite avant la migration (`ubifacture-avant-raven.backup` sur le Bureau, 112 Ko, format `pg_dump -F c`, restauration avec `pg_restore`) ; `cargo run` lancé, migrations 0025 à 0029 appliquées aux données d'Ubique, Mahx a confirmé que tout va bien. `pg_dump` : `C:\Program Files\PostgreSQL\16\bin\pg_dump.exe`. Toujours lancer PowerShell normal (pas administrateur) dans le dossier du projet.
 
 **Questions ouvertes à Mahx** :
-- Étape 4 : relecture des listes d'ouvrages par Mahx (page en ligne, voir « Décisions de Mahx (20/10/2026) »), puis code de 4-1. Rien n'est encore codé.
+- Étape 4 : listes relues et validées par Mahx le 20/10/2026 (« parfait pour un début ») ; 4-1 faite, feu vert attendu pour 4-2.
 - À faire valider : mention de franchise « Régime particulier de franchise des petites entreprises. » (comptable) ; catégorie UBL « E » pour la franchise (prestataire Peppol, étape 5).
 - Choix de Claude à confirmer : un compte = une organisation ; import de métrés Excel éteint par défaut pour les nouvelles organisations (allumé pour Ubique).
 
-**Ensuite** : étape 4 (bibliothèques : voir « Décisions de Mahx (20/10/2026) »), puis 5 (Peppol), 6 (Mollie), 7 (production), 8 (bêta). Reprise des données de Vertuoza toujours en pause.
+**Ensuite** : étape 4-2 (corbeille, filtre « Prix à compléter »), 4-3 (back office), 4-4 (mises à jour du catalogue), puis 5 (Peppol), 6 (Mollie), 7 (production), 8 (bêta). Reprise des données de Vertuoza toujours en pause.
 
 **Relevé par le mini audit, à traiter à l'étape 7 (mise en production)** :
 - Réserve de connexions limitée à 5 (`db::options`) alors que chaque page garde sa connexion (`base::Base`) jusqu'à la fin, PDF et appel à Brevo compris : la rendre réglable (variable d'environnement) et plus grande.
@@ -227,7 +230,7 @@ Après la V1, seulement si les utilisateurs le demandent : réception Peppol (fa
   - **Factures récurrentes** (`src/recurrences.rs`, location mensuelle de deux lots) : type « Facture récurrente » ; « Créer/voir la récurrence » sur une facture simple ou récurrente (`/factures/{id}/recurrence` : début, fin, journalière / hebdomadaire / mensuelle / annuelle, tous les N, le jour même ou N jours avant ; nombre d'occurrences en direct) ; écran **Finances › Factures récurrentes** (`/factures/recurrences`) et « À surveiller » : « Préparer les factures » crée un brouillon par échéance arrivée (copie de l'en-tête et des lignes du modèle, daté du jour prévu) ; une échéance préparée n'est plus reproposée.
   - **Modèles d'e-mails** devis, avenant et facture : les textes d'Ubique repris de Vertuoza ; [NOM_CHANTIER] = référence du chantier.
   - **Ouvertures par vos clients** (tableau de bord) : chaque ouverture d'un devis ou d'une facture en ligne (table `consultations_client`).
-  - **Import de la bibliothèque** (`src/bibliotheque_import.rs`, `/bibliotheque/import`) : Excel (.xlsx) ou CSV, colonnes retrouvées par leur titre, sans doublons. Les 209 ouvrages relevés : `docs/vertuoza/captures/inventaire/bibliotheque-vertuoza.csv` (à importer dans la vraie base).
+  - **Import de la bibliothèque** (`src/bibliotheque_import.rs`, `/bibliotheque/import`) : Excel (.xlsx) ou CSV, colonnes retrouvées par leur titre, sans doublons. Les 209 ouvrages relevés dans Vertuoza ne seront pas importés (décision de Mahx du 20/10/2026 : bibliothèque d'Ubique abandonnée).
   - Liste des factures : colonne **Chantier**.
 - [x] Lisibilité et habitudes de Vertuoza (17/10/2026, retours de Mahx) : 350 tests.
   - **Contraste** (`_styles.html`) : menu latéral foncé comme Vertuoza, fond gris plus soutenu, cartes à bord et ombre nets, en-têtes de tableaux en gras, textes secondaires plus foncés, statuts plus colorés. Aucun écran déplacé.
@@ -285,7 +288,11 @@ Après la V1, seulement si les utilisateurs le demandent : réception Peppol (fa
   - **Écrans propres à Ubique et à Vertuoza** : plus de mention de Vertuoza dans les écrans d'import (bibliothèque, contacts, métrés) ; le bandeau « Facture reprise de Vertuoza » reste sur les seules factures reprises. Modèles d'e-mails de départ sans « chantier » (avenant). La commande `reprise` reste (ligne de commande, pour Ubique).
   - **Vouvoiement** dans tous les écrans, messages et e-mails du site (inscription, mot de passe, invitation).
   - Tests : `tests/metier.rs` (projet et modules éteints puis rallumés, membre sans droit, bâtiment, import gardé pour Ubique, franchise de bout en bout avec UBL et PDF, 12 %, ligne hors régime refusée, PDF du devis) ; le test d'isolation couvre Réglages › Métier et modules (B y est du bâtiment pour couvrir toutes les adresses).
-- [ ] V1 de Raven, étape 4 : bibliothèques par métier (décisions du 20/10/2026 prises, listes en relecture, pas encore de code).
+- [ ] V1 de Raven, étape 4 : bibliothèques par métier (décisions du 20/10/2026, voir plus haut). Découpée en :
+  - [x] 4-1 (20/10/2026, 443 tests) : migration `0035_bibliotheques_raven.sql` : catalogue commun `catalogue_metiers` (4), `catalogue_bibliotheques` (12 : bâtiment × 7, espaces verts × 3, peinture, graphisme), `catalogue_ouvrages` (300, description, type et unité, **aucun prix**) ; `organisation_bibliotheques` (cochées, RLS) ; `ouvrages.prix_vente_e5` peut rester vide, `ouvrages.catalogue_ouvrage_id` (origine d'une copie, unique par organisation) et `ouvrages.personnalise`. `src/catalogue.rs` : **Réglages › Bibliothèques** (`/parametres/bibliotheques`, propriétaire seulement, un membre voit) : un bloc repliable par métier, une case par bibliothèque ; cocher copie les ouvrages (catégorie = nom de la bibliothèque, prix vides), décocher retire les copies non modifiées et garde les modifiées (message « N ajoutés · N retirés · N gardés »), recocher ne fait pas de doublon. Enregistrer une fiche d'ouvrage avec un changement le marque « personnalisé » (sans changement : non). L'assistant de démarrage coche les bibliothèques du métier choisi (« autre » : aucune) ; les organisations déjà en service (Ubique) n'ont rien de coché. **« Vider ma bibliothèque »** (`/bibliotheque/vider`, menu « ⋯ » de la Bibliothèque, case « Je confirme », propriétaire seulement) : tous les ouvrages supprimés et tout décoché ; les devis gardent leurs lignes. Prix vide : « À compléter » dans la liste et la recherche du devis ; un prix de vente n'est plus obligatoire (fiche et import) ; inséré dans un devis, l'ouvrage arrive à 0 € avec le message « pas encore de prix ». Métiers « Projet » : « Prestation », « Sous-traitance » dans les menus de type, la bibliothèque, la rentabilité, les achats et le tableau de bord du projet. Tests : `tests/catalogue.rs` ; le test d'isolation couvre les nouvelles adresses (A a coché une bibliothèque et personnalisé un ouvrage ; les textes du catalogue commun sont exclus de la recherche de fuites, ils sont publics).
+  - [ ] 4-2 : corbeille (supprimer / récupérer), filtre « Prix à compléter ».
+  - [ ] 4-3 : back office (catalogue, liste des organisations).
+  - [ ] 4-4 : mises à jour du catalogue (« nouveaux ouvrages disponibles »).
 
 ## Fichiers de documentation
 - `docs/vertuoza-releve.md` : relevé complet de Vertuoza et décisions de Mahx.

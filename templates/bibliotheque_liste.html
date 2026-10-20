@@ -10,7 +10,18 @@
     {% call ui::titre_liste("bibliotheque", "Bibliothèque") %}{% endcall %}
     <div class="u-actions">
       <span class="u-petit u-muet">Les ouvrages s'insèrent dans un devis depuis l'onglet Encodage.</span>
+      <a class="btn" href="/parametres/bibliotheques">Bibliothèques de Raven</a>
       <a class="btn" href="/bibliotheque/import">Importer (Excel, CSV)</a>
+      {% if tout > 0 %}
+      <details class="u-menu">
+        <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
+        <form method="post" action="/bibliotheque/vider" class="u-menu-liste u-menu-form">
+          <span class="u-petit">Supprimer les {{ tout }} ouvrages de votre bibliothèque et décocher toutes les bibliothèques de Raven ? Les devis gardent leurs lignes. Cette action est définitive.</span>
+          <label class="flex gap-2 items-center u-petit"><input class="checkbox checkbox-sm" type="checkbox" name="confirme" value="oui" required> Je confirme</label>
+          <button class="btn btn-danger btn-sm" type="submit">Vider ma bibliothèque</button>
+        </form>
+      </details>
+      {% endif %}
       <a class="btn btn-primary" href="/bibliotheque/nouveau">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</a>
     </div>
   </div>
@@ -18,6 +29,9 @@
 {% endblock %}
 
 {% block content %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
 {% if !message_ok.is_empty() %}
 <div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
