@@ -1,6 +1,6 @@
 //! Factures et notes de crédit au format **UBL 2.1** (étape 8-4), selon la norme européenne EN 16931 dans sa variante
-//! **Peppol BIS Billing 3.0** : c'est ce que lisent les logiciels comptables belges (et ce qu'il faudra envoyer par
-//! Peppol en phase 2).
+//! **Peppol BIS Billing 3.0** : c'est ce que lisent les logiciels comptables belges, et ce qui part par Peppol
+//! (étape 5). L'adresse Peppol des parties (`EndpointID`) vient de `peppol` : le numéro d'entreprise belge (0208).
 //!
 //! Les lignes sont écrites « 1 × montant » : une ligne d'avancement vaut le montant avancé, pas forcément
 //! quantité × prix ; la quantité et l'unité réelles sont reprises dans la description de l'article.
@@ -26,6 +26,8 @@ pub struct Partie {
     pub tva: String,
     pub email: String,
     pub telephone: String,
+    /// L'adresse Peppol (« 0208:0123456789 ») ; aucune pour un particulier.
+    pub peppol: Option<crate::peppol::Identifiant>,
 }
 
 #[derive(Clone)]
@@ -105,10 +107,8 @@ fn balise(xml: &mut String, nom: &str, valeur: &str) {
 fn partie(xml: &mut String, role: &str, p: &Partie) {
     let _ = write!(xml, "<cac:{role}><cac:Party>");
     let tva = compact(&p.tva);
-    if !tva.is_empty() {
-        // 9925 : numéro de TVA belge dans le réseau Peppol.
-        let schema = if tva.starts_with("BE") { "9925" } else { "9930" };
-        let _ = write!(xml, "<cbc:EndpointID schemeID=\"{schema}\">{}</cbc:EndpointID>", echapper(&tva));
+    if let Some(id) = &p.peppol {
+        let _ = write!(xml, "<cbc:EndpointID schemeID=\"{}\">{}</cbc:EndpointID>", echapper(&id.schema), echapper(&id.numero));
     }
     let _ = write!(xml, "<cac:PartyName><cbc:Name>{}</cbc:Name></cac:PartyName>", echapper(&p.nom));
     xml.push_str("<cac:PostalAddress>");
@@ -265,6 +265,7 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
             code_postal,
             ville,
             pays,
+            peppol: crate::peppol::depuis_tva(tva.as_deref().unwrap_or("")),
             tva: tva.unwrap_or_default(),
             email,
             telephone,
@@ -272,8 +273,8 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
         .unwrap_or_default();
     let colonnes = "nom_affiche, trim(concat_ws(' ', COALESCE(facturation_rue, rue), COALESCE(facturation_numero, numero))),
                     COALESCE(facturation_code_postal, code_postal), COALESCE(facturation_ville, ville), COALESCE(facturation_pays, pays),
-                    COALESCE(numero_tva, ''), COALESCE(email, ''), COALESCE(telephone, '')";
-    let acheteur: Option<(String, String, String, String, String, String, String, String)> = if let Some(e) = f.client_entreprise_id {
+                    COALESCE(numero_tva, ''), COALESCE(email, ''), COALESCE(telephone, ''), peppol_id";
+    let acheteur: Option<(String, String, String, String, String, String, String, String, Option<String>)> = if let Some(e) = f.client_entreprise_id {
         sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT {colonnes} FROM (SELECT *, nom AS nom_affiche FROM entreprises) x WHERE id = $1")))
             .bind(e)
             .fetch_optional(&mut *db)
@@ -289,7 +290,17 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
         None
     };
     let acheteur = acheteur
-        .map(|(nom, rue, code_postal, ville, pays, tva, email, telephone)| Partie { nom, rue, code_postal, ville, pays, tva, email, telephone })
+        .map(|(nom, rue, code_postal, ville, pays, tva, email, telephone, peppol_id)| Partie {
+            peppol: crate::peppol::du_client(peppol_id.as_deref(), &tva),
+            nom,
+            rue,
+            code_postal,
+            ville,
+            pays,
+            tva,
+            email,
+            telephone,
+        })
         .unwrap_or_default();
     let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
     let conditions = match f.conditions_paiement_id {
@@ -352,7 +363,13 @@ mod tests {
             reference: "L63 Toiture & co".into(),
             remarque: String::new(),
             facture_corrigee: note_credit.then_some(125),
-            vendeur: Partie { nom: "Ubique SRL".into(), tva: "BE 0123.456.789".into(), pays: "BE".into(), ..Default::default() },
+            vendeur: Partie {
+                nom: "Ubique SRL".into(),
+                tva: "BE 0123.456.749".into(),
+                pays: "BE".into(),
+                peppol: crate::peppol::depuis_tva("BE 0123.456.749"),
+                ..Default::default()
+            },
             acheteur: Partie { nom: "Lambert <Marc>".into(), ..Default::default() },
             iban: "BE68 5390 0754 7034".into(),
             vcs: "+++000/0000/12629+++".into(),
@@ -381,7 +398,8 @@ mod tests {
             "<cbc:ID>126</cbc:ID><cbc:IssueDate>2026-10-16</cbc:IssueDate><cbc:DueDate>2026-10-23</cbc:DueDate>",
             "<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>",
             "<cbc:BuyerReference>L63 Toiture &amp; co</cbc:BuyerReference>",
-            "<cbc:EndpointID schemeID=\"9925\">BE0123456789</cbc:EndpointID>",
+            "<cbc:EndpointID schemeID=\"0208\">0123456749</cbc:EndpointID>",
+            "<cbc:CompanyID>BE0123456749</cbc:CompanyID>",
             "<cbc:Name>Lambert &lt;Marc&gt;</cbc:Name>",
             "<cbc:PaymentID>+++000/0000/12629+++</cbc:PaymentID><cac:PayeeFinancialAccount><cbc:ID>BE68539007547034</cbc:ID>",
             "<cbc:TaxAmount currencyID=\"EUR\">178.16</cbc:TaxAmount>",
@@ -393,7 +411,7 @@ mod tests {
             assert!(xml.contains(attendu), "{attendu}\n{xml}");
         }
         assert!(xml.ends_with("</Invoice>\n"));
-        // Un particulier sans TVA n'a pas d'identifiant Peppol.
+        // Un particulier sans TVA n'a pas d'adresse Peppol.
         assert_eq!(xml.matches("<cbc:EndpointID").count(), 1);
     }
 

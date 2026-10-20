@@ -40,6 +40,7 @@ pub mod page_client;
 pub mod paiements;
 pub mod profil;
 pub mod pdf;
+pub mod peppol;
 pub mod rappels;
 pub mod recurrences;
 pub mod archive;

@@ -48,6 +48,11 @@
           {% call m::champ("Nom de l'entreprise *", "nom", form.nom, "text") %}{% endcall %}
         {% endif %}
         {% call m::champ("Numéro de TVA", "numero_tva", form.numero_tva, "text") %}{% endcall %}
+        <label class="form-control w-full">
+          <span class="u-lbl">Identifiant Peppol</span>
+          <input class="input input-bordered w-full mono" type="text" name="peppol_id" value="{{ form.peppol_id }}" placeholder="0088:5400000000001">
+          <small class="u-muet">Laissez vide pour un client belge : son adresse Peppol se déduit de son numéro de TVA (0208 et le numéro d'entreprise). À remplir pour un client étranger ou inscrit sous un autre identifiant.</small>
+        </label>
       </div>
       <div class="u-col">
         <h3>Profils</h3>

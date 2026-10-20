@@ -735,6 +735,8 @@ struct Page {
     rappel: Option<(String, bool)>,
     /// L'archive légale (PDF et UBL tels qu'émis) d'une pièce validée.
     archive: Vec<crate::archive::Ligne>,
+    /// Facturation électronique : l'adresse Peppol du client et ce qui empêche l'envoi (pièce validée seulement).
+    peppol: Option<crate::peppol::Bloc>,
 }
 
 #[derive(Template)]
@@ -870,6 +872,7 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour
         lien_client: if f.numero.is_some() { crate::page_client::lien(&mut *db, crate::emails::Piece::Facture, id).await? } else { String::new() },
         rappel: if solde.etat == "en_retard" { crate::rappels::resume_facture(&mut *db, id).await? } else { None },
         archive: if f.numero.is_some() { crate::archive::lignes(&mut *db, &f).await? } else { Vec::new() },
+        peppol: crate::peppol::controler(&mut *db, &f).await?,
     };
     Ok(Html(page.render()?))
 }

@@ -197,6 +197,7 @@ struct Fiche {
     nom: String,
     profils: Vec<String>,
     numero_tva: Option<String>,
+    peppol_id: Option<String>,
     identifiant_comptable: Option<String>,
     franco_cents: Option<i64>,
     rue: String,
@@ -239,6 +240,7 @@ pub struct FicheForm {
     entreprise_id: String,
     profils: Vec<String>,
     numero_tva: String,
+    peppol_id: String,
     identifiant_comptable: String,
     franco: String,
     rue: String,
@@ -288,6 +290,7 @@ impl From<Fiche> for FicheForm {
             entreprise_id: id(f.entreprise_id),
             profils: f.profils,
             numero_tva: t(f.numero_tva),
+            peppol_id: t(f.peppol_id),
             identifiant_comptable: t(f.identifiant_comptable),
             franco: f.franco_cents.map(centimes_vers_texte).unwrap_or_default(),
             rue: f.rue,
@@ -322,6 +325,7 @@ struct Valeurs {
     nom: String,
     profils: Vec<String>,
     numero_tva: Option<String>,
+    peppol_id: Option<String>,
     identifiant_comptable: Option<String>,
     franco_cents: Option<i64>,
     rue: String,
@@ -407,6 +411,16 @@ fn valider(f: &FicheForm, genre: Genre, options: &Options) -> Result<Valeurs, Ve
     if source.as_deref().is_some_and(|s| !SOURCES.iter().any(|(v, _)| *v == s)) {
         erreurs.push("Cette source n'existe pas.".to_string());
     }
+    let peppol_id = match vide_en_none(&f.peppol_id) {
+        None => None,
+        Some(texte) => match crate::peppol::lire(&texte) {
+            Ok(i) => Some(i.to_string()),
+            Err(e) => {
+                erreurs.push(e);
+                None
+            }
+        },
+    };
     if !LANGUES.iter().any(|(v, _)| *v == f.langue) {
         erreurs.push("Cette langue n'existe pas.".to_string());
     }
@@ -434,6 +448,7 @@ fn valider(f: &FicheForm, genre: Genre, options: &Options) -> Result<Valeurs, Ve
         nom,
         profils,
         numero_tva: vide_en_none(&f.numero_tva),
+        peppol_id,
         identifiant_comptable: vide_en_none(&f.identifiant_comptable),
         franco_cents,
         rue: f.rue.trim().to_string(),
@@ -467,8 +482,8 @@ fn valider(f: &FicheForm, genre: Genre, options: &Options) -> Result<Valeurs, Ve
 
 // ─── Enregistrement ─────────────────────────────────────────────────────────
 
-const COLONNES: [&str; 27] = [
-    "nom", "profils", "numero_tva", "identifiant_comptable", "franco_cents", "rue", "numero", "code_postal",
+const COLONNES: [&str; 28] = [
+    "nom", "profils", "numero_tva", "peppol_id", "identifiant_comptable", "franco_cents", "rue", "numero", "code_postal",
     "ville", "pays", "facturation_identique", "facturation_rue", "facturation_numero",
     "facturation_code_postal", "facturation_ville", "facturation_pays", "email", "email_bis", "telephone",
     "site_web", "iban", "bic", "conditions_paiement_id", "taux_tva_id", "source", "langue", "description",
@@ -493,6 +508,7 @@ fn lier<'q>(
         .bind(v.nom.clone())
         .bind(v.profils.clone())
         .bind(v.numero_tva.clone())
+        .bind(v.peppol_id.clone())
         .bind(v.identifiant_comptable.clone())
         .bind(v.franco_cents)
         .bind(v.rue.clone())
