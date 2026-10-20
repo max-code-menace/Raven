@@ -4,7 +4,7 @@
     <thead>
       <tr>
         <th>N°</th>
-        <th>Début de chantier</th>
+        <th>Début de {{ crate::profil::mot("chantier") }}</th>
         <th>Référence</th>
         <th>Client</th>
         <th>Adresse</th>
@@ -25,7 +25,7 @@
         <td><span class="u-pastille {{ l.classe_statut }}">{{ l.statut }}</span></td>
         <td class="n">
           <div class="inline-flex gap-0.5">
-            <a class="btn u-ib" href="/chantiers/{{ l.id }}" aria-label="Ouvrir le chantier" title="Ouvrir le chantier">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
+            <a class="btn u-ib" href="/chantiers/{{ l.id }}" aria-label="Ouvrir le {{ crate::profil::mot("chantier") }}" title="Ouvrir le {{ crate::profil::mot("chantier") }}">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
             <details class="u-menu">
               <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
               <div class="u-menu-liste">
@@ -41,7 +41,7 @@
       </tr>
       {% else %}
       <tr class="vide">
-        <td colspan="8">Aucun chantier trouvé.</td>
+        <td colspan="8">Aucun {{ crate::profil::mot("chantier") }} trouvé.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -50,7 +50,7 @@
 
 <div class="u-pied">
   {% call ui::par_page() %}{% endcall %}
-  <span>{{ liste.total }} chantier{% if liste.total > 1 %}s{% endif %}</span>
+  <span>{{ liste.total }} {{ crate::profil::mot("chantier") }}{% if liste.total > 1 %}s{% endif %}</span>
   <div class="u-totaux">
     <div><small>Devis + avenants HT</small><strong>{{ liste.total_ht }}</strong></div>
     <div><small>Reste à facturer HT</small><strong>{{ liste.reste_a_facturer }}</strong></div>

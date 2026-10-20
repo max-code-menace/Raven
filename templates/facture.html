@@ -59,10 +59,10 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 {% if !message_erreur.is_empty() %}
-<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_erreur) }}</span></div>
 {% endif %}
 {% if reprise %}
 <div role="status" class="u-bandeau">
@@ -281,6 +281,21 @@
       {% else %}
       <div class="u-ligne-montant u-muet">Rien à signaler.</div>
       {% endfor %}
+    </section>
+    {% endif %}
+    {% if !archive.is_empty() %}
+    <section class="u-card" id="archive">
+      <div class="u-card-h"><h2>Archive légale</h2></div>
+      <div class="u-card-b">
+        <p class="u-petit u-muet" style="margin:0">Le PDF et le fichier UBL tels qu'ils ont été émis : ils ne changent plus et partent tels quels au client et au comptable. À conserver 10 ans (art. 60 du Code TVA).</p>
+        {% for d in archive %}
+        <div style="display:flex;flex-direction:column;gap:2px;margin-top:8px">
+          <span><a href="{{ d.adresse }}"><strong>{{ d.libelle }}</strong> · {{ d.nom }}</a> <small class="u-muet">({{ d.taille }})</small></span>
+          <small class="u-muet">Archivé le {{ d.quand }}</small>
+          <small class="u-muet mono" style="word-break:break-all">SHA-256 : {{ d.empreinte }}</small>
+        </div>
+        {% endfor %}
+      </div>
     </section>
     {% endif %}
     {% if !lien_client.is_empty() %}

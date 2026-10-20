@@ -1,12 +1,17 @@
 // Tests de l'étape 6-1 : le chantier naît de l'acceptation du devis ; liste et fiche.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -80,7 +85,8 @@ async fn chantier_de(pool: &PgPool, devis: i64) -> Option<(i64, i64, String, Str
 // ─── Création à l'acceptation ───────────────────────────────────────────────
 
 #[sqlx::test]
-async fn accepter_un_devis_cree_son_chantier(pool: PgPool) {
+async fn accepter_un_devis_cree_son_chantier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 57, "L63", "Client A").await;
     let s = site(&pool);
     assert_eq!(chantier_de(&pool, d).await, None);
@@ -95,7 +101,8 @@ async fn accepter_un_devis_cree_son_chantier(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_numeros_de_chantier_se_suivent(pool: PgPool) {
+async fn les_numeros_de_chantier_se_suivent(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let a = devis(&pool, 1, "A", "Client A").await;
     let b = devis(&pool, 2, "B", "Client B").await;
@@ -108,7 +115,8 @@ async fn les_numeros_de_chantier_se_suivent(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn refuser_ou_une_date_invalide_ne_cree_pas_de_chantier(pool: PgPool) {
+async fn refuser_ou_une_date_invalide_ne_cree_pas_de_chantier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let a = devis(&pool, 1, "A", "Client A").await;
     let (_, lieu) = poster(&s, &format!("/devis/{a}/statut/accepter"), "date=2026-09-01").await;
@@ -121,7 +129,8 @@ async fn refuser_ou_une_date_invalide_ne_cree_pas_de_chantier(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_devis_ne_donne_qu_un_seul_chantier(pool: PgPool) {
+async fn un_devis_ne_donne_qu_un_seul_chantier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "A", "Client A").await;
     sqlx::query("INSERT INTO chantiers (numero, devis_id, date_debut) VALUES (1, $1, '2026-10-01')").bind(d).execute(&pool).await.unwrap();
     let res = sqlx::query("INSERT INTO chantiers (numero, devis_id, date_debut) VALUES (2, $1, '2026-10-01')").bind(d).execute(&pool).await;
@@ -131,7 +140,8 @@ async fn un_devis_ne_donne_qu_un_seul_chantier(pool: PgPool) {
 // ─── Liste ──────────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_liste_montre_les_chantiers_en_cours_par_defaut(pool: PgPool) {
+async fn la_liste_montre_les_chantiers_en_cours_par_defaut(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let a = devis(&pool, 1, "PL45", "Client A").await;
     let b = devis(&pool, 2, "C44", "Client B").await;
@@ -160,7 +170,8 @@ async fn la_liste_montre_les_chantiers_en_cours_par_defaut(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_liste_vide_le_dit(pool: PgPool) {
+async fn la_liste_vide_le_dit(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, page) = lire(&site(&pool), "/chantiers?statut=bidon&q=%25").await;
     assert_eq!(statut, StatusCode::OK);
     assert!(page.contains("Aucun chantier trouvé."));
@@ -169,7 +180,8 @@ async fn la_liste_vide_le_dit(pool: PgPool) {
 // ─── Fiche ──────────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_fiche_reprend_le_devis(pool: PgPool) {
+async fn la_fiche_reprend_le_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let d = devis(&pool, 57, "L63", "Client A").await;
     accepter(&s, d, "2026-10-05").await;
@@ -188,7 +200,8 @@ async fn la_fiche_reprend_le_devis(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn l_adresse_propre_au_devis_l_emporte(pool: PgPool) {
+async fn l_adresse_propre_au_devis_l_emporte(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let d = devis(&pool, 1, "A", "Client A").await;
     sqlx::query("UPDATE devis SET chantier_identique = false, chantier_rue = 'Chaussée de Mons', chantier_numero = '3', chantier_code_postal = '7000', chantier_ville = 'Mons' WHERE id = $1")
@@ -203,7 +216,8 @@ async fn l_adresse_propre_au_devis_l_emporte(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn changer_le_statut_et_la_date_de_debut(pool: PgPool) {
+async fn changer_le_statut_et_la_date_de_debut(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let d = devis(&pool, 1, "A", "Client A").await;
     accepter(&s, d, "2026-10-05").await;
@@ -228,7 +242,8 @@ async fn changer_le_statut_et_la_date_de_debut(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_chantier_inconnu_donne_404(pool: PgPool) {
+async fn un_chantier_inconnu_donne_404(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     assert_eq!(lire(&s, "/chantiers/999").await.0, StatusCode::NOT_FOUND);
     assert_eq!(lire(&s, "/chantiers/999/devis").await.0, StatusCode::NOT_FOUND);
@@ -236,7 +251,8 @@ async fn un_chantier_inconnu_donne_404(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_menu_mene_aux_chantiers(pool: PgPool) {
+async fn le_menu_mene_aux_chantiers(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (_, page) = lire(&site(&pool), "/devis").await;
     assert!(page.contains("href=\"/chantiers\""));
 }

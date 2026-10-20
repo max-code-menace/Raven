@@ -34,22 +34,36 @@
   <div class="u-card-h"><h2>{% call ui::icone("crayon", 17) %}{% endcall %}Signer le devis</h2></div>
   <div class="u-card-b">
     {% if !erreur.is_empty() %}<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>{% endif %}
+    {% if mode == "code" && code_envoye && erreur.is_empty() %}<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Un code à 6 chiffres vient d'être envoyé à {{ email_masque }}. Il est valable 10 minutes.</span></div>{% endif %}
     <label class="form-control">
       <span class="u-lbl">Votre nom complet <i>*</i></span>
-      <input class="input input-bordered" type="text" name="nom" maxlength="120" autocomplete="name" required>
+      <input class="input input-bordered" type="text" name="nom" maxlength="120" autocomplete="name" value="{{ nom_saisi }}" required>
     </label>
     <label class="flex gap-3 items-start text-[14px]">
       <input class="checkbox checkbox-sm mt-0.5" type="checkbox" name="accord" value="oui" required>
-      <span><strong>Bon pour accord.</strong> J'ai lu le devis et ses conditions générales et je les accepte, pour un total de {{ ttc }} TTC.</span>
+      <span><strong>Bon pour accord.</strong> {{ texte_accord }}</span>
     </label>
+    {% if mode == "code" %}
+      {% if code_envoye %}
+      <label class="form-control">
+        <span class="u-lbl">Code reçu par e-mail <i>*</i></span>
+        <input class="input input-bordered mono" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+      </label>
+      <button class="btn btn-primary" type="submit">Signer le devis</button>
+      <button class="btn btn-ghost btn-sm" type="submit" formaction="/client/devis/{{ jeton }}/code" formnovalidate>Recevoir un nouveau code</button>
+      {% else %}
+      <button class="btn btn-primary" type="submit" formaction="/client/devis/{{ jeton }}/code">Recevoir le code par e-mail</button>
+      <span class="u-petit u-muet">Pour signer, nous vérifions que vous êtes bien le destinataire de ce devis : un code à usage unique est envoyé à {{ email_masque }}.</span>
+      {% endif %}
+    {% else %}
     <button class="btn btn-primary" type="submit">Signer le devis</button>
-    <span class="u-petit u-muet">Votre nom, la date et l'heure sont enregistrés avec la signature.</span>
+    {% endif %}
   </div>
 </form>
 {% else if etat == "signe" %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Signé le {{ signe_le }} par {{ signe_par }}.</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Signé le {{ signe_le }} par {{ signe_par }}.{% if copie_signee %} <a href="/client/devis/{{ jeton }}/signe" target="_blank" rel="noopener">Télécharger l'exemplaire signé (PDF)</a>{% endif %}</span></div>
 {% else if etat == "accepte" %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Ce devis est accepté.{% if !signe_par.is_empty() %} Signé le {{ signe_le }} par {{ signe_par }}.{% endif %}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Ce devis est accepté.{% if !signe_par.is_empty() %} Signé le {{ signe_le }} par {{ signe_par }}.{% endif %}{% if copie_signee %} <a href="/client/devis/{{ jeton }}/signe" target="_blank" rel="noopener">Télécharger l'exemplaire signé (PDF)</a>{% endif %}</span></div>
 {% else %}
 <div role="status" class="u-bandeau">{% call ui::icone("info", 18) %}{% endcall %}<span>Ce devis n'est plus valable. Contactez {{ entreprise.nom }} pour une nouvelle offre.</span></div>
 {% endif %}

@@ -10,15 +10,16 @@ use std::io::Write as _;
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, Query, State},
+    extract::{Form, Path, Query},
     http::{HeaderValue, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use chrono::{Datelike, NaiveDate};
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgConnection};
 
+use crate::base::Base;
 use crate::commun::{Choix, email_valide};
 use crate::emails::{self, Issue, Message};
 use crate::{AppState, Erreur, factures};
@@ -69,7 +70,7 @@ struct Piece {
     reference: String,
 }
 
-async fn pieces(db: &PgPool, debut: NaiveDate, fin: NaiveDate, seulement_nouvelles: bool) -> Result<Vec<Piece>, sqlx::Error> {
+async fn pieces(db: &mut PgConnection, debut: NaiveDate, fin: NaiveDate, seulement_nouvelles: bool) -> Result<Vec<Piece>, sqlx::Error> {
     sqlx::query_as(
         "SELECT f.id, f.genre::text AS genre, f.numero, f.date_facture, f.date_echeance,
                 COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), ''), '') AS client,
@@ -87,7 +88,7 @@ async fn pieces(db: &PgPool, debut: NaiveDate, fin: NaiveDate, seulement_nouvell
     .bind(debut)
     .bind(fin)
     .bind(seulement_nouvelles)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await
 }
 
@@ -139,19 +140,19 @@ fn nom_piece(genre: &str, numero: i64, annee: Option<i32>) -> String {
 }
 
 /// Construit le ZIP du dossier d'export.
-async fn construire_zip(db: &PgPool, pieces: &[Piece], format: &str) -> Result<Vec<u8>, Erreur> {
+async fn construire_zip(db: &mut PgConnection, pieces: &[Piece], format: &str) -> Result<Vec<u8>, Erreur> {
     let mut fichiers: Vec<(String, Vec<u8>)> = vec![("recapitulatif.csv".to_string(), recapitulatif(pieces).into_bytes())];
     let plusieurs_annees = pieces.iter().any(|p| p.date_facture.year() != pieces[0].date_facture.year());
     for p in pieces {
         let nom = nom_piece(&p.genre, p.numero, plusieurs_annees.then(|| p.date_facture.year()));
         if format != "ubl" {
-            let f = factures::charger(db, p.id).await?.ok_or_else(Erreur::introuvable)?;
-            let (_, pdf) = crate::facture_pdf::pdf_de_la_facture(db, &f).await?;
+            let f = factures::charger(&mut *db, p.id).await?.ok_or_else(Erreur::introuvable)?;
+            let (_, pdf) = crate::archive::pdf(&mut *db, &f).await?;
             fichiers.push((format!("PDF/{nom}.pdf"), pdf));
         }
-        if format != "pdf"
-            && let Some(xml) = crate::ubl::de_la_facture(db, p.id).await?
-        {
+        if format != "pdf" {
+            let f = factures::charger(&mut *db, p.id).await?.ok_or_else(Erreur::introuvable)?;
+            let Some(xml) = crate::archive::ubl(&mut *db, &f).await? else { continue };
             fichiers.push((format!("UBL/{nom}.xml"), xml.into_bytes()));
         }
     }
@@ -218,11 +219,11 @@ impl Retour {
     fn message_erreur(&self) -> &'static str {
         match self.erreur.as_str() {
             "periode" => "La période n'est pas valable : deux dates, la seconde après la première.",
-            "choix" => "Choisis un format et un contenu.",
+            "choix" => "Choisissez un format et un contenu.",
             "vide" => "Aucune pièce validée dans cette période (ou toutes déjà exportées) : rien à exporter.",
             "comptable" => "L'adresse du comptable n'est pas valable.",
-            "sans_comptable" => "Indique d'abord l'adresse e-mail du comptable.",
-            "trop_gros" => "Le dossier dépasse 10 Mo : trop gros pour un e-mail. Télécharge-le et envoie-le autrement, ou fais des périodes plus courtes.",
+            "sans_comptable" => "Indiquez d'abord l'adresse e-mail du comptable.",
+            "trop_gros" => "Le dossier dépasse 10 Mo : trop gros pour un e-mail. Téléchargez-le et envoyez-le autrement, ou faites des périodes plus courtes.",
             "echec" => "L'e-mail au comptable n'a pas pu partir : le détail est dans Réglages › E-mails.",
             _ => "",
         }
@@ -237,17 +238,17 @@ fn taille(octets: i64) -> String {
     }
 }
 
-async fn afficher(State(state): State<AppState>, Query(r): Query<Retour>) -> Result<Html<String>, Erreur> {
+async fn afficher(mut db: Base, Query(r): Query<Retour>) -> Result<Html<String>, Erreur> {
     let lignes: Vec<(i64, String, NaiveDate, NaiveDate, String, String, i32, i64, Option<String>, String)> = sqlx::query_as(
         "SELECT id, to_char(created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI'), date_debut, date_fin, format, contenu,
                 nombre_pieces, octet_length(fichier)::bigint, to_char(envoye_le AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY'), envoye_a
          FROM exports ORDER BY created_at DESC, id DESC",
     )
-    .fetch_all(&state.db)
+    .fetch_all(&mut *db)
     .await?;
-    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&state.db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let (debut, fin) = mois_precedent(aujourdhui);
-    let email_comptable: String = sqlx::query_scalar("SELECT email_comptable FROM reglages WHERE id = 1").fetch_one(&state.db).await?;
+    let email_comptable: String = sqlx::query_scalar("SELECT email_comptable FROM reglages WHERE organisation_id = app_organisation()").fetch_one(&mut *db).await?;
     let page = Page {
         exports: lignes
             .into_iter()
@@ -283,7 +284,7 @@ struct Demande {
     contenu: String,
 }
 
-async fn creer(State(state): State<AppState>, Form(d): Form<Demande>) -> Result<Redirect, Erreur> {
+async fn creer(mut db: Base, Form(d): Form<Demande>) -> Result<Redirect, Erreur> {
     let lire = |t: &str| NaiveDate::parse_from_str(t.trim(), "%Y-%m-%d").ok();
     let (Some(debut), Some(fin)) = (lire(&d.debut), lire(&d.fin)) else { return Ok(Redirect::to("/exports?erreur=periode")) };
     if fin < debut {
@@ -295,13 +296,13 @@ async fn creer(State(state): State<AppState>, Form(d): Form<Demande>) -> Result<
     ) else {
         return Ok(Redirect::to("/exports?erreur=choix"));
     };
-    let pieces = pieces(&state.db, debut, fin, contenu == "non_exportees").await?;
+    let pieces = pieces(&mut *db, debut, fin, contenu == "non_exportees").await?;
     if pieces.is_empty() {
         return Ok(Redirect::to("/exports?erreur=vide"));
     }
-    let fichier = construire_zip(&state.db, &pieces, format).await?;
+    let fichier = construire_zip(&mut *db, &pieces, format).await?;
     let nom = format!("Export-factures-{debut}-au-{fin}.zip");
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     let id: i64 = sqlx::query_scalar(
         "INSERT INTO exports (date_debut, date_fin, format, contenu, nombre_pieces, nom_fichier, fichier)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
@@ -322,9 +323,9 @@ async fn creer(State(state): State<AppState>, Form(d): Form<Demande>) -> Result<
     Ok(Redirect::to("/exports?ok=cree"))
 }
 
-async fn telecharger(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Response, Erreur> {
+async fn telecharger(mut db: Base, Path(id): Path<i64>) -> Result<Response, Erreur> {
     let ligne: Option<(String, Vec<u8>)> =
-        sqlx::query_as("SELECT nom_fichier, fichier FROM exports WHERE id = $1").bind(id).fetch_optional(&state.db).await?;
+        sqlx::query_as("SELECT nom_fichier, fichier FROM exports WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
     let (nom, fichier) = ligne.ok_or_else(Erreur::introuvable)?;
     let mut reponse = fichier.into_response();
     let entetes = reponse.headers_mut();
@@ -337,8 +338,8 @@ async fn telecharger(State(state): State<AppState>, Path(id): Path<i64>) -> Resu
     Ok(reponse)
 }
 
-async fn supprimer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let fait = sqlx::query("DELETE FROM exports WHERE id = $1").bind(id).execute(&state.db).await?;
+async fn supprimer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let fait = sqlx::query("DELETE FROM exports WHERE id = $1").bind(id).execute(&mut *db).await?;
     if fait.rows_affected() == 0 {
         return Err(Erreur::introuvable());
     }
@@ -351,36 +352,36 @@ struct Comptable {
     email: String,
 }
 
-async fn enregistrer_comptable(State(state): State<AppState>, Form(c): Form<Comptable>) -> Result<Redirect, Erreur> {
+async fn enregistrer_comptable(mut db: Base, Form(c): Form<Comptable>) -> Result<Redirect, Erreur> {
     let email = c.email.trim();
     if !email.is_empty() && !email_valide(email) {
         return Ok(Redirect::to("/exports?erreur=comptable"));
     }
-    sqlx::query("UPDATE reglages SET email_comptable = $1, updated_at = now() WHERE id = 1").bind(email).execute(&state.db).await?;
+    sqlx::query("UPDATE reglages SET email_comptable = $1, updated_at = now() WHERE organisation_id = app_organisation()").bind(email).execute(&mut *db).await?;
     Ok(Redirect::to("/exports?ok=comptable"))
 }
 
 /// Envoie le dossier au comptable avec le modèle « Export pour le comptable ».
-async fn envoyer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+async fn envoyer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
     let ligne: Option<(NaiveDate, NaiveDate, String, Vec<u8>)> =
-        sqlx::query_as("SELECT date_debut, date_fin, nom_fichier, fichier FROM exports WHERE id = $1").bind(id).fetch_optional(&state.db).await?;
+        sqlx::query_as("SELECT date_debut, date_fin, nom_fichier, fichier FROM exports WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
     let (debut, fin, nom, fichier) = ligne.ok_or_else(Erreur::introuvable)?;
-    let email: String = sqlx::query_scalar("SELECT email_comptable FROM reglages WHERE id = 1").fetch_one(&state.db).await?;
+    let email: String = sqlx::query_scalar("SELECT email_comptable FROM reglages WHERE organisation_id = app_organisation()").fetch_one(&mut *db).await?;
     if email.is_empty() {
         return Ok(Redirect::to("/exports?erreur=sans_comptable"));
     }
     if fichier.len() > TAILLE_MAX_EMAIL {
         return Ok(Redirect::to("/exports?erreur=trop_gros"));
     }
-    let (nom_societe, email_societe, _) = emails::societe(&state.db).await?;
+    let (nom_societe, email_societe, _) = emails::societe(&mut *db).await?;
     let variables = vec![
         ("[NOM_SOCIETE]", nom_societe),
         ("[MAIL_GESTIONNAIRE]", email_societe),
         ("[PERIODE]", periode(debut, fin)),
     ];
-    let (objet, corps) = emails::modele(&state.db, "export").await?;
+    let (objet, corps) = emails::modele(&mut *db, "export").await?;
     let (email_id, issue) = emails::envoyer(
-        &state.db,
+        &mut *db,
         Message {
             modele: "export",
             devis_id: None,
@@ -393,9 +394,9 @@ async fn envoyer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<R
         },
     )
     .await?;
-    sqlx::query("UPDATE emails SET export_id = $1 WHERE id = $2").bind(id).bind(email_id).execute(&state.db).await?;
+    sqlx::query("UPDATE emails SET export_id = $1 WHERE id = $2").bind(id).bind(email_id).execute(&mut *db).await?;
     if issue == Issue::Envoye {
-        sqlx::query("UPDATE exports SET envoye_le = now(), envoye_a = $1 WHERE id = $2").bind(&email).bind(id).execute(&state.db).await?;
+        sqlx::query("UPDATE exports SET envoye_le = now(), envoye_a = $1 WHERE id = $2").bind(&email).bind(id).execute(&mut *db).await?;
     }
     Ok(Redirect::to(match issue {
         Issue::Envoye => "/exports?ok=envoye",

@@ -1,13 +1,18 @@
 // Tests de l'étape 8-1 : paiements partiels et complets, méthodes, statuts « Partiellement payée », « Payée »,
 // « En retard », « Créditée », reste à recevoir et historique de la facture.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -83,7 +88,8 @@ async fn etat(pool: &PgPool, id: i64) -> (String, i64, i64) {
 }
 
 #[sqlx::test]
-async fn paiement_partiel_puis_complet(pool: PgPool) {
+async fn paiement_partiel_puis_complet(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = facture_validee(&pool, &s).await;
     let m = virement(&pool).await;
@@ -137,7 +143,8 @@ async fn paiement_partiel_puis_complet(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn paiements_refuses(pool: PgPool) {
+async fn paiements_refuses(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = facture_validee(&pool, &s).await;
     let m = virement(&pool).await;
@@ -174,7 +181,8 @@ async fn paiements_refuses(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn une_facture_echue_est_en_retard(pool: PgPool) {
+async fn une_facture_echue_est_en_retard(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = facture_validee(&pool, &s).await;
     sqlx::query("UPDATE factures SET date_echeance = (now() AT TIME ZONE 'Europe/Brussels')::date - 24 WHERE id = $1")
@@ -196,7 +204,8 @@ async fn une_facture_echue_est_en_retard(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn une_facture_entierement_creditee_ne_doit_plus_rien(pool: PgPool) {
+async fn une_facture_entierement_creditee_ne_doit_plus_rien(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = facture_validee(&pool, &s).await;
     let (_, lieu) = poster(&s, &format!("/factures/{id}/crediter"), "").await;
@@ -213,7 +222,8 @@ async fn une_facture_entierement_creditee_ne_doit_plus_rien(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_liste_montre_l_etat_et_le_montant_a_recevoir(pool: PgPool) {
+async fn la_liste_montre_l_etat_et_le_montant_a_recevoir(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = facture_validee(&pool, &s).await;
     let m = virement(&pool).await;

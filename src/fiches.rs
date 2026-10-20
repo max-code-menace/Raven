@@ -4,15 +4,16 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
 use axum_extra::extract::Form;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool, Postgres, postgres::PgArguments, query::Query as SqlQuery};
+use sqlx::{FromRow, PgConnection, Postgres, postgres::PgArguments, query::Query as SqlQuery};
 
+use crate::base::Base;
 use crate::{AppState, Erreur};
 use crate::commun::{Choix, PAYS, choix_fixes, echapper_like, email_valide, libelle, vide_en_none};
 
@@ -124,7 +125,14 @@ pub(crate) fn taux_court(libelle: &str) -> String {
         .rsplit_once('(')
         .map(|(_, reste)| reste.trim_end_matches(')').replace(",00", "").trim().to_string())
         .unwrap_or_else(|| libelle.to_string());
-    if libelle.to_lowercase().contains("autoliquidation") { format!("{taux} autoliq.") } else { taux }
+    let libelle = libelle.to_lowercase();
+    if libelle.contains("autoliquidation") {
+        format!("{taux} autoliq.")
+    } else if libelle.contains("franchise") {
+        "Franchise".to_string()
+    } else {
+        taux
+    }
 }
 
 /// Libellés courts pour toute la liste des taux.
@@ -140,12 +148,12 @@ pub(crate) struct Options {
 }
 
 impl Options {
-    pub(crate) async fn charger(db: &PgPool, genre: Genre) -> Result<Self, sqlx::Error> {
+    pub(crate) async fn charger(db: &mut PgConnection, genre: Genre) -> Result<Self, sqlx::Error> {
         let conditions: Vec<(i64, String, i32)> = sqlx::query_as(
             "SELECT id, \"type\"::text, jours FROM conditions_paiement
              ORDER BY CASE \"type\"::text WHEN 'apres_facturation' THEN 1 WHEN 'fin_de_mois' THEN 2 ELSE 3 END, jours",
         )
-        .fetch_all(db)
+        .fetch_all(&mut *db)
         .await?;
         let conditions = conditions
             .into_iter()
@@ -160,8 +168,10 @@ impl Options {
             .collect();
 
         let taux: Vec<(i64, String, i32)> =
-            sqlx::query_as("SELECT id, libelle, taux_centiemes FROM taux_tva WHERE actif ORDER BY taux_centiemes")
-                .fetch_all(db)
+            // Une société en franchise n'a que le taux « Franchise de TVA » ; les autres ne l'ont jamais.
+            sqlx::query_as("SELECT id, libelle, taux_centiemes FROM taux_tva WHERE actif AND franchise = $1 ORDER BY taux_centiemes")
+                .bind(crate::societe::en_franchise(&mut *db).await?)
+                .fetch_all(&mut *db)
                 .await?;
         let taux_tva = taux
             .into_iter()
@@ -170,7 +180,7 @@ impl Options {
 
         let entreprises = if genre.est_contact() {
             sqlx::query_as("SELECT id, nom FROM entreprises ORDER BY lower(nom), id")
-                .fetch_all(db)
+                .fetch_all(&mut *db)
                 .await?
         } else {
             Vec::new()
@@ -517,7 +527,7 @@ fn lier<'q>(
     }
 }
 
-async fn inserer(db: &PgPool, genre: Genre, v: &Valeurs) -> Result<(), sqlx::Error> {
+async fn inserer(db: &mut PgConnection, genre: Genre, v: &Valeurs) -> Result<(), sqlx::Error> {
     let cols = colonnes(genre);
     let marques: Vec<String> = (1..=cols.len()).map(|i| format!("${i}")).collect();
     let sql = format!(
@@ -526,12 +536,12 @@ async fn inserer(db: &PgPool, genre: Genre, v: &Valeurs) -> Result<(), sqlx::Err
         cols.join(", "),
         marques.join(", ")
     );
-    lier(sqlx::query(sqlx::AssertSqlSafe(sql)), v, genre).execute(db).await?;
+    lier(sqlx::query(sqlx::AssertSqlSafe(sql)), v, genre).execute(&mut *db).await?;
     Ok(())
 }
 
 /// Renvoie `false` si la fiche n'existe pas.
-async fn modifier_en_base(db: &PgPool, genre: Genre, id: i64, v: &Valeurs) -> Result<bool, sqlx::Error> {
+async fn modifier_en_base(db: &mut PgConnection, genre: Genre, id: i64, v: &Valeurs) -> Result<bool, sqlx::Error> {
     let cols = colonnes(genre);
     let affectations: Vec<String> = cols.iter().enumerate().map(|(i, c)| format!("{c} = ${}", i + 1)).collect();
     let sql = format!(
@@ -540,11 +550,11 @@ async fn modifier_en_base(db: &PgPool, genre: Genre, id: i64, v: &Valeurs) -> Re
         affectations.join(", "),
         cols.len() + 1
     );
-    let res = lier(sqlx::query(sqlx::AssertSqlSafe(sql)), v, genre).bind(id).execute(db).await?;
+    let res = lier(sqlx::query(sqlx::AssertSqlSafe(sql)), v, genre).bind(id).execute(&mut *db).await?;
     Ok(res.rows_affected() > 0)
 }
 
-async fn charger_fiche(db: &PgPool, genre: Genre, id: i64) -> Result<Option<Fiche>, sqlx::Error> {
+async fn charger_fiche(db: &mut PgConnection, genre: Genre, id: i64) -> Result<Option<Fiche>, sqlx::Error> {
     let communes = COLONNES.join(", ");
     let sql = match genre {
         Genre::Entreprise => format!(
@@ -555,7 +565,7 @@ async fn charger_fiche(db: &PgPool, genre: Genre, id: i64) -> Result<Option<Fich
             "SELECT {communes}, civilite, prenom, entreprise_id, telephone_secondaire FROM contacts WHERE id = $1"
         ),
     };
-    sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(id).fetch_optional(db).await
+    sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(id).fetch_optional(&mut *db).await
 }
 
 // ─── Liste avec recherche ───────────────────────────────────────────────────
@@ -648,7 +658,7 @@ struct TableauListe {
 
 async fn liste(
     genre: Genre,
-    state: AppState,
+    mut db: Base,
     recherche: Recherche,
     entetes: HeaderMap,
 ) -> Result<Html<String>, Erreur> {
@@ -681,7 +691,7 @@ async fn liste(
         .bind(&q)
         .bind(&motif)
         .bind(&profil)
-        .fetch_one(&state.db)
+        .fetch_one(&mut *db)
         .await?;
     let pages = ((total + PAR_PAGE - 1) / PAR_PAGE).max(1);
     let page = page.min(pages);
@@ -694,7 +704,7 @@ async fn liste(
     .bind(&profil)
     .bind(PAR_PAGE)
     .bind((page - 1) * PAR_PAGE)
-    .fetch_all(&state.db)
+    .fetch_all(&mut *db)
     .await?;
 
     let liste = Liste {
@@ -771,8 +781,8 @@ fn titre_nouveau(genre: Genre) -> &'static str {
     if genre.est_contact() { "Nouveau contact" } else { "Nouvelle entreprise" }
 }
 
-async fn nouveau(genre: Genre, state: AppState) -> Result<Html<String>, Erreur> {
-    let options = Options::charger(&state.db, genre).await?;
+async fn nouveau(genre: Genre, mut db: Base) -> Result<Html<String>, Erreur> {
+    let options = Options::charger(&mut *db, genre).await?;
     let page = page_formulaire(
         genre,
         titre_nouveau(genre).to_string(),
@@ -784,11 +794,11 @@ async fn nouveau(genre: Genre, state: AppState) -> Result<Html<String>, Erreur> 
     Ok(Html(page.render()?))
 }
 
-async fn creer(genre: Genre, state: AppState, form: FicheForm) -> Result<Response, Erreur> {
-    let options = Options::charger(&state.db, genre).await?;
+async fn creer(genre: Genre, mut db: Base, form: FicheForm) -> Result<Response, Erreur> {
+    let options = Options::charger(&mut *db, genre).await?;
     match valider(&form, genre, &options) {
         Ok(valeurs) => {
-            inserer(&state.db, genre, &valeurs).await?;
+            inserer(&mut *db, genre, &valeurs).await?;
             Ok(Redirect::to(genre.base()).into_response())
         }
         Err(erreurs) => {
@@ -805,9 +815,9 @@ async fn creer(genre: Genre, state: AppState, form: FicheForm) -> Result<Respons
     }
 }
 
-async fn page_modifier(genre: Genre, state: AppState, id: i64) -> Result<Html<String>, Erreur> {
-    let fiche = charger_fiche(&state.db, genre, id).await?.ok_or_else(Erreur::introuvable)?;
-    let options = Options::charger(&state.db, genre).await?;
+async fn page_modifier(genre: Genre, mut db: Base, id: i64) -> Result<Html<String>, Erreur> {
+    let fiche = charger_fiche(&mut *db, genre, id).await?.ok_or_else(Erreur::introuvable)?;
+    let options = Options::charger(&mut *db, genre).await?;
     let page = page_formulaire(
         genre,
         if genre.est_contact() { "Modifier le contact" } else { "Modifier l'entreprise" }.to_string(),
@@ -819,11 +829,11 @@ async fn page_modifier(genre: Genre, state: AppState, id: i64) -> Result<Html<St
     Ok(Html(page.render()?))
 }
 
-async fn enregistrer_modification(genre: Genre, state: AppState, id: i64, form: FicheForm) -> Result<Response, Erreur> {
-    let options = Options::charger(&state.db, genre).await?;
+async fn enregistrer_modification(genre: Genre, mut db: Base, id: i64, form: FicheForm) -> Result<Response, Erreur> {
+    let options = Options::charger(&mut *db, genre).await?;
     match valider(&form, genre, &options) {
         Ok(valeurs) => {
-            if modifier_en_base(&state.db, genre, id, &valeurs).await? {
+            if modifier_en_base(&mut *db, genre, id, &valeurs).await? {
                 Ok(Redirect::to(genre.base()).into_response())
             } else {
                 Err(Erreur::introuvable())
@@ -849,35 +859,35 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/entreprises",
-            get(|State(s): State<AppState>, Query(r): Query<Recherche>, h: HeaderMap| liste(Genre::Entreprise, s, r, h))
-                .post(|State(s): State<AppState>, Form(f): Form<FicheForm>| creer(Genre::Entreprise, s, f)),
+            get(|db: Base, Query(r): Query<Recherche>, h: HeaderMap| liste(Genre::Entreprise, db, r, h))
+                .post(|db: Base, Form(f): Form<FicheForm>| creer(Genre::Entreprise, db, f)),
         )
-        .route("/entreprises/nouveau", get(|State(s): State<AppState>| nouveau(Genre::Entreprise, s)))
+        .route("/entreprises/nouveau", get(|db: Base| nouveau(Genre::Entreprise, db)))
         .route(
             "/entreprises/{id}",
-            axum::routing::post(|State(s): State<AppState>, Path(id): Path<i64>, Form(f): Form<FicheForm>| {
-                enregistrer_modification(Genre::Entreprise, s, id, f)
+            axum::routing::post(|db: Base, Path(id): Path<i64>, Form(f): Form<FicheForm>| {
+                enregistrer_modification(Genre::Entreprise, db, id, f)
             }),
         )
         .route(
             "/entreprises/{id}/modifier",
-            get(|State(s): State<AppState>, Path(id): Path<i64>| page_modifier(Genre::Entreprise, s, id)),
+            get(|db: Base, Path(id): Path<i64>| page_modifier(Genre::Entreprise, db, id)),
         )
         .route(
             "/contacts",
-            get(|State(s): State<AppState>, Query(r): Query<Recherche>, h: HeaderMap| liste(Genre::Contact, s, r, h))
-                .post(|State(s): State<AppState>, Form(f): Form<FicheForm>| creer(Genre::Contact, s, f)),
+            get(|db: Base, Query(r): Query<Recherche>, h: HeaderMap| liste(Genre::Contact, db, r, h))
+                .post(|db: Base, Form(f): Form<FicheForm>| creer(Genre::Contact, db, f)),
         )
-        .route("/contacts/nouveau", get(|State(s): State<AppState>| nouveau(Genre::Contact, s)))
+        .route("/contacts/nouveau", get(|db: Base| nouveau(Genre::Contact, db)))
         .route(
             "/contacts/{id}",
-            axum::routing::post(|State(s): State<AppState>, Path(id): Path<i64>, Form(f): Form<FicheForm>| {
-                enregistrer_modification(Genre::Contact, s, id, f)
+            axum::routing::post(|db: Base, Path(id): Path<i64>, Form(f): Form<FicheForm>| {
+                enregistrer_modification(Genre::Contact, db, id, f)
             }),
         )
         .route(
             "/contacts/{id}/modifier",
-            get(|State(s): State<AppState>, Path(id): Path<i64>| page_modifier(Genre::Contact, s, id)),
+            get(|db: Base, Path(id): Path<i64>| page_modifier(Genre::Contact, db, id)),
         )
 }
 

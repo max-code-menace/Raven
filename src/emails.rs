@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use base64::Engine;
 use chrono::NaiveDate;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 use crate::commun::{email_valide, format_euros};
 
@@ -20,24 +20,33 @@ pub(crate) const LONGUEUR_MAX_CORPS: usize = 20_000;
 struct Config {
     cle_brevo: Option<String>,
     adresse_publique: String,
+    /// L'adresse qui envoie les e-mails du site (inscription, mot de passe, invitation) : `EMAIL_EXPEDITEUR`.
+    expediteur_site: Option<String>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 /// Appelé une seule fois par `main.rs` au lancement. Sans clé, les e-mails sont seulement enregistrés.
 /// `adresse_publique` : l'adresse du site vue par les clients (liens vers la page client en ligne).
-pub fn configurer(cle_brevo: Option<String>, adresse_publique: Option<String>) {
+/// `expediteur_site` : l'adresse qui envoie les e-mails du site (voir `emails_systeme`).
+pub fn configurer(cle_brevo: Option<String>, adresse_publique: Option<String>, expediteur_site: Option<String>) {
     let cle_brevo = cle_brevo.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
     let adresse_publique = adresse_publique
         .map(|a| a.trim().trim_end_matches('/').to_string())
         .filter(|a| !a.is_empty())
         .unwrap_or_else(|| ADRESSE_PAR_DEFAUT.to_string());
-    let _ = CONFIG.set(Config { cle_brevo, adresse_publique });
+    let expediteur_site = expediteur_site.map(|e| e.trim().to_string()).filter(|e| email_valide(e));
+    let _ = CONFIG.set(Config { cle_brevo, adresse_publique, expediteur_site });
 }
 
 /// Une clé Brevo est configurée : les e-mails partent vraiment.
 pub fn envoi_actif() -> bool {
     CONFIG.get().is_some_and(|c| c.cle_brevo.is_some())
+}
+
+/// La clé Brevo et l'expéditeur des e-mails du site, s'ils sont configurés.
+pub(crate) fn config_site() -> (Option<String>, Option<String>) {
+    CONFIG.get().map(|c| (c.cle_brevo.clone(), c.expediteur_site.clone())).unwrap_or_default()
 }
 
 /// « https://ubifacture.exemple.be » : le début des liens envoyés aux clients.
@@ -93,18 +102,18 @@ pub fn remplir(modele: &str, valeurs: &[(&str, String)]) -> String {
         .join("\n")
 }
 
-pub(crate) async fn modele(db: &PgPool, code: &str) -> Result<(String, String), sqlx::Error> {
-    sqlx::query_as("SELECT objet, corps FROM modeles_email WHERE code = $1").bind(code).fetch_one(db).await
+pub(crate) async fn modele(db: &mut PgConnection, code: &str) -> Result<(String, String), sqlx::Error> {
+    sqlx::query_as("SELECT objet, corps FROM modeles_email WHERE organisation_id = app_organisation() AND code = $1").bind(code).fetch_one(&mut *db).await
 }
 
 /// Le lien secret d'une pièce (créé au premier besoin, jamais changé ensuite).
-pub(crate) async fn jeton(db: &PgPool, table: Piece, id: i64) -> Result<String, sqlx::Error> {
+pub(crate) async fn jeton(db: &mut PgConnection, table: Piece, id: i64) -> Result<String, sqlx::Error> {
     let nouveau = nouveau_jeton();
     let sql = match table {
         Piece::Devis => "UPDATE devis SET jeton = COALESCE(jeton, $2) WHERE id = $1 RETURNING jeton",
         Piece::Facture => "UPDATE factures SET jeton = COALESCE(jeton, $2) WHERE id = $1 RETURNING jeton",
     };
-    sqlx::query_scalar(sql).bind(id).bind(nouveau).fetch_one(db).await
+    sqlx::query_scalar(sql).bind(id).bind(nouveau).fetch_one(&mut *db).await
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,10 +134,10 @@ fn date_belge(d: NaiveDate) -> String {
 }
 
 /// Ce que l'on sait du client pour l'e-mail : (nom, civilité, e-mail).
-async fn client(db: &PgPool, entreprise: Option<i64>, contact: Option<i64>) -> Result<(String, String, String), sqlx::Error> {
+async fn client(db: &mut PgConnection, entreprise: Option<i64>, contact: Option<i64>) -> Result<(String, String, String), sqlx::Error> {
     if let Some(id) = entreprise {
         let ligne: Option<(String, Option<String>)> =
-            sqlx::query_as("SELECT nom, email FROM entreprises WHERE id = $1").bind(id).fetch_optional(db).await?;
+            sqlx::query_as("SELECT nom, email FROM entreprises WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
         if let Some((nom, email)) = ligne {
             return Ok((nom, String::new(), email.unwrap_or_default()));
         }
@@ -137,7 +146,7 @@ async fn client(db: &PgPool, entreprise: Option<i64>, contact: Option<i64>) -> R
         let ligne: Option<(String, Option<String>, Option<String>)> =
             sqlx::query_as("SELECT trim(concat_ws(' ', prenom, nom)), civilite, email FROM contacts WHERE id = $1")
                 .bind(id)
-                .fetch_optional(db)
+                .fetch_optional(&mut *db)
                 .await?;
         if let Some((nom, civilite, email)) = ligne {
             let civilite = match civilite.as_deref() {
@@ -152,15 +161,15 @@ async fn client(db: &PgPool, entreprise: Option<i64>, contact: Option<i64>) -> R
 }
 
 /// (nom, e-mail, IBAN par défaut) de la société.
-pub(crate) async fn societe(db: &PgPool) -> Result<(String, String, String), sqlx::Error> {
-    let ligne: Option<(String, String)> = sqlx::query_as("SELECT nom, email FROM societe WHERE id = 1").fetch_optional(db).await?;
-    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(db).await?;
+pub(crate) async fn societe(db: &mut PgConnection) -> Result<(String, String, String), sqlx::Error> {
+    let ligne: Option<(String, String)> = sqlx::query_as("SELECT nom, email FROM societe WHERE organisation_id = app_organisation()").fetch_optional(&mut *db).await?;
+    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
     let (nom, email) = ligne.unwrap_or_default();
     Ok((nom, email, iban.unwrap_or_default()))
 }
 
 /// Les valeurs des variables pour un devis ou un avenant, et l'e-mail du client.
-pub(crate) async fn variables_devis(db: &PgPool, id: i64) -> Result<(Vec<(&'static str, String)>, String), sqlx::Error> {
+pub(crate) async fn variables_devis(db: &mut PgConnection, id: i64) -> Result<(Vec<(&'static str, String)>, String), sqlx::Error> {
     let (numero, annee, date, reference, responsable, entreprise, contact, chantier): (
         i64,
         i32,
@@ -175,7 +184,7 @@ pub(crate) async fn variables_devis(db: &PgPool, id: i64) -> Result<(Vec<(&'stat
          FROM devis WHERE id = $1",
     )
     .bind(id)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
     let nom_chantier: Option<String> = sqlx::query_scalar(
         "SELECT CASE WHEN d.reference <> '' THEN d.reference ELSE 'n° ' || ch.numero END
@@ -183,11 +192,11 @@ pub(crate) async fn variables_devis(db: &PgPool, id: i64) -> Result<(Vec<(&'stat
     )
     .bind(chantier)
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
-    let (nom_client, civilite, email) = client(db, entreprise, contact).await?;
-    let (nom_societe, email_societe, _) = societe(db).await?;
-    let lien = format!("{}/client/devis/{}", adresse_publique(), jeton(db, Piece::Devis, id).await?);
+    let (nom_client, civilite, email) = client(&mut *db, entreprise, contact).await?;
+    let (nom_societe, email_societe, _) = societe(&mut *db).await?;
+    let lien = format!("{}/client/devis/{}", adresse_publique(), jeton(&mut *db, Piece::Devis, id).await?);
     let gestionnaire = if responsable.trim().is_empty() { nom_societe.clone() } else { responsable };
     Ok((
         vec![
@@ -207,7 +216,7 @@ pub(crate) async fn variables_devis(db: &PgPool, id: i64) -> Result<(Vec<(&'stat
 }
 
 /// Les valeurs des variables pour une facture ou une note de crédit, et l'e-mail du client facturé.
-pub(crate) async fn variables_facture(db: &PgPool, id: i64) -> Result<(Vec<(&'static str, String)>, String), sqlx::Error> {
+pub(crate) async fn variables_facture(db: &mut PgConnection, id: i64) -> Result<(Vec<(&'static str, String)>, String), sqlx::Error> {
     let (numero, date, echeance, reference, responsable, entreprise, contact, chantier, vcs, ttc): (
         Option<i64>,
         NaiveDate,
@@ -225,19 +234,19 @@ pub(crate) async fn variables_facture(db: &PgPool, id: i64) -> Result<(Vec<(&'st
          FROM factures WHERE id = $1",
     )
     .bind(id)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
-    let reste: i64 = sqlx::query_scalar("SELECT GREATEST(reste_cents, 0) FROM factures_etats WHERE facture_id = $1").bind(id).fetch_one(db).await?;
+    let reste: i64 = sqlx::query_scalar("SELECT GREATEST(reste_cents, 0) FROM factures_etats WHERE facture_id = $1").bind(id).fetch_one(&mut *db).await?;
     let nom_chantier: Option<String> = sqlx::query_scalar(
         "SELECT CASE WHEN d.reference <> '' THEN d.reference ELSE 'n° ' || ch.numero END
          FROM chantiers ch JOIN devis d ON d.id = ch.devis_id WHERE ch.id = $1",
     )
     .bind(chantier)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
-    let (nom_client, civilite, email) = client(db, entreprise, contact).await?;
-    let (nom_societe, email_societe, iban) = societe(db).await?;
-    let lien = format!("{}/client/facture/{}", adresse_publique(), jeton(db, Piece::Facture, id).await?);
+    let (nom_client, civilite, email) = client(&mut *db, entreprise, contact).await?;
+    let (nom_societe, email_societe, iban) = societe(&mut *db).await?;
+    let lien = format!("{}/client/facture/{}", adresse_publique(), jeton(&mut *db, Piece::Facture, id).await?);
     let gestionnaire = if responsable.trim().is_empty() { nom_societe.clone() } else { responsable };
     Ok((
         vec![
@@ -302,8 +311,19 @@ impl Issue {
     }
 }
 
+/// L'expéditeur d'un e-mail d'une organisation : (nom affiché, adresse d'envoi, adresse de réponse).
+/// Avec l'adresse du site (`EMAIL_EXPEDITEUR`, validée une fois chez Brevo), l'e-mail part de cette adresse au nom de
+/// l'organisation et les réponses vont à l'organisation : chaque organisation n'a pas à faire valider son adresse.
+/// Sans elle (installation d'une seule organisation), il part de l'adresse de la société.
+fn expediteur<'a>(nom: &'a str, email_societe: &'a str, expediteur_site: Option<&'a str>) -> (&'a str, &'a str, Option<&'a str>) {
+    match expediteur_site {
+        Some(site) => (nom, site, Some(email_societe)),
+        None => (nom, email_societe, None),
+    }
+}
+
 /// Le corps de la requête envoyée à Brevo.
-fn requete_brevo(expediteur: (&str, &str), m: &Message) -> serde_json::Value {
+fn requete_brevo(expediteur: (&str, &str, Option<&str>), m: &Message) -> serde_json::Value {
     let personnes = |liste: &[String]| liste.iter().map(|a| serde_json::json!({ "email": a })).collect::<Vec<_>>();
     let mut corps = serde_json::json!({
         "sender": { "name": expediteur.0, "email": expediteur.1 },
@@ -311,6 +331,9 @@ fn requete_brevo(expediteur: (&str, &str), m: &Message) -> serde_json::Value {
         "subject": m.objet,
         "textContent": m.corps,
     });
+    if let Some(reponse) = expediteur.2 {
+        corps["replyTo"] = serde_json::json!({ "name": expediteur.0, "email": reponse });
+    }
     if !m.copie.is_empty() {
         corps["cc"] = serde_json::Value::Array(personnes(&m.copie));
     }
@@ -325,31 +348,37 @@ fn requete_brevo(expediteur: (&str, &str), m: &Message) -> serde_json::Value {
     corps
 }
 
+/// Envoie la requête à Brevo ; rend sa réponse, ou l'erreur lisible.
+pub(crate) async fn poster_brevo(cle: String, corps: serde_json::Value) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || {
+        ureq::post(API_BREVO)
+            .set("api-key", &cle)
+            .set("accept", "application/json")
+            .timeout(std::time::Duration::from_secs(30))
+            .send_json(corps)
+            .map_err(|e| match e {
+                ureq::Error::Status(code, r) => format!("Brevo a répondu {code} : {}", r.into_string().unwrap_or_default()),
+                autre => format!("Brevo injoignable : {autre}"),
+            })
+            .and_then(|r| r.into_json::<serde_json::Value>().map_err(|e| e.to_string()))
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()))
+}
+
 /// Envoie (ou enregistre seulement, sans clé) un e-mail et le note dans le journal des e-mails.
-pub(crate) async fn envoyer(db: &PgPool, m: Message) -> Result<(i64, Issue), sqlx::Error> {
+pub(crate) async fn envoyer(db: &mut PgConnection, m: Message) -> Result<(i64, Issue), sqlx::Error> {
     let cle = CONFIG.get().and_then(|c| c.cle_brevo.clone());
     let (issue, erreur, reference) = match cle {
         None => (Issue::Enregistre, String::new(), String::new()),
         Some(cle) => {
-            let (nom, email, _) = societe(db).await?;
+            let (nom, email, _) = societe(&mut *db).await?;
             if !email_valide(&email) {
                 (Issue::Echec, "La société n'a pas d'adresse e-mail valable (Réglages › Société).".to_string(), String::new())
             } else {
-                let corps = requete_brevo((&nom, &email), &m);
-                let reponse = tokio::task::spawn_blocking(move || {
-                    ureq::post(API_BREVO)
-                        .set("api-key", &cle)
-                        .set("accept", "application/json")
-                        .timeout(std::time::Duration::from_secs(30))
-                        .send_json(corps)
-                        .map_err(|e| match e {
-                            ureq::Error::Status(code, r) => format!("Brevo a répondu {code} : {}", r.into_string().unwrap_or_default()),
-                            autre => format!("Brevo injoignable : {autre}"),
-                        })
-                        .and_then(|r| r.into_json::<serde_json::Value>().map_err(|e| e.to_string()))
-                })
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()));
+                let site = CONFIG.get().and_then(|c| c.expediteur_site.clone());
+                let corps = requete_brevo(expediteur(&nom, &email, site.as_deref()), &m);
+                let reponse = poster_brevo(cle, corps).await;
                 match reponse {
                     Ok(v) => (Issue::Envoye, String::new(), v["messageId"].as_str().unwrap_or_default().to_string()),
                     Err(e) => {
@@ -376,7 +405,7 @@ pub(crate) async fn envoyer(db: &PgPool, m: Message) -> Result<(i64, Issue), sql
     .bind(issue.code())
     .bind(&erreur)
     .bind(&reference)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
     Ok((id, issue))
 }
@@ -421,12 +450,17 @@ mod tests {
             corps: "Bonjour".into(),
             pieces: vec![("Facture-125.pdf".into(), b"%PDF".to_vec())],
         };
-        let r = requete_brevo(("Ubique", "info@exemple.be"), &m);
+        let r = requete_brevo(expediteur("Ubique", "info@exemple.be", None), &m);
         assert_eq!(r["sender"]["email"], "info@exemple.be");
+        assert!(r.get("replyTo").is_none());
         assert_eq!(r["to"][0]["email"], "client@exemple.be");
         assert_eq!(r["attachment"][0]["name"], "Facture-125.pdf");
         assert_eq!(r["attachment"][0]["content"], "JVBERg==");
         assert!(r.get("cc").is_none());
+        // En SaaS : l'adresse du site envoie, au nom de l'organisation, et les réponses vont à l'organisation.
+        let r = requete_brevo(expediteur("Ubique", "info@exemple.be", Some("envoi@raven.be")), &m);
+        assert_eq!((r["sender"]["name"].as_str(), r["sender"]["email"].as_str()), (Some("Ubique"), Some("envoi@raven.be")));
+        assert_eq!(r["replyTo"]["email"], "info@exemple.be");
     }
 
     #[test]

@@ -1,12 +1,17 @@
 // Tests de l'étape 5c-2 et 5c-3 : accepter / refuser, remettre en brouillon, dupliquer, historique.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -63,7 +68,8 @@ async fn aujourdhui(pool: &PgPool) -> String {
 // ─── Marquer comme envoyé, remettre en brouillon ────────────────────────────
 
 #[sqlx::test]
-async fn marquer_comme_envoye_puis_remettre_en_brouillon(pool: PgPool) {
+async fn marquer_comme_envoye_puis_remettre_en_brouillon(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let s = site(&pool);
 
@@ -90,7 +96,8 @@ async fn marquer_comme_envoye_puis_remettre_en_brouillon(pool: PgPool) {
 // ─── Accepter ───────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn accepter_enregistre_la_date_et_verrouille(pool: PgPool) {
+async fn accepter_enregistre_la_date_et_verrouille(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "envoye").await;
     let s = site(&pool);
     let (statut, lieu) = poster(&s, &format!("/devis/{d}/statut/accepter"), "date=2026-10-05").await;
@@ -124,7 +131,8 @@ async fn accepter_enregistre_la_date_et_verrouille(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_brouillon_peut_etre_accepte_directement(pool: PgPool) {
+async fn un_brouillon_peut_etre_accepte_directement(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let (statut, _) = poster(&site(&pool), &format!("/devis/{d}/statut/accepter"), "date=2026-10-01").await;
     assert_eq!(statut, StatusCode::SEE_OTHER);
@@ -132,7 +140,8 @@ async fn un_brouillon_peut_etre_accepte_directement(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_date_de_decision_est_verifiee(pool: PgPool) {
+async fn la_date_de_decision_est_verifiee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "envoye").await;
     let s = site(&pool);
     let demain: String = sqlx::query_scalar("SELECT ((now() AT TIME ZONE 'Europe/Brussels')::date + 1)::text").fetch_one(&pool).await.unwrap();
@@ -154,7 +163,8 @@ async fn la_date_de_decision_est_verifiee(pool: PgPool) {
 // ─── Refuser ────────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn refuser_enregistre_la_date_et_le_motif(pool: PgPool) {
+async fn refuser_enregistre_la_date_et_le_motif(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "envoye").await;
     let s = site(&pool);
     let (statut, lieu) = poster(&s, &format!("/devis/{d}/statut/refuser"), "date=2026-10-07&motif=Trop+cher").await;
@@ -169,7 +179,8 @@ async fn refuser_enregistre_la_date_et_le_motif(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_motif_trop_long_est_refuse(pool: PgPool) {
+async fn un_motif_trop_long_est_refuse(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "envoye").await;
     let (statut, lieu) = poster(&site(&pool), &format!("/devis/{d}/statut/refuser"), &format!("date=2026-10-07&motif={}", "x".repeat(501))).await;
     assert_eq!((statut, lieu), (StatusCode::SEE_OTHER, Some(format!("/devis/{d}?erreur=motif"))));
@@ -177,7 +188,8 @@ async fn un_motif_trop_long_est_refuse(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_refus_peut_etre_remis_en_brouillon_et_efface_la_decision(pool: PgPool) {
+async fn un_refus_peut_etre_remis_en_brouillon_et_efface_la_decision(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "envoye").await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/statut/refuser"), "date=2026-10-07&motif=Trop+cher").await;
@@ -191,7 +203,8 @@ async fn un_refus_peut_etre_remis_en_brouillon_et_efface_la_decision(pool: PgPoo
 }
 
 #[sqlx::test]
-async fn un_devis_signe_ne_peut_etre_qu_accepte(pool: PgPool) {
+async fn un_devis_signe_ne_peut_etre_qu_accepte(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "signe").await;
     let s = site(&pool);
     assert_eq!(poster(&s, &format!("/devis/{d}/statut/refuser"), "date=2026-10-07").await.0, StatusCode::CONFLICT);
@@ -199,7 +212,8 @@ async fn un_devis_signe_ne_peut_etre_qu_accepte(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_devis_inconnu_est_introuvable(pool: PgPool) {
+async fn un_devis_inconnu_est_introuvable(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     for action in ["envoye", "accepter", "refuser", "brouillon"] {
         assert_eq!(poster(&s, &format!("/devis/999/statut/{action}"), "date=2026-10-07").await.0, StatusCode::NOT_FOUND, "{action}");
@@ -209,14 +223,16 @@ async fn un_devis_inconnu_est_introuvable(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_messages_de_l_adresse_ne_sont_pas_affiches_tels_quels(pool: PgPool) {
+async fn les_messages_de_l_adresse_ne_sont_pas_affiches_tels_quels(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let (_, page) = lire(&site(&pool), &format!("/devis/{d}?ok=%3Cscript%3Ealert(1)%3C%2Fscript%3E&erreur=%3Cb%3E")).await;
     assert!(!page.contains("<script>alert(1)") && !page.contains("<b>"));
 }
 
 #[sqlx::test]
-async fn les_boutons_d_un_brouillon(pool: PgPool) {
+async fn les_boutons_d_un_brouillon(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let (_, page) = lire(&site(&pool), &format!("/devis/{d}")).await;
     for present in ["Marquer comme envoyé", "Accepter le devis…", "Refuser…", "Dupliquer"] {
@@ -230,7 +246,8 @@ async fn les_boutons_d_un_brouillon(pool: PgPool) {
 // ─── Dupliquer ──────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn dupliquer_copie_le_devis_en_brouillon_avec_le_numero_suivant(pool: PgPool) {
+async fn dupliquer_copie_le_devis_en_brouillon_avec_le_numero_suivant(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let tva: i64 = sqlx::query_scalar("SELECT id FROM taux_tva WHERE taux_centiemes = 600").fetch_one(&pool).await.unwrap();
     let client: i64 = sqlx::query_scalar("INSERT INTO entreprises (nom) VALUES ('Dupont SRL') RETURNING id").fetch_one(&pool).await.unwrap();
     let source: i64 = sqlx::query_scalar(
@@ -245,7 +262,7 @@ async fn dupliquer_copie_le_devis_en_brouillon_avec_le_numero_suivant(pool: PgPo
     .fetch_one(&pool)
     .await
     .unwrap();
-    sqlx::query("UPDATE compteurs SET valeur = 5 WHERE nom = 'devis'").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 5, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(&pool).await.unwrap();
     for (position, genre, texte) in [(1, "titre", "Lot A"), (2, "poste_libre", "Volet")] {
         let chiffre = genre == "poste_libre";
         sqlx::query(
@@ -316,9 +333,10 @@ async fn dupliquer_copie_le_devis_en_brouillon_avec_le_numero_suivant(pool: PgPo
 }
 
 #[sqlx::test]
-async fn dupliquer_deux_fois_donne_deux_numeros_et_aucun_trou(pool: PgPool) {
+async fn dupliquer_deux_fois_donne_deux_numeros_et_aucun_trou(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "refuse").await;
-    sqlx::query("UPDATE compteurs SET valeur = 1 WHERE nom = 'devis'").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 1, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(&pool).await.unwrap();
     let s = site(&pool);
     for _ in 0..2 {
         assert_eq!(poster(&s, &format!("/devis/{d}/dupliquer"), "").await.0, StatusCode::SEE_OTHER);
@@ -328,9 +346,10 @@ async fn dupliquer_deux_fois_donne_deux_numeros_et_aucun_trou(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn douze_duplications_en_meme_temps_donnent_douze_numeros_differents(pool: PgPool) {
+async fn douze_duplications_en_meme_temps_donnent_douze_numeros_differents(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "envoye").await;
-    sqlx::query("UPDATE compteurs SET valeur = 1 WHERE nom = 'devis'").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 1, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(&pool).await.unwrap();
     let s = site(&pool);
     let mut taches = Vec::new();
     for _ in 0..12 {
@@ -345,7 +364,8 @@ async fn douze_duplications_en_meme_temps_donnent_douze_numeros_differents(pool:
 }
 
 #[sqlx::test]
-async fn la_liste_propose_dupliquer(pool: PgPool) {
+async fn la_liste_propose_dupliquer(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let (_, liste) = lire(&site(&pool), "/devis").await;
     assert!(liste.contains(&format!("action=\"/devis/{d}/dupliquer\"")));
@@ -354,7 +374,8 @@ async fn la_liste_propose_dupliquer(pool: PgPool) {
 // ─── Historique ─────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn nouveau_ecrit_la_creation_dans_le_journal(pool: PgPool) {
+async fn nouveau_ecrit_la_creation_dans_le_journal(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (statut, lieu) = poster(&s, "/devis", "").await;
     assert_eq!(statut, StatusCode::SEE_OTHER);
@@ -363,7 +384,8 @@ async fn nouveau_ecrit_la_creation_dans_le_journal(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_page_historique_montre_les_evenements_du_plus_recent_au_plus_ancien(pool: PgPool) {
+async fn la_page_historique_montre_les_evenements_du_plus_recent_au_plus_ancien(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     sqlx::query("INSERT INTO devis_evenements (devis_id, genre, detail, created_at) VALUES ($1, 'creation', 'Devis créé', '2026-10-01 09:00+02'), ($1, 'statut', 'Brouillon → Envoyé', '2026-10-02 14:30+02')")
         .bind(d)
@@ -379,7 +401,8 @@ async fn la_page_historique_montre_les_evenements_du_plus_recent_au_plus_ancien(
 }
 
 #[sqlx::test]
-async fn l_historique_d_un_devis_vide_ne_plante_pas(pool: PgPool) {
+async fn l_historique_d_un_devis_vide_ne_plante_pas(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let (statut, page) = lire(&site(&pool), &format!("/devis/{d}/historique")).await;
     assert_eq!(statut, StatusCode::OK);
@@ -387,7 +410,8 @@ async fn l_historique_d_un_devis_vide_ne_plante_pas(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_textes_de_l_historique_sont_neutralises(pool: PgPool) {
+async fn les_textes_de_l_historique_sont_neutralises(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "envoye").await;
     poster(&site(&pool), &format!("/devis/{d}/statut/refuser"), "date=2026-10-07&motif=%3Cscript%3Ealert(1)%3C%2Fscript%3E").await;
     let (_, page) = lire(&site(&pool), &format!("/devis/{d}/historique")).await;
@@ -397,7 +421,8 @@ async fn les_textes_de_l_historique_sont_neutralises(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn seul_le_telechargement_du_pdf_est_note(pool: PgPool) {
+async fn seul_le_telechargement_du_pdf_est_note(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let s = site(&pool);
     assert_eq!(lire(&s, &format!("/devis/{d}/pdf")).await.0, StatusCode::OK);
@@ -407,7 +432,8 @@ async fn seul_le_telechargement_du_pdf_est_note(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_base_refuse_un_genre_d_evenement_inconnu_et_supprime_le_journal_avec_le_devis(pool: PgPool) {
+async fn la_base_refuse_un_genre_d_evenement_inconnu_et_supprime_le_journal_avec_le_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let res = sqlx::query("INSERT INTO devis_evenements (devis_id, genre) VALUES ($1, 'bidon')").bind(d).execute(&pool).await;
     assert!(res.is_err());
@@ -418,7 +444,8 @@ async fn la_base_refuse_un_genre_d_evenement_inconnu_et_supprime_le_journal_avec
 }
 
 #[sqlx::test]
-async fn les_cinq_onglets_sont_relies(pool: PgPool) {
+async fn les_cinq_onglets_sont_relies(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let (_, page) = lire(&site(&pool), &format!("/devis/{d}")).await;
     for lien in ["", "/encodage", "/totaux", "/apercu", "/historique"] {

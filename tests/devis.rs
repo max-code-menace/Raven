@@ -1,12 +1,17 @@
 // Tests de la liste des devis et de la numérotation.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -87,7 +92,8 @@ async fn numeros(pool: &PgPool) -> Vec<i64> {
 // ─── Création et numérotation ───────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_liste_est_vide_au_depart(pool: PgPool) {
+async fn la_liste_est_vide_au_depart(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let page = lire(&site(&pool), "/devis").await;
     assert!(page.contains("Aucun devis trouvé."));
     assert!(page.contains("0 devis"));
@@ -96,7 +102,8 @@ async fn la_liste_est_vide_au_depart(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn nouveau_cree_un_brouillon_numero_un(pool: PgPool) {
+async fn nouveau_cree_un_brouillon_numero_un(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (statut, lieu) = nouveau(&s).await;
     assert_eq!(statut, StatusCode::SEE_OTHER);
@@ -120,7 +127,8 @@ async fn nouveau_cree_un_brouillon_numero_un(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_numeros_se_suivent_et_ne_sont_jamais_reutilises(pool: PgPool) {
+async fn les_numeros_se_suivent_et_ne_sont_jamais_reutilises(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     for _ in 0..3 {
         nouveau(&s).await;
@@ -136,7 +144,8 @@ async fn les_numeros_se_suivent_et_ne_sont_jamais_reutilises(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn douze_creations_en_meme_temps_donnent_douze_numeros_differents(pool: PgPool) {
+async fn douze_creations_en_meme_temps_donnent_douze_numeros_differents(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let mut taches = Vec::new();
     for _ in 0..12 {
@@ -150,7 +159,8 @@ async fn douze_creations_en_meme_temps_donnent_douze_numeros_differents(pool: Pg
 }
 
 #[sqlx::test]
-async fn une_creation_annulee_ne_consomme_pas_de_numero(pool: PgPool) {
+async fn une_creation_annulee_ne_consomme_pas_de_numero(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     // Même mécanisme que le site : si la transaction est annulée, le compteur revient en arrière.
     let mut tx = pool.begin().await.unwrap();
     let n: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'devis' RETURNING valeur")
@@ -165,7 +175,8 @@ async fn une_creation_annulee_ne_consomme_pas_de_numero(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_devis_ne_peut_pas_avoir_deux_clients(pool: PgPool) {
+async fn un_devis_ne_peut_pas_avoir_deux_clients(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (e,): (i64,) = sqlx::query_as("INSERT INTO entreprises (nom) VALUES ('E') RETURNING id").fetch_one(&pool).await.unwrap();
     let (c,): (i64,) = sqlx::query_as("INSERT INTO contacts (nom) VALUES ('C') RETURNING id").fetch_one(&pool).await.unwrap();
     let res = sqlx::query("INSERT INTO devis (numero, client_entreprise_id, client_contact_id) VALUES (1, $1, $2)")
@@ -177,7 +188,8 @@ async fn un_devis_ne_peut_pas_avoir_deux_clients(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn deux_devis_ne_peuvent_pas_avoir_le_meme_numero(pool: PgPool) {
+async fn deux_devis_ne_peuvent_pas_avoir_le_meme_numero(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     inserer(&pool, Devis { numero: 5, ..Default::default() }).await;
     let res = sqlx::query("INSERT INTO devis (numero) VALUES (5)").execute(&pool).await;
     assert!(res.is_err());
@@ -186,7 +198,8 @@ async fn deux_devis_ne_peuvent_pas_avoir_le_meme_numero(pool: PgPool) {
 // ─── Affichage ──────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_liste_montre_client_montant_statut_et_date(pool: PgPool) {
+async fn la_liste_montre_client_montant_statut_et_date(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (e,): (i64,) = sqlx::query_as("INSERT INTO entreprises (nom) VALUES ('Dupont SRL') RETURNING id").fetch_one(&pool).await.unwrap();
     let (c,): (i64,) = sqlx::query_as("INSERT INTO contacts (prenom, nom) VALUES ('Jean', 'Martin') RETURNING id").fetch_one(&pool).await.unwrap();
     inserer(&pool, Devis { numero: 1, date: "2026-10-14", reference: "F28", statut: "accepte", entreprise: Some(e), ht: 443_184, ttc: 469_775, ..Default::default() }).await;
@@ -209,7 +222,8 @@ async fn la_liste_montre_client_montant_statut_et_date(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_plus_recents_sont_en_premier(pool: PgPool) {
+async fn les_plus_recents_sont_en_premier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     inserer(&pool, Devis { numero: 1, date: "2026-03-01", reference: "ANCIEN", ..Default::default() }).await;
     inserer(&pool, Devis { numero: 2, date: "2026-05-01", reference: "RECENT", ..Default::default() }).await;
     inserer(&pool, Devis { numero: 3, date: "2026-05-01", reference: "RECENT-BIS", ..Default::default() }).await;
@@ -220,7 +234,8 @@ async fn les_plus_recents_sont_en_premier(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_reference_tapee_est_neutralisee(pool: PgPool) {
+async fn la_reference_tapee_est_neutralisee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     inserer(&pool, Devis { reference: "<script>alert(1)</script>", ..Default::default() }).await;
     let page = lire(&site(&pool), "/devis").await;
     assert!(!page.contains("<script>alert(1)"));
@@ -230,7 +245,8 @@ async fn la_reference_tapee_est_neutralisee(pool: PgPool) {
 // ─── Totaux en pied de liste ────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn les_totaux_suivent_les_filtres(pool: PgPool) {
+async fn les_totaux_suivent_les_filtres(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     inserer(&pool, Devis { numero: 1, statut: "accepte", ht: 100_000, ttc: 106_000, ..Default::default() }).await;
     inserer(&pool, Devis { numero: 2, statut: "envoye", ht: 200_000, ttc: 242_000, ..Default::default() }).await;
     let s = site(&pool);
@@ -249,7 +265,8 @@ async fn les_totaux_suivent_les_filtres(pool: PgPool) {
 // ─── Filtres et recherche ───────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn filtre_par_un_ou_plusieurs_statuts(pool: PgPool) {
+async fn filtre_par_un_ou_plusieurs_statuts(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     for (n, st) in [(1, "brouillon"), (2, "accepte"), (3, "envoye"), (4, "refuse")] {
         inserer(&pool, Devis { numero: n, statut: st, reference: &format!("REF{n}"), ..Default::default() }).await;
     }
@@ -267,7 +284,8 @@ async fn filtre_par_un_ou_plusieurs_statuts(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn filtre_par_dates(pool: PgPool) {
+async fn filtre_par_dates(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     inserer(&pool, Devis { numero: 1, date: "2026-01-10", reference: "JANVIER", ..Default::default() }).await;
     inserer(&pool, Devis { numero: 2, date: "2026-02-10", reference: "FEVRIER", ..Default::default() }).await;
     inserer(&pool, Devis { numero: 3, date: "2026-03-10", reference: "MARS", ..Default::default() }).await;
@@ -285,7 +303,8 @@ async fn filtre_par_dates(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn recherche_par_reference_client_et_numero(pool: PgPool) {
+async fn recherche_par_reference_client_et_numero(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (e,): (i64,) = sqlx::query_as("INSERT INTO entreprises (nom) VALUES ('Batiroc SA') RETURNING id").fetch_one(&pool).await.unwrap();
     let (c,): (i64,) = sqlx::query_as("INSERT INTO contacts (prenom, nom) VALUES ('Anne', 'Lambert') RETURNING id").fetch_one(&pool).await.unwrap();
     inserer(&pool, Devis { numero: 1, reference: "TOITURE", entreprise: Some(e), ..Default::default() }).await;
@@ -306,7 +325,8 @@ async fn recherche_par_reference_client_et_numero(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_jokers_de_la_recherche_sont_neutralises(pool: PgPool) {
+async fn les_jokers_de_la_recherche_sont_neutralises(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     inserer(&pool, Devis { reference: "ABC", ..Default::default() }).await;
     let s = site(&pool);
     assert!(lire(&s, "/devis?q=%25").await.contains("Aucun devis trouvé."));
@@ -314,7 +334,8 @@ async fn les_jokers_de_la_recherche_sont_neutralises(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn recherche_et_filtres_se_combinent(pool: PgPool) {
+async fn recherche_et_filtres_se_combinent(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     inserer(&pool, Devis { numero: 1, reference: "TOIT-A", statut: "accepte", date: "2026-02-01", ..Default::default() }).await;
     inserer(&pool, Devis { numero: 2, reference: "TOIT-B", statut: "envoye", date: "2026-02-01", ..Default::default() }).await;
     inserer(&pool, Devis { numero: 3, reference: "CAVE", statut: "accepte", date: "2026-02-01", ..Default::default() }).await;
@@ -325,7 +346,7 @@ async fn recherche_et_filtres_se_combinent(pool: PgPool) {
 // ─── Pagination et htmx ─────────────────────────────────────────────────────
 
 async fn vingt_cinq_devis(pool: &PgPool) {
-    sqlx::query("UPDATE compteurs SET valeur = 25 WHERE nom = 'devis'").execute(pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 25, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(pool).await.unwrap();
     sqlx::query(
         "INSERT INTO devis (numero, date_devis, statut, montant_ht_cents, montant_ttc_cents)
          SELECT n, '2026-01-15', 'accepte', 100000, 121000 FROM generate_series(1, 25) n",
@@ -336,7 +357,8 @@ async fn vingt_cinq_devis(pool: &PgPool) {
 }
 
 #[sqlx::test]
-async fn pagination_vingt_par_page_et_totaux_sur_tout_le_filtre(pool: PgPool) {
+async fn pagination_vingt_par_page_et_totaux_sur_tout_le_filtre(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     vingt_cinq_devis(&pool).await;
     let s = site(&pool);
     let cellule = |n: i64| format!("whitespace-nowrap\">2026-{n}</td>");
@@ -357,7 +379,8 @@ async fn pagination_vingt_par_page_et_totaux_sur_tout_le_filtre(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_liens_de_page_gardent_les_filtres(pool: PgPool) {
+async fn les_liens_de_page_gardent_les_filtres(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     vingt_cinq_devis(&pool).await;
     let page = lire(&site(&pool), "/devis?statut=accepte&du=2026-01-01").await;
     // (Askama écrit « & » sous la forme « &#38; » dans la partie variable ; le navigateur lit la même chose.)
@@ -366,7 +389,8 @@ async fn les_liens_de_page_gardent_les_filtres(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn htmx_recoit_seulement_le_tableau(pool: PgPool) {
+async fn htmx_recoit_seulement_le_tableau(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     inserer(&pool, Devis { reference: "UNIQUE", ..Default::default() }).await;
     let s = site(&pool);
     let complet = lire(&s, "/devis").await;

@@ -1,43 +1,32 @@
-{% import "_ui.html" as ui %}<!DOCTYPE html>
-<html lang="fr" data-theme="ubifacture">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Connexion · Ubifacture</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  {% include "_styles.html" %}
-</head>
-<body style="background:var(--u-menu)">
-<main class="flex min-h-screen items-center justify-center px-4">
-  <form class="u-card w-full max-w-sm" method="post" action="/connexion">
-    <div class="u-card-b" style="gap:16px;padding:28px">
-      <div class="flex items-center gap-3">
-        <span class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold text-lg" style="background:var(--u-accent)">U</span>
-        <div>
-          <h1 class="text-xl font-semibold" style="margin:0">Ubifacture</h1>
-          <p class="u-petit u-muet" style="margin:0">Devis, factures et chantiers</p>
-        </div>
-      </div>
+{% extends "public_base.html" %}
+{% block titre %}Connexion{% endblock %}
+{% block content %}
       {% if !erreur.is_empty() %}
       <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
       {% endif %}
-      <input type="hidden" name="suite" value="{{ suite }}">
-      <label class="form-control">
-        <span class="u-lbl">E-mail</span>
-        <input class="input input-bordered w-full" type="email" name="email" autocomplete="username" value="{{ email }}" required autofocus>
-      </label>
-      <label class="form-control">
-        <span class="u-lbl">Mot de passe</span>
-        <input class="input input-bordered w-full" type="password" name="mot_de_passe" autocomplete="current-password" required>
-      </label>
-      <button class="btn btn-primary w-full" type="submit">Se connecter</button>
-      <p class="u-petit u-muet" style="margin:0">Mot de passe oublié : demande à Mahx de le changer (ligne de commande).</p>
-    </div>
-  </form>
-</main>
-</body>
-</html>
+      {% if !message.is_empty() %}
+      <div role="status" class="u-bandeau ok"><span>{{ message }}</span></div>
+      {% endif %}
+      {% if non_verifie %}
+      <form method="post" action="/inscription/renvoyer" style="margin:0">
+        <input type="hidden" name="email" value="{{ email }}">
+        <button class="btn btn-sm w-full" type="submit">Renvoyer le lien de confirmation</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/connexion" style="display:flex;flex-direction:column;gap:16px;margin:0">
+        <input type="hidden" name="suite" value="{{ suite }}">
+        <label class="form-control">
+          <span class="u-lbl">E-mail</span>
+          <input class="input input-bordered w-full" type="email" name="email" autocomplete="username" value="{{ email }}" required autofocus>
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Mot de passe</span>
+          <input class="input input-bordered w-full" type="password" name="mot_de_passe" autocomplete="current-password" required>
+        </label>
+        <button class="btn btn-primary w-full" type="submit">Se connecter</button>
+      </form>
+      <p class="u-petit" style="margin:0;display:flex;justify-content:space-between;gap:8px">
+        <a class="link" href="/mot-de-passe-oublie">Mot de passe oublié ?</a>
+        <a class="link" href="/inscription">Créer un compte</a>
+      </p>
+{% endblock %}

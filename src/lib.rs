@@ -2,12 +2,15 @@ pub mod avancement_calcul;
 pub mod bibliotheque;
 pub mod bibliotheque_import;
 pub mod avancements;
+pub mod base;
 pub mod avenants;
 pub mod chantiers;
 pub mod commun;
+pub mod comptes;
 pub mod connexion;
 pub mod contacts_import;
 pub mod db;
+pub mod demarrage;
 pub mod calcul;
 pub mod devis;
 pub mod devis_apercu;
@@ -19,7 +22,9 @@ pub mod devis_pdf;
 pub mod devis_statut;
 pub mod devis_totaux;
 pub mod emails;
+pub mod emails_systeme;
 pub mod envoi;
+pub mod equipe;
 pub mod exports;
 pub mod facture_calcul;
 pub mod factures;
@@ -29,12 +34,20 @@ pub mod fiches;
 pub mod import_devis;
 pub mod import_excel;
 pub mod journal;
+pub mod metier;
+pub mod organisations;
 pub mod page_client;
 pub mod paiements;
+pub mod profil;
 pub mod pdf;
 pub mod rappels;
 pub mod recurrences;
+pub mod archive;
+pub mod mentions_tva;
 pub mod reprise;
+pub mod retard;
+pub mod signature;
+pub mod reprise_devis;
 pub mod societe;
 pub mod statistiques;
 pub mod suivi_chantier;
@@ -74,6 +87,11 @@ impl Erreur {
         Erreur { code: StatusCode::INTERNAL_SERVER_ERROR, message: "Le PDF n'a pas pu être généré." }
     }
 
+    /// Une erreur du serveur, sans détail pour l'utilisateur (le détail est déjà écrit dans la console).
+    pub fn interne() -> Self {
+        Erreur { code: StatusCode::INTERNAL_SERVER_ERROR, message: "Une erreur est survenue." }
+    }
+
     /// L'action demandée n'est plus possible dans l'état actuel (exemple : modifier un devis envoyé).
     pub fn conflit(message: &'static str) -> Self {
         Erreur { code: StatusCode::CONFLICT, message }
@@ -106,7 +124,8 @@ async fn sante(State(state): State<AppState>) -> Result<Html<&'static str>, Erre
     Ok(Html("Le serveur et la base répondent."))
 }
 
-pub fn app(state: AppState) -> Router {
+/// Toutes les pages du site, sans la connexion ni l'organisation (assemblées par `app` et `application`).
+fn pages() -> Router<AppState> {
     Router::new()
         .route("/", get(tableau_de_bord::afficher))
         .route("/sante", get(sante))
@@ -125,12 +144,18 @@ pub fn app(state: AppState) -> Router {
         .merge(factures::routes())
         .merge(factures_chantier::routes())
         .merge(facture_pdf::routes())
+        .merge(archive::routes())
+        .merge(signature::routes())
         .merge(paiements::routes())
         .merge(envoi::routes())
         .merge(rappels::routes())
         .merge(recurrences::routes())
         .merge(exports::routes())
         .merge(page_client::routes())
+        .merge(comptes::routes())
+        .merge(demarrage::routes())
+        .merge(equipe::routes())
+        .merge(metier::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
         .merge(bibliotheque_import::routes())
@@ -139,13 +164,31 @@ pub fn app(state: AppState) -> Router {
         .merge(contacts_import::routes())
         .merge(fiches::routes())
         .merge(societe::routes())
+}
+
+/// Le site sans connexion, **pour les tests des écrans** : toutes les pages travaillent dans l'organisation n° 1.
+/// Jamais servi par `main.rs`.
+pub fn app(state: AppState) -> Router {
+    pages()
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            |State(state): State<AppState>, mut requete: axum::extract::Request, suite: axum::middleware::Next| async move {
+                requete.extensions_mut().insert(base::Organisation(1));
+                let profil = match state.db.acquire().await {
+                    Ok(mut conn) => profil::charger(&mut conn, 1).await.unwrap_or(profil::Profil::BATIMENT),
+                    Err(_) => profil::Profil::BATIMENT,
+                };
+                profil::avec(profil, suite.run(requete)).await
+            },
+        ))
         .with_state(state)
 }
 
 /// Le site tel qu'il est servi (`main.rs`) : toutes les pages demandent d'être connecté, sauf la page de connexion,
-/// la page client en ligne et `/sante` (voir `connexion`). `app` reste le site sans connexion, pour les tests.
+/// la page client en ligne et `/sante` (voir `connexion`). L'organisation de chaque page est celle de la session.
 pub fn application(state: AppState) -> Router {
-    app(state.clone())
-        .merge(connexion::routes().with_state(state.clone()))
-        .layer(axum::middleware::from_fn_with_state(state, connexion::exiger_connexion))
+    pages()
+        .merge(connexion::routes())
+        .layer(axum::middleware::from_fn_with_state(state.clone(), connexion::exiger_connexion))
+        .with_state(state)
 }

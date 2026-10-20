@@ -6,14 +6,15 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Form, Multipart, Path, State},
+    extract::{DefaultBodyLimit, Form, Multipart, Path},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
+use crate::base::Base;
 use crate::commun::format_euros;
 use crate::devis_lignes::charger_entete;
 use crate::import_excel::{self, LigneImport};
@@ -23,12 +24,12 @@ use crate::{AppState, Erreur, calcul};
 const TAILLE_MAX: usize = 10 * 1024 * 1024;
 
 /// Le devis (ou l'avenant), s'il est encore un brouillon : (titre « Devis N° 2026-57 », nombre de lignes, avenant ?).
-async fn brouillon(db: &PgPool, id: i64) -> Result<(String, i64, bool), Erreur> {
-    let entete = charger_entete(db, id).await?;
+async fn brouillon(db: &mut PgConnection, id: i64) -> Result<(String, i64, bool), Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
     if !entete.brouillon {
         return Err(Erreur::conflit("Ce devis n'est plus un brouillon : on ne peut plus y importer de lignes."));
     }
-    let lignes: i64 = sqlx::query_scalar("SELECT count(*) FROM devis_lignes WHERE devis_id = $1").bind(id).fetch_one(db).await?;
+    let lignes: i64 = sqlx::query_scalar("SELECT count(*) FROM devis_lignes WHERE devis_id = $1").bind(id).fetch_one(&mut *db).await?;
     Ok((format!("{} N° {}", entete.genre, entete.numero), lignes, entete.genre == "Avenant"))
 }
 
@@ -43,21 +44,21 @@ struct PageEnvoi {
     erreur: String,
 }
 
-async fn page_envoi(db: &PgPool, id: i64, erreur: String) -> Result<Html<String>, Erreur> {
-    let (titre, _, avenant) = brouillon(db, id).await?;
+async fn page_envoi(db: &mut PgConnection, id: i64, erreur: String) -> Result<Html<String>, Erreur> {
+    let (titre, _, avenant) = brouillon(&mut *db, id).await?;
     Ok(Html(PageEnvoi { id, titre, avenant, erreur }.render()?))
 }
 
-async fn formulaire(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    page_envoi(&state.db, id, String::new()).await
+async fn formulaire(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+    page_envoi(&mut *db, id, String::new()).await
 }
 
-async fn erreur_envoi(db: &PgPool, id: i64, message: &str) -> Result<Response, Erreur> {
-    Ok((StatusCode::UNPROCESSABLE_ENTITY, page_envoi(db, id, message.to_string()).await?).into_response())
+async fn erreur_envoi(db: &mut PgConnection, id: i64, message: &str) -> Result<Response, Erreur> {
+    Ok((StatusCode::UNPROCESSABLE_ENTITY, page_envoi(&mut *db, id, message.to_string()).await?).into_response())
 }
 
-async fn recevoir(State(state): State<AppState>, Path(id): Path<i64>, mut multipart: Multipart) -> Result<Response, Erreur> {
-    brouillon(&state.db, id).await?;
+async fn recevoir(mut db: Base, Path(id): Path<i64>, mut multipart: Multipart) -> Result<Response, Erreur> {
+    brouillon(&mut *db, id).await?;
     let mut recu: Option<(String, Vec<u8>)> = None;
     loop {
         match multipart.next_field().await {
@@ -65,26 +66,26 @@ async fn recevoir(State(state): State<AppState>, Path(id): Path<i64>, mut multip
                 let nom = champ.file_name().unwrap_or("").to_string();
                 match champ.bytes().await {
                     Ok(octets) => recu = Some((nom, octets.to_vec())),
-                    Err(_) => return erreur_envoi(&state.db, id, "Le fichier est trop gros (10 Mo au maximum) ou illisible.").await,
+                    Err(_) => return erreur_envoi(&mut *db, id, "Le fichier est trop gros (10 Mo au maximum) ou illisible.").await,
                 }
             }
             Ok(Some(_)) => {}
             Ok(None) => break,
-            Err(_) => return erreur_envoi(&state.db, id, "Le fichier est trop gros (10 Mo au maximum) ou illisible.").await,
+            Err(_) => return erreur_envoi(&mut *db, id, "Le fichier est trop gros (10 Mo au maximum) ou illisible.").await,
         }
     }
     let Some((nom, octets)) = recu.filter(|(_, o)| !o.is_empty()) else {
-        return erreur_envoi(&state.db, id, "Choisis un fichier Excel avant de cliquer sur « Lire le fichier ».").await;
+        return erreur_envoi(&mut *db, id, "Choisissez un fichier Excel avant de cliquer sur « Lire le fichier ».").await;
     };
     let resultat = match tokio::task::spawn_blocking(move || import_excel::lire_xlsx(&octets)).await {
         Ok(Ok(r)) => r,
-        Ok(Err(message)) => return erreur_envoi(&state.db, id, &message).await,
-        Err(_) => return erreur_envoi(&state.db, id, "Le fichier n'a pas pu être lu.").await,
+        Ok(Err(message)) => return erreur_envoi(&mut *db, id, &message).await,
+        Err(_) => return erreur_envoi(&mut *db, id, "Le fichier n'a pas pu être lu.").await,
     };
     let lignes = serde_json::to_string(&resultat.lignes).map_err(|_| Erreur::conflit("Le fichier n'a pas pu être lu."))?;
     let nom: String = nom.chars().filter(|c| !c.is_control()).take(200).collect();
     // Les aperçus abandonnés de ce devis disparaissent.
-    sqlx::query("DELETE FROM imports_excel WHERE devis_id = $1").bind(id).execute(&state.db).await?;
+    sqlx::query("DELETE FROM imports_excel WHERE devis_id = $1").bind(id).execute(&mut *db).await?;
     let import: i64 = sqlx::query_scalar(
         "INSERT INTO imports_excel (devis_id, nom_fichier, lignes, total_fichier_cents, taux_fichier, alertes)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
@@ -95,7 +96,7 @@ async fn recevoir(State(state): State<AppState>, Path(id): Path<i64>, mut multip
     .bind(resultat.total_fichier_cents)
     .bind(resultat.taux_fichier)
     .bind(resultat.alertes.join("\n"))
-    .fetch_one(&state.db)
+    .fetch_one(&mut *db)
     .await?;
     Ok(Redirect::to(&format!("/devis/{id}/import/{import}")).into_response())
 }
@@ -152,13 +153,13 @@ struct Import {
     alertes: Vec<String>,
 }
 
-async fn charger_import(db: &PgPool, id: i64, import: i64) -> Result<Import, Erreur> {
+async fn charger_import(db: &mut PgConnection, id: i64, import: i64) -> Result<Import, Erreur> {
     let ligne: Option<(String, String, Option<i64>, Option<i32>, String)> = sqlx::query_as(
         "SELECT nom_fichier, lignes, total_fichier_cents, taux_fichier, alertes FROM imports_excel WHERE id = $1 AND devis_id = $2",
     )
     .bind(import)
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let (nom_fichier, lignes, total_fichier_cents, taux_fichier, alertes) = ligne.ok_or_else(Erreur::introuvable)?;
     let lignes: Vec<LigneImport> = serde_json::from_str(&lignes).map_err(|_| Erreur::introuvable())?;
@@ -167,7 +168,7 @@ async fn charger_import(db: &PgPool, id: i64, import: i64) -> Result<Import, Err
 }
 
 /// Le taux de TVA des lignes importées : celui du devis, sinon celui écrit dans le fichier (s'il existe dans l'application).
-async fn taux_a_utiliser(db: &PgPool, id: i64, taux_fichier: Option<i32>) -> Result<Option<(i64, String)>, sqlx::Error> {
+async fn taux_a_utiliser(db: &mut PgConnection, id: i64, taux_fichier: Option<i32>) -> Result<Option<(i64, String)>, sqlx::Error> {
     sqlx::query_as(
         "SELECT t.id, t.libelle FROM taux_tva t
          WHERE t.id = (SELECT taux_tva_id FROM devis WHERE id = $1)
@@ -177,7 +178,7 @@ async fn taux_a_utiliser(db: &PgPool, id: i64, taux_fichier: Option<i32>) -> Res
     )
     .bind(id)
     .bind(taux_fichier)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await
 }
 
@@ -201,11 +202,11 @@ struct PageApercu {
     lignes_existantes: i64,
 }
 
-async fn apercu(State(state): State<AppState>, Path((id, import)): Path<(i64, i64)>) -> Result<Html<String>, Erreur> {
-    let (titre, lignes_existantes, avenant) = brouillon(&state.db, id).await?;
-    let i = charger_import(&state.db, id, import).await?;
+async fn apercu(mut db: Base, Path((id, import)): Path<(i64, i64)>) -> Result<Html<String>, Erreur> {
+    let (titre, lignes_existantes, avenant) = brouillon(&mut *db, id).await?;
+    let i = charger_import(&mut *db, id, import).await?;
     let total: i64 = i.lignes.iter().map(LigneImport::total_cents).sum();
-    let taux = taux_a_utiliser(&state.db, id, i.taux_fichier).await?;
+    let taux = taux_a_utiliser(&mut *db, id, i.taux_fichier).await?;
     let numeros = numeros(&i.lignes);
     let page = PageApercu {
         id,
@@ -253,13 +254,13 @@ struct Confirmation {
     mode: String,
 }
 
-async fn importer(State(state): State<AppState>, Path((id, import)): Path<(i64, i64)>, Form(c): Form<Confirmation>) -> Result<Redirect, Erreur> {
-    brouillon(&state.db, id).await?;
-    let i = charger_import(&state.db, id, import).await?;
-    let Some((taux, _)) = taux_a_utiliser(&state.db, id, i.taux_fichier).await? else {
-        return Err(Erreur::conflit("Choisis d'abord le taux de TVA par défaut du devis (onglet Informations), puis recommence l'import."));
+async fn importer(mut db: Base, Path((id, import)): Path<(i64, i64)>, Form(c): Form<Confirmation>) -> Result<Redirect, Erreur> {
+    brouillon(&mut *db, id).await?;
+    let i = charger_import(&mut *db, id, import).await?;
+    let Some((taux, _)) = taux_a_utiliser(&mut *db, id, i.taux_fichier).await? else {
+        return Err(Erreur::conflit("Choisissez d'abord le taux de TVA par défaut du devis (onglet Informations), puis recommencez l'import."));
     };
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     if c.mode == "remplacer" {
         sqlx::query("DELETE FROM devis_lignes WHERE devis_id = $1").bind(id).execute(&mut *tx).await?;
@@ -300,13 +301,13 @@ async fn importer(State(state): State<AppState>, Path((id, import)): Path<(i64, 
 }
 
 /// « Nouveau devis depuis Excel » : un brouillon, puis l'envoi du fichier.
-async fn nouveau(State(state): State<AppState>) -> Result<Redirect, Erreur> {
-    let id = crate::devis::creer_brouillon(&state.db).await?;
+async fn nouveau(mut db: Base) -> Result<Redirect, Erreur> {
+    let id = crate::devis::creer_brouillon(&mut *db).await?;
     Ok(Redirect::to(&format!("/devis/{id}/import")))
 }
 
-async fn abandonner(State(state): State<AppState>, Path((id, import)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
-    sqlx::query("DELETE FROM imports_excel WHERE id = $1 AND devis_id = $2").bind(import).bind(id).execute(&state.db).await?;
+async fn abandonner(mut db: Base, Path((id, import)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
+    sqlx::query("DELETE FROM imports_excel WHERE id = $1 AND devis_id = $2").bind(import).bind(id).execute(&mut *db).await?;
     Ok(Redirect::to(&format!("/devis/{id}/encodage")))
 }
 
@@ -316,6 +317,7 @@ pub fn routes() -> Router<AppState> {
         .route("/devis/{id}/import", get(formulaire).post(recevoir).layer(DefaultBodyLimit::max(TAILLE_MAX + 64 * 1024)))
         .route("/devis/{id}/import/{import}", get(apercu).post(importer))
         .route("/devis/{id}/import/{import}/abandonner", post(abandonner))
+        .route_layer(axum::middleware::from_fn(crate::profil::exiger_import_metres))
 }
 
 #[cfg(test)]

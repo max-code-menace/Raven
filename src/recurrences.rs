@@ -12,14 +12,15 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, Query, State},
+    extract::{Form, Path, Query},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use chrono::{Days, Months, NaiveDate};
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{Connection as _, FromRow, PgConnection};
 
+use crate::base::Base;
 use crate::commun::{Choix, format_euros};
 use crate::factures;
 use crate::{AppState, Erreur};
@@ -105,23 +106,23 @@ impl Recurrence {
 
 const COLONNES: &str = "id, modele_id, date_debut, date_fin, frequence, intervalle, jours_avance, preparee_jusqua";
 
-async fn aujourdhui(db: &PgPool) -> Result<NaiveDate, sqlx::Error> {
-    sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(db).await
+async fn aujourdhui(db: &mut PgConnection) -> Result<NaiveDate, sqlx::Error> {
+    sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await
 }
 
-async fn toutes(db: &PgPool) -> Result<Vec<Recurrence>, sqlx::Error> {
-    sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT {COLONNES} FROM recurrences ORDER BY id"))).fetch_all(db).await
+async fn toutes(db: &mut PgConnection) -> Result<Vec<Recurrence>, sqlx::Error> {
+    sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT {COLONNES} FROM recurrences ORDER BY id"))).fetch_all(&mut *db).await
 }
 
 /// Le nombre de factures récurrentes à préparer aujourd'hui (pour « À surveiller »).
-pub async fn nombre_a_preparer(db: &PgPool) -> Result<usize, sqlx::Error> {
-    let jour = aujourdhui(db).await?;
-    Ok(toutes(db).await?.iter().map(|r| r.a_venir(jour).iter().filter(|(_, due)| *due).count()).sum())
+pub async fn nombre_a_preparer(db: &mut PgConnection) -> Result<usize, sqlx::Error> {
+    let jour = aujourdhui(&mut *db).await?;
+    Ok(toutes(&mut *db).await?.iter().map(|r| r.a_venir(jour).iter().filter(|(_, due)| *due).count()).sum())
 }
 
 /// Crée le brouillon d'une échéance : l'en-tête et les lignes de la facture modèle, datés du jour prévu.
 /// Rien si l'échéance a déjà été préparée.
-async fn preparer_echeance(db: &PgPool, r: &Recurrence, date: NaiveDate) -> Result<Option<i64>, sqlx::Error> {
+async fn preparer_echeance(db: &mut PgConnection, r: &Recurrence, date: NaiveDate) -> Result<Option<i64>, sqlx::Error> {
     let mut tx = db.begin().await?;
     // Verrouille la récurrence : deux clics en même temps ne préparent pas deux fois la même échéance.
     let deja: Option<NaiveDate> =
@@ -185,22 +186,21 @@ struct RetourListe {
     preparees: String,
 }
 
-async fn liste(State(state): State<AppState>, Query(retour): Query<RetourListe>) -> Result<Html<String>, Erreur> {
-    let db = &state.db;
-    let jour = aujourdhui(db).await?;
+async fn liste(mut db: Base, Query(retour): Query<RetourListe>) -> Result<Html<String>, Erreur> {
+    let jour = aujourdhui(&mut *db).await?;
     let mut lignes = Vec::new();
-    for r in toutes(db).await? {
+    for r in toutes(&mut *db).await? {
         let (entreprise, contact, reference, ttc): (Option<i64>, Option<i64>, String, i64) = sqlx::query_as(
             "SELECT client_entreprise_id, client_contact_id, reference, montant_ttc_cents FROM factures WHERE id = $1",
         )
         .bind(r.modele_id)
-        .fetch_one(db)
+        .fetch_one(&mut *db)
         .await?;
-        let creees: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE recurrence_id = $1").bind(r.id).fetch_one(db).await?;
+        let creees: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE recurrence_id = $1").bind(r.id).fetch_one(&mut *db).await?;
         let a_venir = r.a_venir(jour);
         lignes.push(LigneVue {
             modele: r.modele_id,
-            client: factures::nom_client(db, entreprise, contact).await?,
+            client: factures::nom_client(&mut *db, entreprise, contact).await?,
             reference,
             montant_ttc: format_euros(ttc),
             rythme: rythme(&r.frequence, r.intervalle),
@@ -220,13 +220,12 @@ async fn liste(State(state): State<AppState>, Query(retour): Query<RetourListe>)
 }
 
 /// « Préparer les factures » : un brouillon pour chaque échéance arrivée.
-async fn preparer(State(state): State<AppState>) -> Result<Redirect, Erreur> {
-    let db = &state.db;
-    let jour = aujourdhui(db).await?;
+async fn preparer(mut db: Base) -> Result<Redirect, Erreur> {
+    let jour = aujourdhui(&mut *db).await?;
     let mut nombre = 0;
-    for r in toutes(db).await? {
+    for r in toutes(&mut *db).await? {
         for (date, due) in r.a_venir(jour) {
-            if due && preparer_echeance(db, &r, date).await?.is_some() {
+            if due && preparer_echeance(&mut *db, &r, date).await?.is_some() {
                 nombre += 1;
             }
         }
@@ -259,10 +258,10 @@ fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
     let date = |t: &str| NaiveDate::parse_from_str(t.trim(), "%Y-%m-%d").ok();
     let (debut, fin) = (date(&s.date_debut), date(&s.date_fin));
     if debut.is_none() {
-        erreurs.push("Indique la date de début.".to_string());
+        erreurs.push("Indiquez la date de début.".to_string());
     }
     if fin.is_none() {
-        erreurs.push("Indique la date de fin.".to_string());
+        erreurs.push("Indiquez la date de fin.".to_string());
     }
     if let (Some(d), Some(f)) = (debut, fin) {
         if f < d {
@@ -273,7 +272,7 @@ fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
     }
     let frequence = FREQUENCES.iter().map(|(v, _, _)| *v).find(|v| *v == s.frequence.trim());
     if frequence.is_none() {
-        erreurs.push("Choisis le type de récurrence.".to_string());
+        erreurs.push("Choisissez le type de récurrence.".to_string());
     }
     let intervalle = s.intervalle.trim().parse::<i32>().ok().filter(|n| (1..=365).contains(n));
     if intervalle.is_none() {
@@ -350,17 +349,17 @@ fn apercu(s: &Saisie) -> Apercu {
 }
 
 /// La facture modèle, si elle peut porter une récurrence.
-async fn modele(db: &PgPool, id: i64) -> Result<factures::Facture, Erreur> {
-    let f = factures::charger(db, id).await?.ok_or_else(Erreur::introuvable)?;
+async fn modele(db: &mut PgConnection, id: i64) -> Result<factures::Facture, Erreur> {
+    let f = factures::charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.peut_recurrer() {
         return Err(Erreur::conflit("Seule une facture simple ou récurrente peut servir de modèle à une récurrence."));
     }
     Ok(f)
 }
 
-async fn page(db: &PgPool, f: &factures::Facture, saisie: Option<Saisie>, erreurs: Vec<String>, message_ok: &'static str) -> Result<Html<String>, Erreur> {
+async fn page(db: &mut PgConnection, f: &factures::Facture, saisie: Option<Saisie>, erreurs: Vec<String>, message_ok: &'static str) -> Result<Html<String>, Erreur> {
     let existante: Option<Recurrence> =
-        sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT {COLONNES} FROM recurrences WHERE modele_id = $1"))).bind(f.id).fetch_optional(db).await?;
+        sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT {COLONNES} FROM recurrences WHERE modele_id = $1"))).bind(f.id).fetch_optional(&mut *db).await?;
     let saisie = match (saisie, &existante) {
         (Some(s), _) => s,
         (None, Some(r)) => Saisie {
@@ -390,19 +389,19 @@ async fn page(db: &PgPool, f: &factures::Facture, saisie: Option<Saisie>, erreur
              JOIN factures_etats et ON et.facture_id = f.id WHERE f.recurrence_id = $1 ORDER BY f.date_prevue, f.id",
         )
         .bind(r.id)
-        .fetch_all(db)
+        .fetch_all(&mut *db)
         .await?;
         for (id, numero, etat, prevue) in lignes {
             let (statut, classe) = factures::statut(&etat);
             creees.push(Creee { id, prevue: date_belge(prevue), numero: numero.map(|n| n.to_string()).unwrap_or_else(|| "—".into()), statut, classe });
         }
     }
-    let ttc: i64 = sqlx::query_scalar("SELECT montant_ttc_cents FROM factures WHERE id = $1").bind(f.id).fetch_one(db).await?;
+    let ttc: i64 = sqlx::query_scalar("SELECT montant_ttc_cents FROM factures WHERE id = $1").bind(f.id).fetch_one(&mut *db).await?;
     let delai_choisi = saisie.jours_avance.trim().to_string();
     let page = PageRecurrence {
         id: f.id,
         titre: factures::titre(&f.genre, f.numero, f.date_facture),
-        client: factures::nom_client(db, f.client_entreprise_id, f.client_contact_id).await?,
+        client: factures::nom_client(&mut *db, f.client_entreprise_id, f.client_contact_id).await?,
         montant_ttc: format_euros(ttc),
         existe: existante.is_some(),
         frequences: FREQUENCES
@@ -431,13 +430,13 @@ struct RetourFiche {
     ok: String,
 }
 
-async fn afficher(State(state): State<AppState>, Path(id): Path<i64>, Query(r): Query<RetourFiche>) -> Result<Html<String>, Erreur> {
-    let f = modele(&state.db, id).await?;
+async fn afficher(mut db: Base, Path(id): Path<i64>, Query(r): Query<RetourFiche>) -> Result<Html<String>, Erreur> {
+    let f = modele(&mut *db, id).await?;
     let message = match r.ok.as_str() {
         "enregistree" => "La récurrence est enregistrée. Les échéances arrivées sont proposées dans Finances › Factures récurrentes.",
         _ => "",
     };
-    page(&state.db, &f, None, Vec::new(), message).await
+    page(&mut *db, &f, None, Vec::new(), message).await
 }
 
 /// L'aperçu « N occurrence(s) trouvée(s) » pendant la saisie (fragment htmx).
@@ -445,11 +444,11 @@ async fn previsualiser(Query(s): Query<Saisie>) -> Result<Html<String>, Erreur> 
     Ok(Html(FragmentApercu { apercu: apercu(&s) }.render()?))
 }
 
-async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
-    let f = modele(&state.db, id).await?;
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
+    let f = modele(&mut *db, id).await?;
     let v = match verifier(&s) {
         Ok(v) => v,
-        Err(erreurs) => return Ok(page(&state.db, &f, Some(s), erreurs, "").await?.into_response()),
+        Err(erreurs) => return Ok(page(&mut *db, &f, Some(s), erreurs, "").await?.into_response()),
     };
     sqlx::query(
         "INSERT INTO recurrences (modele_id, date_debut, date_fin, frequence, intervalle, jours_avance) VALUES ($1, $2, $3, $4, $5, $6)
@@ -461,14 +460,14 @@ async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(s)
     .bind(v.frequence)
     .bind(v.intervalle)
     .bind(v.jours_avance)
-    .execute(&state.db)
+    .execute(&mut *db)
     .await?;
     Ok(Redirect::to(&format!("/factures/{id}/recurrence?ok=enregistree")).into_response())
 }
 
 /// Arrête la récurrence : plus rien n'est proposé ; les factures déjà créées restent.
-async fn supprimer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    sqlx::query("DELETE FROM recurrences WHERE modele_id = $1").bind(id).execute(&state.db).await?;
+async fn supprimer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    sqlx::query("DELETE FROM recurrences WHERE modele_id = $1").bind(id).execute(&mut *db).await?;
     Ok(Redirect::to("/factures/recurrences"))
 }
 

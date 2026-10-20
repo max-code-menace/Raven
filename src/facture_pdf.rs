@@ -5,14 +5,15 @@ use std::collections::HashMap;
 
 use axum::{
     Router,
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::{HeaderValue, header},
     response::{IntoResponse, Response},
     routing::get,
 };
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
+use crate::base::Base;
 use crate::calcul;
 use crate::commun::format_euros;
 use crate::devis_pdf::{Bloc, Societe, bloc_typst, charger_bloc, charger_societe, dictionnaire, lignes_adresse, litteral, option_litteral, tableau};
@@ -30,6 +31,8 @@ pub(crate) struct Donnees {
     /// Le devis de base du chantier (« 2026-13 ») et l'adresse du chantier.
     pub devis: String,
     pub adresse_chantier: String,
+    /// L'organisation parle de « projet » (sinon « chantier »).
+    pub projet: bool,
     pub brouillon: bool,
     pub note_credit: bool,
     pub date: String,
@@ -46,9 +49,9 @@ pub(crate) struct Donnees {
     pub lignes: Vec<LigneBase>,
 }
 
-pub(crate) async fn charger_donnees(db: &PgPool, f: &Facture) -> Result<Donnees, Erreur> {
-    let lignes = factures::charger_lignes(db, f.id).await?;
-    let options = Options::charger(db, Genre::Entreprise).await?;
+pub(crate) async fn charger_donnees(db: &mut PgConnection, f: &Facture) -> Result<Donnees, Erreur> {
+    let lignes = factures::charger_lignes(&mut *db, f.id).await?;
+    let options = Options::charger(&mut *db, Genre::Entreprise).await?;
     let conditions = f
         .conditions_paiement_id
         .and_then(|c| options.conditions.iter().find(|(i, _)| *i == c).map(|(_, t)| t.clone()))
@@ -58,13 +61,14 @@ pub(crate) async fn charger_donnees(db: &PgPool, f: &Facture) -> Result<Donnees,
          FROM chantiers ch JOIN devis d ON d.id = ch.devis_id WHERE ch.id = $1",
     )
     .bind(f.chantier_id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let corrige: Option<String> = sqlx::query_scalar(
-        "SELECT 'Note de crédit pour la facture n° ' || numero || ' du ' || to_char(date_facture, 'DD/MM/YYYY') FROM factures WHERE id = $1",
+        "SELECT 'Note de crédit pour la facture n° ' || extract(year FROM date_facture)::int || '-' || numero || ' du ' || to_char(date_facture, 'DD/MM/YYYY')
+         FROM factures WHERE id = $1",
     )
     .bind(f.facture_origine_id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     // Le devis de base du chantier et l'adresse du chantier (sous la société, comme dans Vertuoza).
     let base: Option<(i32, i64, bool, String, String, String, String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
@@ -73,13 +77,13 @@ pub(crate) async fn charger_donnees(db: &PgPool, f: &Facture) -> Result<Donnees,
          FROM chantiers ch JOIN devis d ON d.id = ch.devis_id WHERE ch.id = $1",
     )
     .bind(f.chantier_id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let (devis, adresse_chantier) = match base {
         None => (String::new(), String::new()),
         Some((annee, numero, identique, rue, num, cp, ville, pays, entreprise, contact)) => {
             let lignes = if identique {
-                charger_bloc(db, entreprise, contact, false).await?.map(|b| b.adresse).unwrap_or_default()
+                charger_bloc(&mut *db, entreprise, contact, false).await?.map(|b| b.adresse).unwrap_or_default()
             } else {
                 lignes_adresse(&rue, &num, &cp, &ville, &pays)
             };
@@ -95,6 +99,7 @@ pub(crate) async fn charger_donnees(db: &PgPool, f: &Facture) -> Result<Donnees,
         numero: f.numero.map(|n| factures::numero_affiche(f.date_facture, n)).unwrap_or_default(),
         devis,
         adresse_chantier,
+        projet: crate::profil::projet_en_base(&mut *db).await?,
         brouillon: f.brouillon(),
         note_credit,
         date: f.date_facture.format("%d/%m/%Y").to_string(),
@@ -106,8 +111,8 @@ pub(crate) async fn charger_donnees(db: &PgPool, f: &Facture) -> Result<Donnees,
         conditions: if note_credit { String::new() } else { conditions },
         remarque: f.remarque.clone(),
         vcs: f.vcs.clone().unwrap_or_default(),
-        societe: charger_societe(db).await?,
-        client: charger_bloc(db, f.client_entreprise_id, f.client_contact_id, true).await?,
+        societe: charger_societe(&mut *db).await?,
+        client: charger_bloc(&mut *db, f.client_entreprise_id, f.client_contact_id, true).await?,
         lignes,
     })
 }
@@ -185,6 +190,8 @@ pub(crate) fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("reference", litteral(&d.reference)),
         ("responsable", litteral(&d.responsable)),
         ("chantier", litteral(&d.chantier)),
+        ("mot_chantier", litteral(if d.projet { "Projet" } else { "Chantier" })),
+        ("mot_adresse_chantier", litteral(if d.projet { "Adresse du projet" } else { "Adresse du chantier" })),
         ("corrige", litteral(&d.corrige)),
         ("conditions", litteral(&d.conditions)),
         ("remarque", litteral(&d.remarque)),
@@ -193,15 +200,15 @@ pub(crate) fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("lignes", tableau(&lignes)),
         ("totaux", totaux_typst),
         ("libelle_total", litteral(if d.note_credit { "Total TTC crédité" } else { "Total TTC à payer" })),
-        ("autoliquidation", totaux.autoliquidation.to_string()),
+        ("mentions", tableau(&crate::mentions_tva::a_imprimer(&d.lignes, totaux.franchise).iter().map(|m| litteral(m)).collect::<Vec<_>>())),
         ("paiement", paiement),
     ]);
     (format!("{MODELE}\n#facture({donnees})\n"), fichiers)
 }
 
 /// Le PDF de la pièce (nom de fichier, octets), conditions générales comprises.
-pub(crate) async fn pdf_de_la_facture(db: &PgPool, f: &Facture) -> Result<(String, Vec<u8>), Erreur> {
-    let donnees = charger_donnees(db, f).await?;
+pub(crate) async fn pdf_de_la_facture(db: &mut PgConnection, f: &Facture) -> Result<(String, Vec<u8>), Erreur> {
+    let donnees = charger_donnees(&mut *db, f).await?;
     let nom = match (f.genre.as_str(), f.numero) {
         ("note_credit", Some(n)) => format!("Note-de-credit-{n}.pdf"),
         (_, Some(n)) => format!("Facture-{n}.pdf"),
@@ -229,7 +236,7 @@ pub(crate) async fn pdf_de_la_facture(db: &PgPool, f: &Facture) -> Result<(Strin
         Err(e) => return Err(Erreur::pdf(&e.to_string())),
     };
     let conditions: Option<Vec<u8>> =
-        sqlx::query_scalar("SELECT contenu FROM societe_fichiers WHERE usage = 'conditions_generales'").fetch_optional(db).await?;
+        sqlx::query_scalar("SELECT contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'conditions_generales'").fetch_optional(&mut *db).await?;
     if let Some(conditions) = conditions {
         let base = octets.clone();
         match tokio::task::spawn_blocking(move || pdf::fusionner(&base, &conditions)).await {
@@ -247,9 +254,9 @@ struct ParametresPdf {
     telecharger: String,
 }
 
-async fn servir(State(state): State<AppState>, Path(id): Path<i64>, Query(o): Query<ParametresPdf>) -> Result<Response, Erreur> {
-    let f = factures::charger(&state.db, id).await?.ok_or_else(Erreur::introuvable)?;
-    let (nom, octets) = pdf_de_la_facture(&state.db, &f).await?;
+async fn servir(mut db: Base, Path(id): Path<i64>, Query(o): Query<ParametresPdf>) -> Result<Response, Erreur> {
+    let f = factures::charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
+    let (nom, octets) = crate::archive::pdf(&mut *db, &f).await?;
     let disposition = if o.telecharger.is_empty() { "inline" } else { "attachment" };
     let mut reponse = octets.into_response();
     let entetes = reponse.headers_mut();
@@ -268,9 +275,9 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// Les pages de la pièce en images PNG, pour vérifier la mise en page à l'œil (voir `tests/notes_credit.rs`).
-pub async fn pages_en_png(db: &PgPool, id: i64) -> Result<Vec<Vec<u8>>, String> {
-    let f = factures::charger(db, id).await.map_err(|e| e.to_string())?.ok_or("facture introuvable")?;
-    let donnees = charger_donnees(db, &f).await.map_err(|_| "données illisibles".to_string())?;
+pub async fn pages_en_png(db: &mut PgConnection, id: i64) -> Result<Vec<Vec<u8>>, String> {
+    let f = factures::charger(&mut *db, id).await.map_err(|e| e.to_string())?.ok_or("facture introuvable")?;
+    let donnees = charger_donnees(&mut *db, &f).await.map_err(|_| "données illisibles".to_string())?;
     let (texte, fichiers) = source_typst(&donnees);
     pdf::pages_en_png(texte, fichiers, 1.6)
 }

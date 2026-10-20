@@ -17,21 +17,55 @@ async fn main() {
     if arguments.first().map(String::as_str) == Some("utilisateur") {
         std::process::exit(utilisateurs(&pool, &arguments[1..]).await);
     }
-    // `cargo run -- reprise <fichier.json> [--enregistrer]` : reprise des factures de Vertuoza (essai par défaut).
+    // `cargo run -- organisation creer "<nom>"` · `organisation liste`.
+    if arguments.first().map(String::as_str) == Some("organisation") {
+        let resultat = match arguments[1..].iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+            ["creer", nom @ ..] if !nom.is_empty() => ubifacture::organisations::creer(&pool, &nom.join(" "))
+                .await
+                .map(|id| format!("Organisation n° {id} créée. Ajoute son premier compte : cargo run -- utilisateur ajouter <e-mail> --organisation {id}")),
+            ["liste"] => ubifacture::organisations::liste(&pool)
+                .await
+                .map(|l| l.iter().map(|(id, nom)| format!("{id}  {nom}")).collect::<Vec<_>>().join("\n"))
+                .map_err(|e| e.to_string()),
+            _ => Err("Commandes : organisation creer \"<nom>\" · organisation liste".to_string()),
+        };
+        match resultat {
+            Ok(message) => println!("{message}"),
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+    // `cargo run -- reprise <fichier.json> [--enregistrer] [--organisation <n°>]` : reprise des factures de Vertuoza
+    // (essai par défaut).
     if arguments.first().map(String::as_str) == Some("reprise") {
         let Some(chemin) = arguments.get(1).filter(|a| !a.starts_with("--")) else {
-            eprintln!("Commande : reprise <fichier.json> [--enregistrer]");
+            eprintln!("Commande : reprise <fichier.json> [--enregistrer] [--organisation <n°>]");
             std::process::exit(1);
         };
         let enregistrer = arguments.iter().any(|a| a == "--enregistrer");
+        let options: Vec<&str> = arguments[2..].iter().map(String::as_str).filter(|a| *a != "--enregistrer").collect();
+        let organisation = match organisation_choisie(&pool, &options).await {
+            Ok((organisation, reste)) if reste.is_empty() => organisation,
+            Ok((_, reste)) => {
+                eprintln!("Argument inconnu : {reste}");
+                std::process::exit(1);
+            }
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(1);
+            }
+        };
         let code = match std::fs::read_to_string(chemin) {
             Err(e) => {
                 eprintln!("Lecture de {chemin} impossible : {e}");
                 1
             }
-            Ok(texte) => match ubifacture::reprise::importer(&pool, &texte, enregistrer).await {
+            Ok(texte) => match ubifacture::reprise::importer(&pool, organisation, &texte, enregistrer).await {
                 Ok(rapport) => {
-                    println!("{rapport}");
+                    println!("Organisation n° {organisation}.\n{rapport}");
                     0
                 }
                 Err(message) => {
@@ -49,9 +83,16 @@ async fn main() {
     }
 
     // E-mails : sans BREVO_CLE_API, rien ne part (les e-mails sont seulement enregistrés dans l'application).
-    emails::configurer(std::env::var("BREVO_CLE_API").ok(), std::env::var("ADRESSE_PUBLIQUE").ok());
+    emails::configurer(
+        std::env::var("BREVO_CLE_API").ok(),
+        std::env::var("ADRESSE_PUBLIQUE").ok(),
+        std::env::var("EMAIL_EXPEDITEUR").ok(),
+    );
     if emails::envoi_actif() {
         println!("E-mails : envoi par Brevo activé.");
+        if std::env::var("EMAIL_EXPEDITEUR").map(|e| !ubifacture::commun::email_valide(e.trim())).unwrap_or(true) {
+            println!("ATTENTION : EMAIL_EXPEDITEUR manque : les e-mails d'inscription, de mot de passe et d'invitation ne partiront pas.");
+        }
     } else {
         println!("E-mails : mode test (pas de BREVO_CLE_API), les e-mails sont seulement enregistrés.");
     }
@@ -63,6 +104,35 @@ async fn main() {
     axum::serve(listener, application(AppState { db: pool }))
         .await
         .expect("le serveur s'est arrêté");
+}
+
+/// L'organisation choisie (`--organisation <n°>`, obligatoire s'il y en a plusieurs) et les autres mots (le nom d'un
+/// nouvel utilisateur).
+async fn organisation_choisie(pool: &sqlx::PgPool, reste: &[&str]) -> Result<(i64, String), String> {
+    let mut organisation = None;
+    let mut nom = Vec::new();
+    let mut i = 0;
+    while i < reste.len() {
+        if reste[i] == "--organisation" {
+            let valeur = reste.get(i + 1).and_then(|v| v.parse::<i64>().ok());
+            organisation = Some(valeur.ok_or("Après --organisation, indique le numéro de l'organisation.")?);
+            i += 2;
+        } else {
+            nom.push(reste[i]);
+            i += 1;
+        }
+    }
+    let organisation = match organisation {
+        Some(o) => o,
+        None => match ubifacture::organisations::liste(pool).await.map_err(|e| e.to_string())?.as_slice() {
+            [(seule, _)] => *seule,
+            liste => {
+                let noms: Vec<String> = liste.iter().map(|(id, nom)| format!("  {id}  {nom}")).collect();
+                return Err(format!("Plusieurs organisations : ajoute --organisation <n°>.\n{}", noms.join("\n")));
+            }
+        },
+    };
+    Ok((organisation, nom.join(" ")))
 }
 
 /// Demande un mot de passe deux fois, sans l'afficher à l'écran.
@@ -79,9 +149,14 @@ fn demander_mot_de_passe() -> Option<String> {
 /// `utilisateur ajouter <e-mail> [nom]`, `utilisateur mot-de-passe <e-mail>`, `utilisateur liste`.
 async fn utilisateurs(pool: &sqlx::PgPool, arguments: &[String]) -> i32 {
     let resultat = match arguments.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-        ["ajouter", email, nom @ ..] => match demander_mot_de_passe() {
-            Some(mdp) => connexion::ajouter_utilisateur(pool, email, &nom.join(" "), &mdp).await.map(|()| format!("Utilisateur {email} créé.")),
-            None => Err("Rien n'a été créé.".to_string()),
+        ["ajouter", email, reste @ ..] => match organisation_choisie(pool, reste).await {
+            Err(message) => Err(message),
+            Ok((organisation, nom)) => match demander_mot_de_passe() {
+                Some(mdp) => connexion::ajouter_utilisateur(pool, organisation, email, &nom, &mdp)
+                    .await
+                    .map(|()| format!("Utilisateur {email} créé dans l'organisation n° {organisation}.")),
+                None => Err("Rien n'a été créé.".to_string()),
+            },
         },
         ["mot-de-passe", email] => match demander_mot_de_passe() {
             Some(mdp) => connexion::changer_mot_de_passe(pool, email, &mdp)
@@ -91,9 +166,16 @@ async fn utilisateurs(pool: &sqlx::PgPool, arguments: &[String]) -> i32 {
         },
         ["liste"] => connexion::liste_utilisateurs(pool)
             .await
-            .map(|l| if l.is_empty() { "Aucun utilisateur.".to_string() } else { l.iter().map(|(e, n)| format!("{e}  {n}")).collect::<Vec<_>>().join("\n") })
+            .map(|l| {
+                if l.is_empty() {
+                    "Aucun utilisateur.".to_string()
+                } else {
+                    l.iter().map(|(e, n, o)| format!("{e}  {n}  (organisation : {o})")).collect::<Vec<_>>().join("\n")
+                }
+            })
             .map_err(|e| e.to_string()),
-        _ => Err("Commandes : utilisateur ajouter <e-mail> [nom] · utilisateur mot-de-passe <e-mail> · utilisateur liste".to_string()),
+        _ => Err("Commandes : utilisateur ajouter <e-mail> [nom] [--organisation <n°>] · utilisateur mot-de-passe <e-mail> · utilisateur liste"
+            .to_string()),
     };
     match resultat {
         Ok(message) => {

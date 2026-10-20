@@ -1,13 +1,18 @@
 // Tests de l'étape 8-2 : envoi des devis et des factures par e-mail, modèles modifiables.
 // Aucune clé Brevo n'est configurée pendant les tests : chaque e-mail est seulement enregistré, rien ne part.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -73,7 +78,8 @@ async fn nombre_emails(pool: &PgPool) -> i64 {
 }
 
 #[sqlx::test]
-async fn envoyer_un_devis_sans_cle_l_enregistre_seulement(pool: PgPool) {
+async fn envoyer_un_devis_sans_cle_l_enregistre_seulement(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let s = site(&pool);
     let id = devis(&pool, &s).await;
@@ -126,7 +132,8 @@ async fn envoyer_un_devis_sans_cle_l_enregistre_seulement(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn envoyer_une_facture(pool: PgPool) {
+async fn envoyer_une_facture(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     sqlx::query("INSERT INTO societe_comptes_bancaires (iban, par_defaut) VALUES ('BE68 5390 0754 7034', true)").execute(&pool).await.unwrap();
     let s = site(&pool);
@@ -177,7 +184,8 @@ async fn envoyer_une_facture(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_modeles_se_modifient(pool: PgPool) {
+async fn les_modeles_se_modifient(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     societe(&pool).await;
     let s = site(&pool);
     let (code, page) = lire(&s, "/parametres/emails").await;

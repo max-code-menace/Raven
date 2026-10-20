@@ -4,14 +4,15 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form as FormSimple, Path, State},
+    extract::{Form as FormSimple, Path},
     response::Html,
     routing::{get, post},
 };
 use axum_extra::extract::Form;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 
+use crate::base::Base;
 use crate::calcul::{self, Ajustement, Totaux};
 use crate::commun::{Choix, format_euros};
 use crate::devis::statut;
@@ -64,7 +65,7 @@ pub(crate) fn numero_affiche(annee: i32, numero: i64, avenant: bool) -> String {
     if avenant { numero.to_string() } else { format!("{annee}-{numero}") }
 }
 
-pub(crate) async fn charger_entete(db: &PgPool, id: i64) -> Result<Entete, Erreur> {
+pub(crate) async fn charger_entete(db: &mut PgConnection, id: i64) -> Result<Entete, Erreur> {
     let ligne: Option<(i64, i32, String, Option<i64>, String, String, i64, bool, i32, bool)> = sqlx::query_as(
         "SELECT numero, extract(year FROM date_devis)::int, statut::text, taux_tva_id,
                 ajustement_libelle, ajustement_mode, ajustement_valeur, marge_activee, frais_generaux_centiemes,
@@ -72,7 +73,7 @@ pub(crate) async fn charger_entete(db: &PgPool, id: i64) -> Result<Entete, Erreu
          FROM devis WHERE id = $1",
     )
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let (numero, annee, statut_devis, taux_par_defaut, ajustement_libelle, mode, valeur, marge_activee, frais, avenant) =
         ligne.ok_or_else(Erreur::introuvable)?;
@@ -400,9 +401,9 @@ fn construire_encodage(
     }
 }
 
-pub(crate) async fn charger_encodage(db: &PgPool, id: i64, entete: &Entete, message: String) -> Result<Encodage, Erreur> {
-    let lignes = charger_lignes(db, id).await?;
-    let options = Options::charger(db, Genre::Entreprise).await?;
+pub(crate) async fn charger_encodage(db: &mut PgConnection, id: i64, entete: &Entete, message: String) -> Result<Encodage, Erreur> {
+    let lignes = charger_lignes(&mut *db, id).await?;
+    let options = Options::charger(&mut *db, Genre::Entreprise).await?;
     Ok(construire_encodage(id, entete.brouillon, &lignes, &crate::fiches::taux_courts(&options.taux_tva), entete, message))
 }
 
@@ -445,10 +446,10 @@ fn exiger_brouillon(entete: &Entete) -> Result<(), Erreur> {
 /// Recalcule et enregistre les totaux du devis dans la même transaction que le changement.
 /// La rentabilité prévue d'un devis ou d'un avenant (suivi de chantier, étape 9-2) : ventes, achats, frais généraux,
 /// marge et heures. L'ajustement est la différence entre le total HT enregistré et la somme des lignes.
-pub(crate) async fn rentabilite_prevue(db: &PgPool, devis_id: i64) -> Result<calcul::Rentabilite, sqlx::Error> {
-    let lignes = charger_lignes(db, devis_id).await?;
+pub(crate) async fn rentabilite_prevue(db: &mut PgConnection, devis_id: i64) -> Result<calcul::Rentabilite, sqlx::Error> {
+    let lignes = charger_lignes(&mut *db, devis_id).await?;
     let (montant_ht, frais_generaux): (i64, i32) =
-        sqlx::query_as("SELECT montant_ht_cents, frais_generaux_centiemes FROM devis WHERE id = $1").bind(devis_id).fetch_one(db).await?;
+        sqlx::query_as("SELECT montant_ht_cents, frais_generaux_centiemes FROM devis WHERE id = $1").bind(devis_id).fetch_one(&mut *db).await?;
     let rentables: Vec<calcul::LigneRentable> = lignes.iter().filter_map(LigneBase::en_rentable).collect();
     let somme: i64 = rentables.iter().map(|l| l.ventes_cents).sum();
     Ok(calcul::rentabilite(&rentables, i64::from(frais_generaux), montant_ht - somme))
@@ -478,15 +479,15 @@ struct RetourEncodage {
 }
 
 async fn page(
-    State(state): State<AppState>,
+    mut db: Base,
     Path(id): Path<i64>,
     axum::extract::Query(r): axum::extract::Query<RetourEncodage>,
 ) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
-    let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
-    let barre = charger_barre(&state.db, id).await?;
+    let entete = charger_entete(&mut *db, id).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
+    let barre = charger_barre(&mut *db, id).await?;
     let message_ok = match r.import.parse::<u32>() {
-        Ok(n) => format!("Import Excel terminé : {n} ligne(s) ajoutée(s). Vérifie les totaux ci-dessous."),
+        Ok(n) => format!("Import Excel terminé : {n} ligne(s) ajoutée(s). Vérifiez les totaux ci-dessous."),
         Err(_) => String::new(),
     };
     let page = Page { id, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", barre, enc, message_ok };
@@ -499,21 +500,21 @@ struct NouvelleLigne {
     genre: String,
 }
 
-async fn ajouter(State(state): State<AppState>, Path(id): Path<i64>, Form(f): Form<NouvelleLigne>) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+async fn ajouter(mut db: Base, Path(id): Path<i64>, Form(f): Form<NouvelleLigne>) -> Result<Html<String>, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
     let Some((genre, _)) = genre_connu(&f.genre) else {
-        let enc = charger_encodage(&state.db, id, &entete, "Ce type de ligne n'existe pas.".to_string()).await?;
+        let enc = charger_encodage(&mut *db, id, &entete, "Ce type de ligne n'existe pas.".to_string()).await?;
         return Ok(Html(Bloc { enc }.render()?));
     };
     let est_chiffre = GENRES_CHIFFRES.contains(&genre);
     if est_chiffre && entete.taux_par_defaut.is_none() {
-        let message = "Choisis d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
-        let enc = charger_encodage(&state.db, id, &entete, message).await?;
+        let message = "Choisissez d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
+        let enc = charger_encodage(&mut *db, id, &entete, message).await?;
         return Ok(Html(Bloc { enc }.render()?));
     }
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     // Verrouille le devis : deux ajouts en même temps ne prennent pas la même position.
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     // Une ligne chiffrée naît avec la quantité 1 et la TVA par défaut du devis ; la main d'œuvre en heures.
@@ -532,7 +533,7 @@ async fn ajouter(State(state): State<AppState>, Path(id): Path<i64>, Form(f): Fo
     recalculer(&mut tx, id).await?;
     tx.commit().await?;
 
-    let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
     Ok(Html(Bloc { enc }.render()?))
 }
 
@@ -544,15 +545,15 @@ struct OuvrageChoisi {
 
 /// Insère un ouvrage de la bibliothèque (étape 9-3) à la fin du devis : une copie de sa description, de son type, de
 /// son unité, de ses prix d'achat et de vente et de sa remarque, quantité 1, TVA par défaut du devis.
-async fn ajouter_ouvrage(State(state): State<AppState>, Path(id): Path<i64>, Form(f): Form<OuvrageChoisi>) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+async fn ajouter_ouvrage(mut db: Base, Path(id): Path<i64>, Form(f): Form<OuvrageChoisi>) -> Result<Html<String>, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
     if entete.taux_par_defaut.is_none() {
-        let message = "Choisis d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
-        let enc = charger_encodage(&state.db, id, &entete, message).await?;
+        let message = "Choisissez d'abord le taux de TVA par défaut dans l'onglet Informations.".to_string();
+        let enc = charger_encodage(&mut *db, id, &entete, message).await?;
         return Ok(Html(Bloc { enc }.render()?));
     }
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     let fait = sqlx::query(
         "INSERT INTO devis_lignes (devis_id, position, genre, description, quantite_e5, unite, prix_unitaire_e5, prix_achat_unitaire_e5,
@@ -569,7 +570,7 @@ async fn ajouter_ouvrage(State(state): State<AppState>, Path(id): Path<i64>, For
     let message = if fait.rows_affected() == 0 { "Cet ouvrage n'existe plus dans la bibliothèque.".to_string() } else { String::new() };
     recalculer(&mut tx, id).await?;
     tx.commit().await?;
-    let enc = charger_encodage(&state.db, id, &entete, message).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, message).await?;
     Ok(Html(Bloc { enc }.render()?))
 }
 
@@ -636,16 +637,16 @@ fn appliquer(l: &mut LigneBase, f: &MajLigne, taux: &[(i64, String)]) -> Result<
 }
 
 async fn modifier(
-    State(state): State<AppState>,
+    mut db: Base,
     Path((id, ligne_id)): Path<(i64, i64)>,
     // Formulaire « simple » : un champ vidé arrive comme texte vide (et non comme champ absent).
     FormSimple(f): FormSimple<MajLigne>,
 ) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+    let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
-    let options = Options::charger(&state.db, Genre::Entreprise).await?;
+    let options = Options::charger(&mut *db, Genre::Entreprise).await?;
 
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     let courante: Option<LigneBase> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT {COLONNES_LIGNE}, NULL::int AS taux_centiemes
@@ -682,19 +683,19 @@ async fn modifier(
     };
     tx.commit().await?;
 
-    let enc = charger_encodage(&state.db, id, &entete, message).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, message).await?;
     Ok(Html(Maj { enc }.render()?))
 }
 
-async fn supprimer(State(state): State<AppState>, Path((id, ligne_id)): Path<(i64, i64)>) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+async fn supprimer(mut db: Base, Path((id, ligne_id)): Path<(i64, i64)>) -> Result<Html<String>, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     sqlx::query("DELETE FROM devis_lignes WHERE id = $1 AND devis_id = $2").bind(ligne_id).bind(id).execute(&mut *tx).await?;
     recalculer(&mut tx, id).await?;
     tx.commit().await?;
-    let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
     Ok(Html(Bloc { enc }.render()?))
 }
 
@@ -706,19 +707,19 @@ struct InterrupteurMarge {
 
 /// Allume ou éteint l'option « marge et prix d'achat ». Les prix d'achat déjà encodés sont gardés.
 async fn basculer_marge(
-    State(state): State<AppState>,
+    mut db: Base,
     Path(id): Path<i64>,
     FormSimple(f): FormSimple<InterrupteurMarge>,
 ) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+    let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
     sqlx::query("UPDATE devis SET marge_activee = $1, updated_at = now() WHERE id = $2 AND statut = 'brouillon'")
         .bind(f.marge_activee.is_some())
         .bind(id)
-        .execute(&state.db)
+        .execute(&mut *db)
         .await?;
-    let entete = charger_entete(&state.db, id).await?;
-    let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
+    let entete = charger_entete(&mut *db, id).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
     Ok(Html(Bloc { enc }.render()?))
 }
 
@@ -742,11 +743,11 @@ fn lire_frais_generaux(texte: &str) -> Result<i64, &'static str> {
 }
 
 async fn changer_frais_generaux(
-    State(state): State<AppState>,
+    mut db: Base,
     Path(id): Path<i64>,
     FormSimple(f): FormSimple<FraisGeneraux>,
 ) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+    let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
     // Un champ vidé remet les frais généraux à 0.
     let texte = if f.frais_generaux.trim().is_empty() { "0" } else { f.frais_generaux.as_str() };
@@ -755,22 +756,22 @@ async fn changer_frais_generaux(
             sqlx::query("UPDATE devis SET frais_generaux_centiemes = $1, updated_at = now() WHERE id = $2 AND statut = 'brouillon'")
                 .bind(centiemes as i32)
                 .bind(id)
-                .execute(&state.db)
+                .execute(&mut *db)
                 .await?;
             String::new()
         }
         Err(m) => m.to_string(),
     };
-    let entete = charger_entete(&state.db, id).await?;
-    let enc = charger_encodage(&state.db, id, &entete, message).await?;
+    let entete = charger_entete(&mut *db, id).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, message).await?;
     Ok(Html(Bloc { enc }.render()?))
 }
 
 /// Échange la ligne avec sa voisine (`vers_le_haut` : celle du dessus). Sans voisine, ne fait rien.
-async fn deplacer(state: AppState, id: i64, ligne_id: i64, vers_le_haut: bool) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+async fn deplacer(mut db: Base, id: i64, ligne_id: i64, vers_le_haut: bool) -> Result<Html<String>, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
-    let mut tx = state.db.begin().await?;
+    let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     let position: Option<i32> = sqlx::query_scalar("SELECT position FROM devis_lignes WHERE id = $1 AND devis_id = $2")
         .bind(ligne_id)
@@ -795,7 +796,7 @@ async fn deplacer(state: AppState, id: i64, ligne_id: i64, vers_le_haut: bool) -
             .await?;
     }
     tx.commit().await?;
-    let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
     Ok(Html(Bloc { enc }.render()?))
 }
 
@@ -810,11 +811,11 @@ pub fn routes() -> Router<AppState> {
         .route("/devis/{id}/lignes/{ligne_id}/supprimer", post(supprimer))
         .route(
             "/devis/{id}/lignes/{ligne_id}/monter",
-            post(|State(s): State<AppState>, Path((id, l)): Path<(i64, i64)>| deplacer(s, id, l, true)),
+            post(|db: Base, Path((id, l)): Path<(i64, i64)>| deplacer(db, id, l, true)),
         )
         .route(
             "/devis/{id}/lignes/{ligne_id}/descendre",
-            post(|State(s): State<AppState>, Path((id, l)): Path<(i64, i64)>| deplacer(s, id, l, false)),
+            post(|db: Base, Path((id, l)): Path<(i64, i64)>| deplacer(db, id, l, false)),
         )
 }
 

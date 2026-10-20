@@ -6,7 +6,7 @@
   <section class="u-card">
     <div class="u-card-h">
       <h2>Encodage de l'avancement</h2>
-      {% if grille.modifiable %}<span class="u-petit u-muet">Saisis la période en quantité, en % ou en € : les deux autres se calculent.</span>{% endif %}
+      {% if grille.modifiable %}<span class="u-petit u-muet">Saisissez la période en quantité, en % ou en € : les deux autres se calculent.</span>{% endif %}
     </div>
     <div class="overflow-x-auto">
       <table class="u-table u-avgrille">
@@ -90,10 +90,10 @@
   </section>
 
   <section class="u-card lg:max-w-xl lg:ml-auto lg:w-full">
-    <div class="u-card-h"><h2>Chantier</h2></div>
+    <div class="u-card-h"><h2>{{ crate::profil::mot("Chantier") }}</h2></div>
     <table class="u-table">
       <tbody>
-        <tr><td>Total chantier HT</td><td class="text-right whitespace-nowrap">{{ grille.total }}</td></tr>
+        <tr><td>Total {{ crate::profil::mot("chantier") }} HT</td><td class="text-right whitespace-nowrap">{{ grille.total }}</td></tr>
         <tr><td>Avancement précédent</td><td class="text-right whitespace-nowrap">{{ grille.precedent }}</td></tr>
         <tr class="font-semibold"><td>Avancement de la période HT</td><td class="text-right whitespace-nowrap"><span id="periode">{{ grille.periode }}</span></td></tr>
         <tr><td>Total avancement (cumulé){% if !grille.pourcentage_cumul.is_empty() %} ({{ grille.pourcentage_cumul }}){% endif %}</td><td class="text-right whitespace-nowrap">{{ grille.cumul }}</td></tr>

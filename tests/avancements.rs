@@ -1,12 +1,17 @@
 // Tests de l'étape 6-3 : avancements (saisie en quantité, en % ou en €, cumul entre 0 et 100 %, validation).
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -117,7 +122,8 @@ async fn montant(pool: &PgPool, av: i64) -> i64 {
 // ─── L'exemple réel ─────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn l_exemple_reel_55_04_pour_cent_puis_la_fin_du_chantier(pool: PgPool) {
+async fn l_exemple_reel_55_04_pour_cent_puis_la_fin_du_chantier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ch = chantier(&pool, &s, 1_038_413).await;
     let av = nouvel_avancement(&s, ch.id).await;
@@ -164,7 +170,8 @@ async fn l_exemple_reel_55_04_pour_cent_puis_la_fin_du_chantier(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_cumul_ne_depasse_jamais_100_pour_cent(pool: PgPool) {
+async fn le_cumul_ne_depasse_jamais_100_pour_cent(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ch = chantier(&pool, &s, 1_038_413).await;
     let av = nouvel_avancement(&s, ch.id).await;
@@ -197,7 +204,8 @@ async fn le_cumul_ne_depasse_jamais_100_pour_cent(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn saisir_en_quantite_ou_effacer(pool: PgPool) {
+async fn saisir_en_quantite_ou_effacer(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ch = chantier(&pool, &s, 1_038_413).await;
     let av = nouvel_avancement(&s, ch.id).await;
@@ -218,7 +226,8 @@ async fn saisir_en_quantite_ou_effacer(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn l_ajustement_du_devis_s_avance_comme_une_ligne(pool: PgPool) {
+async fn l_ajustement_du_devis_s_avance_comme_une_ligne(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     // Remise de 384,13 € sur le devis de base : 10 000,00 € HT.
     let ch = chantier(&pool, &s, 1_000_000).await;
@@ -237,7 +246,8 @@ async fn l_ajustement_du_devis_s_avance_comme_une_ligne(pool: PgPool) {
 // ─── Brouillon, validation, suppression ─────────────────────────────────────
 
 #[sqlx::test]
-async fn un_seul_brouillon_a_la_fois(pool: PgPool) {
+async fn un_seul_brouillon_a_la_fois(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ch = chantier(&pool, &s, 1_038_413).await;
     let av = nouvel_avancement(&s, ch.id).await;
@@ -250,7 +260,8 @@ async fn un_seul_brouillon_a_la_fois(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn valider_figer_remettre_en_brouillon_supprimer(pool: PgPool) {
+async fn valider_figer_remettre_en_brouillon_supprimer(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ch = chantier(&pool, &s, 1_038_413).await;
     let av = nouvel_avancement(&s, ch.id).await;
@@ -293,7 +304,8 @@ async fn valider_figer_remettre_en_brouillon_supprimer(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_avenant_non_accepte_n_est_pas_dans_l_avancement(pool: PgPool) {
+async fn un_avenant_non_accepte_n_est_pas_dans_l_avancement(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ch = chantier(&pool, &s, 1_038_413).await;
     let brouillon: i64 = sqlx::query_scalar("INSERT INTO devis (numero, chantier_id, montant_ht_cents) VALUES (3, $1, 50000) RETURNING id")
@@ -309,7 +321,8 @@ async fn un_avenant_non_accepte_n_est_pas_dans_l_avancement(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn adresses_inconnues(pool: PgPool) {
+async fn adresses_inconnues(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ch = chantier(&pool, &s, 1_038_413).await;
     let av = nouvel_avancement(&s, ch.id).await;

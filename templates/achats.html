@@ -11,7 +11,7 @@
       <span class="u-ic">{% call ui::icone("finances", 20) %}{% endcall %}</span>
       <div>
         <h1>Factures fournisseurs</h1>
-        <div class="u-sous-titre">Les achats de tous les chantiers, saisis à la main en attendant la réception par Peppol (phase 2). Ils comptent dans le budget d'achat et la rentabilité du chantier.</div>
+        <div class="u-sous-titre">Les achats de tous les {{ crate::profil::mot("chantiers") }}, saisis à la main en attendant la réception par Peppol (phase 2). Ils comptent dans le budget d'achat et la rentabilité du {{ crate::profil::mot("chantier") }}.</div>
       </div>
     </div>
     <div class="u-actions">
@@ -19,7 +19,7 @@
         <summary class="btn btn-primary">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</summary>
         <form method="post" action="/achats" class="u-menu-liste u-menu-form" style="min-width:340px">
           <label class="form-control">
-            <span class="u-lbl">Chantier <i>*</i></span>
+            <span class="u-lbl">{{ crate::profil::mot("Chantier") }} <i>*</i></span>
             <select class="select select-bordered select-sm" name="chantier" required>
               <option value="">—</option>
               {% for c in chantiers %}<option value="{{ c.valeur }}">{{ c.libelle }}</option>{% endfor %}
@@ -69,13 +69,13 @@
   <form class="u-outils" method="get" action="/achats">
     <label class="u-recherche">
       {% call ui::icone("recherche", 16) %}{% endcall %}
-      <input class="input input-bordered w-full" type="search" name="q" value="{{ q }}" placeholder="Rechercher (fournisseur, référence, chantier)" aria-label="Rechercher">
+      <input class="input input-bordered w-full" type="search" name="q" value="{{ q }}" placeholder="Rechercher (fournisseur, référence, {{ crate::profil::mot("chantier") }})" aria-label="Rechercher">
     </label>
     <button class="btn" type="submit">Rechercher</button>
   </form>
   <div class="overflow-x-auto">
     <table class="u-table">
-      <thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>Référence</th><th class="n">Montant HT</th><th>Chantier</th></tr></thead>
+      <thead><tr><th>Date</th><th>Type</th><th>Fournisseur</th><th>Référence</th><th class="n">Montant HT</th><th>{{ crate::profil::mot("Chantier") }}</th></tr></thead>
       <tbody>
         {% for a in lignes %}
         <tr>
@@ -87,7 +87,7 @@
           <td class="nw"><a href="/chantiers/{{ a.chantier_id }}/finances#achats">{{ a.chantier }}</a></td>
         </tr>
         {% else %}
-        <tr class="vide"><td colspan="6">Aucun achat saisi. « Nouveau » en haut à droite, ou depuis l'onglet Finances d'un chantier.</td></tr>
+        <tr class="vide"><td colspan="6">Aucun achat saisi. « Nouveau » en haut à droite, ou depuis l'onglet Finances d'un {{ crate::profil::mot("chantier") }}.</td></tr>
         {% endfor %}
       </tbody>
     </table>

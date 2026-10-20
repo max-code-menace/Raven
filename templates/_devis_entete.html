@@ -16,7 +16,7 @@
     <div class="u-actions">
       <span class="u-petit u-muet">{{ barre.titre }}</span>
       {% if let Some((chantier_id, chantier_numero)) = barre.chantier %}
-      <a class="btn" href="/chantiers/{{ chantier_id }}">{% call ui::icone("chantiers", 16) %}{% endcall %}Chantier n° {{ chantier_numero }}</a>
+      <a class="btn" href="/chantiers/{{ chantier_id }}">{% call ui::icone("chantiers", 16) %}{% endcall %}{{ crate::profil::mot("Chantier") }} n° {{ chantier_numero }}</a>
       {% endif %}
       <details class="u-menu">
         <summary class="btn">Actions{% call ui::icone("bas", 14) %}{% endcall %}</summary>
@@ -34,7 +34,7 @@
                 <span class="u-lbl">Date d'acceptation <i>*</i></span>
                 <input class="input input-bordered input-sm" type="date" name="date" value="{{ barre.aujourdhui }}" min="{{ barre.date_devis }}" max="{{ barre.aujourdhui }}" required>
               </label>
-              {% if !barre.avenant %}<span class="u-petit u-muet">Le chantier est créé avec ce devis. Pour le corriger ensuite, on passera par un avenant.</span>{% endif %}
+              {% if !barre.avenant %}<span class="u-petit u-muet">Le {{ crate::profil::mot("chantier") }} est créé avec ce devis. Pour le corriger ensuite, on passera par un avenant.</span>{% endif %}
               <button class="btn btn-primary btn-sm" type="submit">Confirmer l'acceptation</button>
             </form>
           </details>

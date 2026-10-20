@@ -3,17 +3,18 @@
 
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::Path,
     response::Redirect,
     routing::post,
 };
 
+use crate::base::Base;
 use crate::devis_lignes::numero_affiche;
 use crate::journal::{self, Genre};
 use crate::{AppState, Erreur};
 
-async fn dupliquer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn dupliquer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
 
     let source: Option<(i32, i64, Option<i64>)> =
         sqlx::query_as("SELECT extract(year FROM date_devis)::int, numero, chantier_id FROM devis WHERE id = $1 FOR SHARE")
@@ -22,11 +23,12 @@ async fn dupliquer(State(state): State<AppState>, Path(id): Path<i64>) -> Result
             .await?;
     let (annee_source, numero_source, chantier) = source.ok_or_else(Erreur::introuvable)?;
     // Un devis prend le prochain numéro de la numérotation continue ; un avenant, le prochain numéro de son chantier.
-    // Dans les deux cas, dans la même transaction que la copie.
+    // Le numéro d'un devis repart à 1 chaque année. Dans les deux cas, dans la même transaction que la copie.
     let numero = match chantier {
-        None => sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'devis' RETURNING valeur")
-            .fetch_one(&mut *tx)
-            .await?,
+        None => {
+            let annee = crate::devis::annee_courante(&mut tx).await?;
+            crate::devis::prochain_numero(&mut tx, annee).await?
+        }
         Some(chantier_id) => crate::avenants::prochain_numero(&mut tx, chantier_id).await?,
     };
 

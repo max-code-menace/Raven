@@ -23,10 +23,10 @@
 {% if totaux_egaux %}
 <div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span><strong>Même total que le fichier : {{ total }} HT.</strong></span></div>
 {% else if !total_fichier.is_empty() %}
-<div role="alert" class="u-bandeau alerte">{% call ui::icone("attention", 18) %}{% endcall %}<span><strong>Total différent du fichier.</strong> Lignes lues : {{ total }} HT ; « TOTAL H.T.V.A. » du fichier : {{ total_fichier }}. Vérifie les lignes ci-dessous avant d'importer.</span></div>
+<div role="alert" class="u-bandeau alerte">{% call ui::icone("attention", 18) %}{% endcall %}<span><strong>Total différent du fichier.</strong> Lignes lues : {{ total }} HT ; « TOTAL H.T.V.A. » du fichier : {{ total_fichier }}. Vérifiez les lignes ci-dessous avant d'importer.</span></div>
 {% endif %}
 {% if taux_manquant %}
-<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>Aucun taux de TVA : choisis d'abord le taux de TVA par défaut dans l'onglet Informations du devis.</span></div>
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>Aucun taux de TVA : choisissez d'abord le taux de TVA par défaut dans l'onglet Informations du devis.</span></div>
 {% endif %}
 {% if !alertes.is_empty() %}
 <div role="status" class="u-bandeau alerte">
@@ -68,7 +68,7 @@
     <label class="flex gap-2 items-center text-[13.5px]"><input class="radio radio-sm" type="radio" name="mode" value="remplacer"> Remplacer les lignes existantes</label>
     {% else %}
     <input type="hidden" name="mode" value="ajouter">
-    <span class="text-[13.5px]">Les {{ lignes.len() }} lignes seront ajoutées {% if avenant %}à l'avenant{% else %}au devis{% endif %}. Tu pourras tout modifier ensuite dans l'Encodage.</span>
+    <span class="text-[13.5px]">Les {{ lignes.len() }} lignes seront ajoutées {% if avenant %}à l'avenant{% else %}au devis{% endif %}. Vous pourrez tout modifier ensuite dans l'Encodage.</span>
     {% endif %}
   </div>
 </form>

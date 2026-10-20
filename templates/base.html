@@ -24,13 +24,13 @@
       <a class="u-sous {% block nav_contacts %}{% endblock %}" href="/contacts">Contacts</a>
       <a class="{% block nav_devis %}{% endblock %}" href="/devis">{% call ui::icone("devis", 18) %}{% endcall %}Devis</a>
       <a class="{% block nav_bibliotheque %}{% endblock %}" href="/bibliotheque">{% call ui::icone("bibliotheque", 18) %}{% endcall %}Bibliothèque</a>
-      <a class="{% block nav_chantiers %}{% endblock %}" href="/chantiers">{% call ui::icone("chantiers", 18) %}{% endcall %}Chantiers</a>
+      <a class="{% block nav_chantiers %}{% endblock %}" href="/chantiers">{% call ui::icone("chantiers", 18) %}{% endcall %}{{ crate::profil::mot("Chantiers") }}</a>
       <span class="u-groupe">{% call ui::icone("finances", 18) %}{% endcall %}<span style="flex:1">Finances</span></span>
       <a class="u-sous {% block nav_factures %}{% endblock %}" href="/factures">Factures clients</a>
       <a class="u-sous {% block nav_notes %}{% endblock %}" href="/factures?genre=note_credit">Notes de crédit</a>
       <a class="u-sous {% block nav_rappels %}{% endblock %}" href="/factures/rappels">Rappels de paiement</a>
       <a class="u-sous {% block nav_recurrences %}{% endblock %}" href="/factures/recurrences">Factures récurrentes</a>
-      <a class="u-sous {% block nav_achats %}{% endblock %}" href="/achats">Factures fournisseurs</a>
+      {% if crate::profil::actuel().achats %}<a class="u-sous {% block nav_achats %}{% endblock %}" href="/achats">Factures fournisseurs</a>{% endif %}
       <a class="u-sous {% block nav_exports %}{% endblock %}" href="/exports">Export factures</a>
       <a class="{% block nav_statistiques %}{% endblock %}" href="/statistiques">{% call ui::icone("stats", 18) %}{% endcall %}Statistiques</a>
     </nav>
@@ -38,6 +38,8 @@
       <span class="u-groupe">{% call ui::icone("reglages", 18) %}{% endcall %}<span style="flex:1">Réglages</span></span>
       <a class="u-sous {% block nav_reglages %}{% endblock %}" href="/parametres/societe">Société</a>
       <a class="u-sous {% block nav_reglages_emails %}{% endblock %}" href="/parametres/emails">E-mails</a>
+      <a class="u-sous {% block nav_reglages_equipe %}{% endblock %}" href="/parametres/equipe">Équipe</a>
+      <a class="u-sous {% block nav_reglages_metier %}{% endblock %}" href="/parametres/metier">Métier et modules</a>
       <form method="post" action="/deconnexion" style="margin:0">
         <button class="u-deconnexion" type="submit">Se déconnecter</button>
       </form>

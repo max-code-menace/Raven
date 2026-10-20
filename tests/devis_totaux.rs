@@ -1,12 +1,17 @@
 // Tests des onglets Totaux (ajustement) et Visualisation (aperçu).
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -69,7 +74,8 @@ async fn montants(pool: &PgPool, devis: i64) -> (i64, i64) {
 // ─── Onglet Totaux ──────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_page_totaux_montre_les_montants_par_taux(pool: PgPool) {
+async fn la_page_totaux_montre_les_montants_par_taux(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let (statut, page) = lire(&site(&pool), &format!("/devis/{d}/totaux")).await;
     assert_eq!(statut, StatusCode::OK);
@@ -81,7 +87,8 @@ async fn la_page_totaux_montre_les_montants_par_taux(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn une_remise_en_pourcentage_se_repartit_et_met_le_devis_a_jour(pool: PgPool) {
+async fn une_remise_en_pourcentage_se_repartit_et_met_le_devis_a_jour(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let s = site(&pool);
     let (statut, lieu, _) = poster(&s, &format!("/devis/{d}/ajustement"), "libelle=Remise+fid%C3%A9lit%C3%A9&sens=remise&mode=pourcentage&valeur=10").await;
@@ -99,7 +106,8 @@ async fn une_remise_en_pourcentage_se_repartit_et_met_le_devis_a_jour(pool: PgPo
 }
 
 #[sqlx::test]
-async fn une_majoration_en_montant(pool: PgPool) {
+async fn une_majoration_en_montant(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/ajustement"), "libelle=Frais&sens=majoration&mode=montant&valeur=50").await;
@@ -108,7 +116,8 @@ async fn une_majoration_en_montant(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn l_ajustement_suit_les_changements_de_lignes(pool: PgPool) {
+async fn l_ajustement_suit_les_changements_de_lignes(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/ajustement"), "sens=remise&mode=pourcentage&valeur=10").await;
@@ -122,7 +131,8 @@ async fn l_ajustement_suit_les_changements_de_lignes(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn retirer_l_ajustement_remet_les_totaux(pool: PgPool) {
+async fn retirer_l_ajustement_remet_les_totaux(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/ajustement"), "sens=remise&mode=montant&valeur=100").await;
@@ -135,7 +145,8 @@ async fn retirer_l_ajustement_remet_les_totaux(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_ajustement_invalide_est_explique_et_rien_n_est_enregistre(pool: PgPool) {
+async fn un_ajustement_invalide_est_explique_et_rien_n_est_enregistre(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let s = site(&pool);
     for (corps, message) in [
@@ -144,8 +155,8 @@ async fn un_ajustement_invalide_est_explique_et_rien_n_est_enregistre(pool: PgPo
         ("sens=remise&mode=montant&valeur=abc", "supérieur à 0"),
         ("sens=remise&mode=montant&valeur=0", "supérieur à 0"),
         ("sens=remise&mode=montant&valeur=5,123", "2 décimales"),
-        ("sens=nimporte&mode=montant&valeur=5", "Choisis remise ou majoration."),
-        ("sens=remise&mode=autre&valeur=5", "Choisis pourcentage ou montant."),
+        ("sens=nimporte&mode=montant&valeur=5", "Choisissez remise ou majoration."),
+        ("sens=remise&mode=autre&valeur=5", "Choisissez pourcentage ou montant."),
     ] {
         let (statut, _, page) = poster(&s, &format!("/devis/{d}/ajustement"), corps).await;
         assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY, "{corps}");
@@ -157,7 +168,8 @@ async fn un_ajustement_invalide_est_explique_et_rien_n_est_enregistre(pool: PgPo
 }
 
 #[sqlx::test]
-async fn la_valeur_tapee_revient_apres_une_erreur(pool: PgPool) {
+async fn la_valeur_tapee_revient_apres_une_erreur(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let (_, _, page) = poster(&site(&pool), &format!("/devis/{d}/ajustement"), "libelle=Mon+geste&sens=majoration&mode=montant&valeur=abc").await;
     assert!(page.contains("value=\"Mon geste\"") && page.contains("value=\"abc\""));
@@ -165,7 +177,8 @@ async fn la_valeur_tapee_revient_apres_une_erreur(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_devis_envoye_n_a_plus_d_ajustement_modifiable(pool: PgPool) {
+async fn un_devis_envoye_n_a_plus_d_ajustement_modifiable(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let s = site(&pool);
     sqlx::query("UPDATE devis SET statut = 'accepte' WHERE id = $1").bind(d).execute(&pool).await.unwrap();
@@ -177,7 +190,8 @@ async fn un_devis_envoye_n_a_plus_d_ajustement_modifiable(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_base_refuse_un_ajustement_incoherent(pool: PgPool) {
+async fn la_base_refuse_un_ajustement_incoherent(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = devis_a_deux_taux(&pool).await;
     let res = sqlx::query("UPDATE devis SET ajustement_mode = 'aucun', ajustement_valeur = 500 WHERE id = $1").bind(d).execute(&pool).await;
     assert!(res.is_err());
@@ -186,7 +200,8 @@ async fn la_base_refuse_un_ajustement_incoherent(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_quatre_onglets_sont_relies(pool: PgPool) {
+async fn les_quatre_onglets_sont_relies(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(&pool).await.unwrap();
     let (_, page) = lire(&site(&pool), &format!("/devis/{d}")).await;
     for lien in [format!("href=\"/devis/{d}\""), format!("href=\"/devis/{d}/encodage\""), format!("href=\"/devis/{d}/totaux\""), format!("href=\"/devis/{d}/apercu\"")] {

@@ -1,12 +1,17 @@
 // Tests de l'éditeur de devis, onglet Encodage.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -61,7 +66,8 @@ async fn montants(pool: &PgPool, devis: i64) -> (i64, i64) {
 // ─── Page et ajout ──────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_page_est_vide_au_depart(pool: PgPool) {
+async fn la_page_est_vide_au_depart(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let (statut, page) = lire(&site(&pool), &format!("/devis/{d}/encodage")).await;
     assert_eq!(statut, StatusCode::OK);
@@ -73,7 +79,8 @@ async fn la_page_est_vide_au_depart(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn ajouter_des_lignes_les_numerote_par_lot(pool: PgPool) {
+async fn ajouter_des_lignes_les_numerote_par_lot(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     for genre in ["titre", "poste_libre", "texte", "titre", "poste_libre"] {
@@ -98,12 +105,13 @@ async fn ajouter_des_lignes_les_numerote_par_lot(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_poste_libre_demande_une_tva_par_defaut(pool: PgPool) {
+async fn un_poste_libre_demande_une_tva_par_defaut(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(&pool).await.unwrap();
     let s = site(&pool);
     let (statut, page) = poster(&s, &format!("/devis/{d}/lignes"), "genre=poste_libre").await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(page.contains("Choisis d&#39;abord le taux de TVA par défaut"));
+    assert!(page.contains("Choisissez d&#39;abord le taux de TVA par défaut"));
     assert!(ids(&pool, d).await.is_empty());
     // Un titre ne demande rien.
     assert_eq!(ajouter(&s, d, "titre").await, StatusCode::OK);
@@ -111,7 +119,8 @@ async fn un_poste_libre_demande_une_tva_par_defaut(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_type_inconnu_n_ajoute_rien(pool: PgPool) {
+async fn un_type_inconnu_n_ajoute_rien(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let (statut, page) = poster(&site(&pool), &format!("/devis/{d}/lignes"), "genre=inconnu").await;
     assert_eq!(statut, StatusCode::OK);
@@ -122,7 +131,8 @@ async fn un_type_inconnu_n_ajoute_rien(pool: PgPool) {
 // ─── Modification et totaux ─────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn modifier_une_ligne_recalcule_les_totaux_du_devis(pool: PgPool) {
+async fn modifier_une_ligne_recalcule_les_totaux_du_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     ajouter(&s, d, "titre").await;
@@ -158,7 +168,8 @@ async fn modifier_une_ligne_recalcule_les_totaux_du_devis(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_liste_des_devis_montre_le_total_calcule(pool: PgPool) {
+async fn la_liste_des_devis_montre_le_total_calcule(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     ajouter(&s, d, "poste_libre").await;
@@ -170,7 +181,8 @@ async fn la_liste_des_devis_montre_le_total_calcule(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn plusieurs_taux_de_tva_et_montant_negatif(pool: PgPool) {
+async fn plusieurs_taux_de_tva_et_montant_negatif(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     let (reduit, normal) = (taux(&pool, 600).await, taux(&pool, 2100).await);
@@ -190,7 +202,8 @@ async fn plusieurs_taux_de_tva_et_montant_negatif(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_nombre_invalide_n_enregistre_rien_et_explique(pool: PgPool) {
+async fn un_nombre_invalide_n_enregistre_rien_et_explique(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     ajouter(&s, d, "poste_libre").await;
@@ -215,7 +228,8 @@ async fn un_nombre_invalide_n_enregistre_rien_et_explique(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_titre_ne_porte_ni_prix_ni_quantite(pool: PgPool) {
+async fn un_titre_ne_porte_ni_prix_ni_quantite(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     ajouter(&s, d, "titre").await;
@@ -229,7 +243,8 @@ async fn un_titre_ne_porte_ni_prix_ni_quantite(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_sous_total_d_un_lot_s_arrete_au_titre_suivant(pool: PgPool) {
+async fn le_sous_total_d_un_lot_s_arrete_au_titre_suivant(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     for genre in ["titre", "poste_libre", "poste_libre", "titre", "poste_libre"] {
@@ -247,7 +262,8 @@ async fn le_sous_total_d_un_lot_s_arrete_au_titre_suivant(pool: PgPool) {
 // ─── Ordre et suppression ───────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn monter_et_descendre_echangent_deux_lignes(pool: PgPool) {
+async fn monter_et_descendre_echangent_deux_lignes(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     for genre in ["titre", "texte", "poste_libre"] {
@@ -267,7 +283,8 @@ async fn monter_et_descendre_echangent_deux_lignes(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn supprimer_une_ligne_recalcule_et_laisse_ajouter_ensuite(pool: PgPool) {
+async fn supprimer_une_ligne_recalcule_et_laisse_ajouter_ensuite(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     ajouter(&s, d, "poste_libre").await;
@@ -289,7 +306,8 @@ async fn supprimer_une_ligne_recalcule_et_laisse_ajouter_ensuite(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn on_ne_touche_pas_aux_lignes_d_un_autre_devis(pool: PgPool) {
+async fn on_ne_touche_pas_aux_lignes_d_un_autre_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let a = brouillon(&pool).await;
     let b: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (2) RETURNING id").fetch_one(&pool).await.unwrap();
     let s = site(&pool);
@@ -305,7 +323,8 @@ async fn on_ne_touche_pas_aux_lignes_d_un_autre_devis(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn deux_ajouts_en_meme_temps_ont_deux_positions_differentes(pool: PgPool) {
+async fn deux_ajouts_en_meme_temps_ont_deux_positions_differentes(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     let mut taches = Vec::new();
@@ -323,7 +342,8 @@ async fn deux_ajouts_en_meme_temps_ont_deux_positions_differentes(pool: PgPool) 
 // ─── Devis non modifiable, sécurité ─────────────────────────────────────────
 
 #[sqlx::test]
-async fn un_devis_envoye_est_en_lecture_seule(pool: PgPool) {
+async fn un_devis_envoye_est_en_lecture_seule(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     ajouter(&s, d, "poste_libre").await;
@@ -349,7 +369,8 @@ async fn un_devis_envoye_est_en_lecture_seule(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_textes_tapes_sont_neutralises(pool: PgPool) {
+async fn les_textes_tapes_sont_neutralises(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     ajouter(&s, d, "texte").await;
@@ -361,7 +382,8 @@ async fn les_textes_tapes_sont_neutralises(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_base_refuse_un_prix_sur_un_titre_et_deux_lignes_a_la_meme_place(pool: PgPool) {
+async fn la_base_refuse_un_prix_sur_un_titre_et_deux_lignes_a_la_meme_place(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let res = sqlx::query("INSERT INTO devis_lignes (devis_id, position, genre, prix_unitaire_e5) VALUES ($1, 1, 'titre', 100)")
         .bind(d)
@@ -374,7 +396,8 @@ async fn la_base_refuse_un_prix_sur_un_titre_et_deux_lignes_a_la_meme_place(pool
 }
 
 #[sqlx::test]
-async fn supprimer_un_devis_supprime_ses_lignes(pool: PgPool) {
+async fn supprimer_un_devis_supprime_ses_lignes(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     ajouter(&site(&pool), d, "texte").await;
     sqlx::query("DELETE FROM devis WHERE id = $1").bind(d).execute(&pool).await.unwrap();

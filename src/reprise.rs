@@ -1,4 +1,5 @@
-//! Reprise des données de Vertuoza (transition, étape 1) : les factures, notes de crédit et paiements.
+//! Reprise des données de Vertuoza (transition, étapes 1 et 2) : les factures, notes de crédit et paiements (étape 1),
+//! puis les devis, avenants et chantiers (étape 2, voir `reprise_devis.rs`).
 //!
 //! Les données sont relevées dans Vertuoza (en lecture seule) et écrites dans un fichier JSON (format plus bas),
 //! puis chargées par `cargo run -- reprise <fichier.json>`. Sans `--enregistrer`, c'est un **essai** : tout est fait
@@ -25,6 +26,8 @@ use crate::commun::format_euros;
 pub struct Fichier {
     #[serde(default)]
     pub factures: Vec<FactureReprise>,
+    #[serde(default)]
+    pub devis: Vec<crate::reprise_devis::DevisReprise>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -147,12 +150,33 @@ pub struct Rapport {
     pub par_annee: BTreeMap<(i32, &'static str), (usize, i64, i64)>,
     pub a_recevoir_cents: i64,
     pub alertes: Vec<String>,
+    // Étape 2 : devis, avenants, chantiers.
+    pub devis: usize,
+    pub avenants: usize,
+    pub chantiers: usize,
+    pub devis_deja: usize,
+    pub factures_rattachees: usize,
+    /// Total HT des devis et avenants acceptés repris.
+    pub accepte_ht_cents: i64,
+    /// statut → (nombre, total HT)
+    pub devis_par_statut: BTreeMap<String, (usize, i64)>,
 }
 
 impl std::fmt::Display for Rapport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{}", if self.enregistre { "REPRISE ENREGISTRÉE" } else { "ESSAI (rien n'est enregistré ; ajoute --enregistrer pour garder)" })?;
         writeln!(f, "Factures reprises : {} · notes de crédit : {} · déjà présentes : {} · paiements : {}", self.factures, self.notes_credit, self.deja, self.paiements)?;
+        if self.devis + self.avenants + self.devis_deja > 0 {
+            writeln!(
+                f,
+                "Devis repris : {} · avenants : {} · chantiers créés : {} · déjà présents : {} · factures rattachées à un chantier : {}",
+                self.devis, self.avenants, self.chantiers, self.devis_deja, self.factures_rattachees
+            )?;
+            for (statut, (n, ht)) in &self.devis_par_statut {
+                writeln!(f, "  {statut} : {n} pièce(s), {} HT", format_euros(*ht))?;
+            }
+            writeln!(f, "  Devis et avenants acceptés repris : {} HT", format_euros(self.accepte_ht_cents))?;
+        }
         for ((annee, serie), (n, ht, ttc)) in &self.par_annee {
             writeln!(f, "  {annee} · {serie} : {n} pièce(s), {} HT, {} TTC", format_euros(*ht), format_euros(*ttc))?;
         }
@@ -174,7 +198,7 @@ impl std::fmt::Display for Rapport {
 
 // ─── L'import ───────────────────────────────────────────────────────────────
 
-async fn client(tx: &mut Transaction<'_, Postgres>, c: &Client, rapport: &mut Rapport) -> Result<(Option<i64>, Option<i64>), sqlx::Error> {
+pub(crate) async fn client(tx: &mut Transaction<'_, Postgres>, c: &Client, rapport: &mut Rapport) -> Result<(Option<i64>, Option<i64>), sqlx::Error> {
     let nom = c.nom.trim();
     let entreprise: Option<i64> =
         sqlx::query_scalar("SELECT id FROM entreprises WHERE lower(nom) = lower($1) ORDER BY id LIMIT 1").bind(nom).fetch_optional(&mut **tx).await?;
@@ -212,12 +236,16 @@ async fn client(tx: &mut Transaction<'_, Postgres>, c: &Client, rapport: &mut Ra
     }
 }
 
-/// Charge le fichier. `enregistrer` faux : essai, tout est annulé à la fin.
-pub async fn importer(db: &PgPool, texte: &str, enregistrer: bool) -> Result<Rapport, String> {
+/// Charge le fichier dans l'organisation donnée. `enregistrer` faux : essai, tout est annulé à la fin.
+pub async fn importer(db: &PgPool, organisation: i64, texte: &str, enregistrer: bool) -> Result<Rapport, String> {
     let fichier: Fichier = serde_json::from_str(texte).map_err(|e| format!("Le fichier n'est pas lisible : {e}"))?;
     let mut rapport = Rapport { enregistre: enregistrer, ..Default::default() };
     let erreur_base = |e: sqlx::Error| format!("Erreur de la base : {e}");
-    let mut tx = db.begin().await.map_err(erreur_base)?;
+    let mut base = crate::base::Base::ouvrir(db, organisation).await.map_err(erreur_base)?;
+    let mut tx = base.begin().await.map_err(erreur_base)?;
+
+    // Les devis, avenants et chantiers d'abord : les factures y sont rattachées à la fin.
+    crate::reprise_devis::importer(&mut tx, &fichier.devis, &mut rapport).await?;
 
     // Les factures d'abord, les notes de crédit ensuite (elles pointent vers leur facture).
     let mut pieces = fichier.factures.clone();
@@ -408,7 +436,7 @@ pub async fn importer(db: &PgPool, texte: &str, enregistrer: bool) -> Result<Rap
     // Les compteurs ne redescendent jamais sous le plus grand numéro repris de l'année en cours du compteur.
     for (compteur, note) in [("facture", false), ("note_credit", true)] {
         let (valeur, annee): (i64, Option<i32>) =
-            sqlx::query_as("SELECT valeur, annee FROM compteurs WHERE nom = $1 FOR UPDATE").bind(compteur).fetch_one(&mut *tx).await.map_err(erreur_base)?;
+            sqlx::query_as("SELECT valeur, annee FROM compteurs WHERE organisation_id = app_organisation() AND nom = $1 FOR UPDATE").bind(compteur).fetch_one(&mut *tx).await.map_err(erreur_base)?;
         let max: Option<(i32, i64)> = sqlx::query_as(
             "SELECT EXTRACT(YEAR FROM date_facture)::int AS a, max(numero) FROM factures
              WHERE numero IS NOT NULL AND (genre = 'note_credit') = $1 GROUP BY a ORDER BY a DESC LIMIT 1",
@@ -425,7 +453,7 @@ pub async fn importer(db: &PgPool, texte: &str, enregistrer: bool) -> Result<Rap
             };
             if (nouvelle_valeur, Some(nouvelle_annee)) != (valeur, annee) {
                 rapport.alertes.push(format!("Compteur des {compteur}s : {valeur} ({}) → {nouvelle_valeur} ({nouvelle_annee}).", annee.map(|a| a.to_string()).unwrap_or_default()));
-                sqlx::query("UPDATE compteurs SET valeur = $2, annee = $3 WHERE nom = $1")
+                sqlx::query("UPDATE compteurs SET valeur = $2, annee = $3 WHERE organisation_id = app_organisation() AND nom = $1")
                     .bind(compteur)
                     .bind(nouvelle_valeur)
                     .bind(nouvelle_annee)
@@ -435,6 +463,8 @@ pub async fn importer(db: &PgPool, texte: &str, enregistrer: bool) -> Result<Rap
             }
         }
     }
+    crate::reprise_devis::remonter_compteur(&mut tx, &mut rapport).await.map_err(erreur_base)?;
+    crate::reprise_devis::rattacher_factures(&mut tx, &mut rapport).await.map_err(erreur_base)?;
     rapport.a_recevoir_cents = sqlx::query_scalar(
         "SELECT COALESCE(sum(GREATEST(et.reste_cents, 0)), 0)::bigint FROM factures f JOIN factures_etats et ON et.facture_id = f.id WHERE f.reprise",
     )

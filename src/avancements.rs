@@ -11,14 +11,15 @@ use std::collections::HashMap;
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, Query, State},
+    extract::{Form, Path, Query},
     response::{Html, Redirect},
     routing::{get, post},
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 
+use crate::base::Base;
 use crate::avancement_calcul as ac;
 use crate::calcul;
 use crate::facture_calcul;
@@ -150,7 +151,7 @@ fn construire_bloc(devis: &DevisDuChantier, lignes: &[&LigneDevis]) -> Bloc {
     Bloc { titre: devis.titre.clone(), postes, total_cents: devis.montant_ht_cents }
 }
 
-async fn charger_blocs(db: &PgPool, chantier_id: i64) -> Result<Vec<Bloc>, sqlx::Error> {
+async fn charger_blocs(db: &mut PgConnection, chantier_id: i64) -> Result<Vec<Bloc>, sqlx::Error> {
     let devis: Vec<DevisDuChantier> = sqlx::query_as(
         "SELECT d.id,
                 CASE WHEN d.chantier_id IS NULL THEN 'Devis ' || extract(year FROM d.date_devis)::int || '-' || d.numero
@@ -161,7 +162,7 @@ async fn charger_blocs(db: &PgPool, chantier_id: i64) -> Result<Vec<Bloc>, sqlx:
          ORDER BY d.chantier_id IS NOT NULL, d.numero",
     )
     .bind(chantier_id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     let ids: Vec<i64> = devis.iter().map(|d| d.id).collect();
     let lignes: Vec<LigneDevis> = sqlx::query_as(
@@ -169,7 +170,7 @@ async fn charger_blocs(db: &PgPool, chantier_id: i64) -> Result<Vec<Bloc>, sqlx:
          FROM devis_lignes WHERE devis_id = ANY($1) ORDER BY position",
     )
     .bind(&ids)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     Ok(devis
         .iter()
@@ -181,14 +182,14 @@ async fn charger_blocs(db: &PgPool, chantier_id: i64) -> Result<Vec<Bloc>, sqlx:
 }
 
 /// Ce que chaque avancement du chantier a avancé, poste par poste : (numéro de l'avancement, clé du poste, montant).
-async fn charger_montants(db: &PgPool, chantier_id: i64) -> Result<Vec<(i32, String, i64)>, sqlx::Error> {
+async fn charger_montants(db: &mut PgConnection, chantier_id: i64) -> Result<Vec<(i32, String, i64)>, sqlx::Error> {
     sqlx::query_as(
         "SELECT a.numero, COALESCE('l' || al.devis_ligne_id, 'a' || al.ajustement_devis_id), al.montant_cents
          FROM avancement_lignes al JOIN avancements a ON a.id = al.avancement_id
          WHERE a.chantier_id = $1",
     )
     .bind(chantier_id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await
 }
 
@@ -352,7 +353,7 @@ struct Avancement {
     dernier: i32,
 }
 
-async fn charger_avancement(db: &PgPool, chantier_id: i64, id: i64) -> Result<Avancement, Erreur> {
+async fn charger_avancement(db: &mut PgConnection, chantier_id: i64, id: i64) -> Result<Avancement, Erreur> {
     let a: Option<Avancement> = sqlx::query_as(
         "SELECT a.numero, a.date_avancement, a.reference, a.statut::text AS statut, ch.numero AS chantier_numero,
                 (SELECT max(numero) FROM avancements WHERE chantier_id = a.chantier_id) AS dernier
@@ -361,14 +362,14 @@ async fn charger_avancement(db: &PgPool, chantier_id: i64, id: i64) -> Result<Av
     )
     .bind(id)
     .bind(chantier_id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     a.ok_or_else(Erreur::introuvable)
 }
 
-async fn charger_grille(db: &PgPool, chantier_id: i64, id: i64, a: &Avancement, message: String) -> Result<Grille, Erreur> {
-    let blocs = charger_blocs(db, chantier_id).await?;
-    let montants = charger_montants(db, chantier_id).await?;
+async fn charger_grille(db: &mut PgConnection, chantier_id: i64, id: i64, a: &Avancement, message: String) -> Result<Grille, Erreur> {
+    let blocs = charger_blocs(&mut *db, chantier_id).await?;
+    let montants = charger_montants(&mut *db, chantier_id).await?;
     let (precedent, periode) = repartir(&montants, a.numero);
     Ok(construire_grille(chantier_id, id, a.statut == "brouillon", message, &blocs, &precedent, &periode))
 }
@@ -409,7 +410,7 @@ struct Retour {
 impl Retour {
     fn message_ok(&self) -> &'static str {
         match self.ok.as_str() {
-            "cree" => "L'avancement est créé : saisis ce qui a été réalisé, en quantité, en % ou en €.",
+            "cree" => "L'avancement est créé : saisissez ce qui a été réalisé, en quantité, en % ou en €.",
             "infos" => "Les informations sont enregistrées.",
             "valide" => "L'avancement est validé : il ne se modifie plus.",
             "brouillon" => "L'avancement est remis en brouillon.",
@@ -421,17 +422,17 @@ impl Retour {
         match self.erreur.as_str() {
             "date" => "La date de l'avancement n'est pas valide.",
             "reference" => "La référence est obligatoire (200 caractères au maximum).",
-            "vide" => "L'avancement est vide : saisis au moins une ligne avant de le valider.",
-            "brouillon" => "Termine ou supprime d'abord l'avancement en brouillon.",
+            "vide" => "L'avancement est vide : saisissez au moins une ligne avant de le valider.",
+            "brouillon" => "Terminez ou supprimez d'abord l'avancement en brouillon.",
             _ => "",
         }
     }
 }
 
-async fn afficher(State(state): State<AppState>, Path((chantier_id, id)): Path<(i64, i64)>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
-    let a = charger_avancement(&state.db, chantier_id, id).await?;
-    let facture = facture_de(&state.db, id).await?;
-    let grille = charger_grille(&state.db, chantier_id, id, &a, String::new()).await?;
+async fn afficher(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
+    let a = charger_avancement(&mut *db, chantier_id, id).await?;
+    let facture = facture_de(&mut *db, id).await?;
+    let grille = charger_grille(&mut *db, chantier_id, id, &a, String::new()).await?;
     let page = Page {
         chantier_id,
         chantier_numero: a.chantier_numero,
@@ -453,8 +454,8 @@ async fn afficher(State(state): State<AppState>, Path((chantier_id, id)): Path<(
 // ─── Créer, saisir, valider ─────────────────────────────────────────────────
 
 /// Crée l'avancement suivant en brouillon, ou rouvre le brouillon qui existe déjà.
-async fn creer(State(state): State<AppState>, Path(chantier_id): Path<i64>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn creer(mut db: Base, Path(chantier_id): Path<i64>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
     // Verrouille le chantier : deux créations en même temps n'ont pas le même numéro.
     let existe: Option<i64> =
         sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1 FOR UPDATE").bind(chantier_id).fetch_optional(&mut *tx).await?;
@@ -520,15 +521,15 @@ fn lire_saisie(s: &Saisie, p: &Poste) -> Result<i64, String> {
 }
 
 async fn saisir(
-    State(state): State<AppState>,
+    mut db: Base,
     Path((chantier_id, id, cle)): Path<(i64, i64, String)>,
     Form(s): Form<Saisie>,
 ) -> Result<Html<String>, Erreur> {
-    let a = charger_avancement(&state.db, chantier_id, id).await?;
+    let a = charger_avancement(&mut *db, chantier_id, id).await?;
     if a.statut != "brouillon" {
         return Err(Erreur::conflit("Cet avancement est validé : il ne se modifie plus."));
     }
-    let blocs = charger_blocs(&state.db, chantier_id).await?;
+    let blocs = charger_blocs(&mut *db, chantier_id).await?;
     let Some(poste) = blocs.iter().flat_map(|b| b.postes.iter()).find(|p| p.cle == cle && p.avancable()).cloned() else {
         return Err(Erreur::introuvable());
     };
@@ -536,7 +537,7 @@ async fn saisir(
     let message = match lire_saisie(&s, &poste) {
         Err(m) => m,
         Ok(montant) => {
-            let mut tx = state.db.begin().await?;
+            let mut tx = db.begin().await?;
             sqlx::query("SELECT id FROM avancements WHERE id = $1 FOR UPDATE").bind(id).execute(&mut *tx).await?;
             let precedent: i64 = sqlx::query_scalar(
                 "SELECT COALESCE(sum(al.montant_cents), 0)::bigint
@@ -589,7 +590,7 @@ async fn saisir(
             }
         }
     };
-    let grille = charger_grille(&state.db, chantier_id, id, &a, message).await?;
+    let grille = charger_grille(&mut *db, chantier_id, id, &a, message).await?;
     Ok(Html(GrilleSeule { grille }.render()?))
 }
 
@@ -611,8 +612,8 @@ struct Infos {
     reference: String,
 }
 
-async fn enregistrer_infos(State(state): State<AppState>, Path((chantier_id, id)): Path<(i64, i64)>, Form(f): Form<Infos>) -> Result<Redirect, Erreur> {
-    let a = charger_avancement(&state.db, chantier_id, id).await?;
+async fn enregistrer_infos(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>, Form(f): Form<Infos>) -> Result<Redirect, Erreur> {
+    let a = charger_avancement(&mut *db, chantier_id, id).await?;
     if a.statut != "brouillon" {
         return Err(Erreur::conflit("Cet avancement est validé : il ne se modifie plus."));
     }
@@ -628,47 +629,47 @@ async fn enregistrer_infos(State(state): State<AppState>, Path((chantier_id, id)
         .bind(date)
         .bind(reference)
         .bind(id)
-        .execute(&state.db)
+        .execute(&mut *db)
         .await?;
     retour("ok=infos")
 }
 
-async fn valider(State(state): State<AppState>, Path((chantier_id, id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
-    let a = charger_avancement(&state.db, chantier_id, id).await?;
+async fn valider(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
+    let a = charger_avancement(&mut *db, chantier_id, id).await?;
     if a.statut != "brouillon" {
         return Err(Erreur::conflit("Cet avancement est déjà validé."));
     }
-    let lignes: i64 = sqlx::query_scalar("SELECT count(*) FROM avancement_lignes WHERE avancement_id = $1").bind(id).fetch_one(&state.db).await?;
+    let lignes: i64 = sqlx::query_scalar("SELECT count(*) FROM avancement_lignes WHERE avancement_id = $1").bind(id).fetch_one(&mut *db).await?;
     if lignes == 0 {
         return Ok(Redirect::to(&format!("/chantiers/{chantier_id}/avancements/{id}?erreur=vide")));
     }
     sqlx::query("UPDATE avancements SET statut = 'valide', updated_at = now() WHERE id = $1 AND statut = 'brouillon'")
         .bind(id)
-        .execute(&state.db)
+        .execute(&mut *db)
         .await?;
     Ok(Redirect::to(&format!("/chantiers/{chantier_id}/avancements/{id}?ok=valide")))
 }
 
 /// Seul le dernier avancement validé peut redevenir un brouillon (et seulement s'il n'y a pas déjà un brouillon).
-async fn remettre_en_brouillon(State(state): State<AppState>, Path((chantier_id, id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
-    let a = charger_avancement(&state.db, chantier_id, id).await?;
+async fn remettre_en_brouillon(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
+    let a = charger_avancement(&mut *db, chantier_id, id).await?;
     if a.statut != "valide" || a.numero != a.dernier {
         return Err(Erreur::conflit("Seul le dernier avancement validé peut être remis en brouillon."));
     }
-    if facture_de(&state.db, id).await?.is_some() {
+    if facture_de(&mut *db, id).await?.is_some() {
         return Err(Erreur::conflit("Cet avancement est facturé : il ne peut plus être remis en brouillon."));
     }
-    sqlx::query("UPDATE avancements SET statut = 'brouillon', updated_at = now() WHERE id = $1").bind(id).execute(&state.db).await?;
+    sqlx::query("UPDATE avancements SET statut = 'brouillon', updated_at = now() WHERE id = $1").bind(id).execute(&mut *db).await?;
     Ok(Redirect::to(&format!("/chantiers/{chantier_id}/avancements/{id}?ok=brouillon")))
 }
 
 /// Supprimer un brouillon (c'est toujours le dernier avancement : la numérotation ne garde pas de trou).
-async fn supprimer(State(state): State<AppState>, Path((chantier_id, id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
-    let a = charger_avancement(&state.db, chantier_id, id).await?;
+async fn supprimer(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
+    let a = charger_avancement(&mut *db, chantier_id, id).await?;
     if a.statut != "brouillon" {
         return Err(Erreur::conflit("Un avancement validé ne se supprime pas."));
     }
-    sqlx::query("DELETE FROM avancements WHERE id = $1 AND statut = 'brouillon'").bind(id).execute(&state.db).await?;
+    sqlx::query("DELETE FROM avancements WHERE id = $1 AND statut = 'brouillon'").bind(id).execute(&mut *db).await?;
     Ok(Redirect::to(&format!("/chantiers/{chantier_id}/finances")))
 }
 
@@ -692,8 +693,8 @@ fn par_taux(p: &Poste, bloc: &Bloc, montant: i64) -> Vec<(i64, i64)> {
 
 /// Les bases HT de tout le chantier par taux (devis de base et avenants acceptés, remises comprises) :
 /// un acompte se répartit entre les taux selon ces bases.
-pub(crate) async fn bases_par_taux(db: &PgPool, chantier_id: i64) -> Result<Vec<(i64, i64)>, sqlx::Error> {
-    let blocs = charger_blocs(db, chantier_id).await?;
+pub(crate) async fn bases_par_taux(db: &mut PgConnection, chantier_id: i64) -> Result<Vec<(i64, i64)>, sqlx::Error> {
+    let blocs = charger_blocs(&mut *db, chantier_id).await?;
     let mut montants = Vec::new();
     for b in &blocs {
         for p in b.postes.iter().filter(|p| p.avancable()) {
@@ -705,9 +706,9 @@ pub(crate) async fn bases_par_taux(db: &PgPool, chantier_id: i64) -> Result<Vec<
 
 /// Les lignes de la facture de l'avancement n° `numero` : pour chaque devis ou avenant, un titre puis chaque poste
 /// avancé pendant la période (montant de la période, avec le % de la période et le % cumulé).
-pub(crate) async fn lignes_de_facture(db: &PgPool, chantier_id: i64, numero: i32) -> Result<Vec<NouvelleLigne>, sqlx::Error> {
-    let blocs = charger_blocs(db, chantier_id).await?;
-    let montants = charger_montants(db, chantier_id).await?;
+pub(crate) async fn lignes_de_facture(db: &mut PgConnection, chantier_id: i64, numero: i32) -> Result<Vec<NouvelleLigne>, sqlx::Error> {
+    let blocs = charger_blocs(&mut *db, chantier_id).await?;
+    let montants = charger_montants(&mut *db, chantier_id).await?;
     let (precedent, periode) = repartir(&montants, numero);
     Ok(construire_lignes_facture(&blocs, &precedent, &periode))
 }
@@ -723,8 +724,9 @@ fn construire_lignes_facture(blocs: &[Bloc], precedent: &HashMap<String, i64>, p
             }
             let cumul = precedent.get(&p.cle).copied().unwrap_or(0) + m;
             let pourcent = |x: i64| ac::pourcentage_centiemes(x, p.total_cents).map(ac::pourcentage_en_texte).unwrap_or_default();
-            let nom = if p.numero.is_empty() { p.description.clone() } else { format!("{} {}", p.numero, p.description) };
-            let description = format!("{nom}\nAvancement de la période : {} (cumul : {})", pourcent(m), pourcent(cumul));
+            // La facture numérote ses propres lignes : le numéro du poste dans le devis va sur la deuxième ligne.
+            let poste = if p.numero.is_empty() { String::new() } else { format!("Poste {} · ", p.numero) };
+            let description = format!("{}\n{poste}Avancement de la période : {} (cumul : {})", p.description, pourcent(m), pourcent(cumul));
             match p.taux_tva_id {
                 Some(t) => {
                     let quantite = p.quantite_e5.and_then(|q| ac::quantite_depuis_montant(m, p.total_cents, q));
@@ -755,9 +757,9 @@ fn construire_lignes_facture(blocs: &[Bloc], precedent: &HashMap<String, i64>, p
 
 /// Ce qui reste à avancer, poste par poste (clé, montant), après tous les avancements enregistrés,
 /// et les lignes de la facture qui solde ces postes.
-pub(crate) async fn preparer_solde(db: &PgPool, chantier_id: i64) -> Result<(Vec<(String, i64)>, Vec<NouvelleLigne>), sqlx::Error> {
-    let blocs = charger_blocs(db, chantier_id).await?;
-    let montants = charger_montants(db, chantier_id).await?;
+pub(crate) async fn preparer_solde(db: &mut PgConnection, chantier_id: i64) -> Result<(Vec<(String, i64)>, Vec<NouvelleLigne>), sqlx::Error> {
+    let blocs = charger_blocs(&mut *db, chantier_id).await?;
+    let montants = charger_montants(&mut *db, chantier_id).await?;
     let (cumul, _) = repartir(&montants, i32::MAX);
     let soldes: Vec<(String, i64)> = blocs
         .iter()
@@ -802,8 +804,8 @@ pub(crate) async fn inserer_solde(tx: &mut Transaction<'_, Postgres>, chantier_i
 
 /// La facture qui reprend cet avancement, s'il y en a une : (id, numéro).
 /// La facture qui reprend cet avancement, s'il y en a une.
-async fn facture_de(db: &PgPool, avancement_id: i64) -> Result<Option<i64>, sqlx::Error> {
-    sqlx::query_scalar("SELECT id FROM factures WHERE avancement_id = $1").bind(avancement_id).fetch_optional(db).await
+async fn facture_de(db: &mut PgConnection, avancement_id: i64) -> Result<Option<i64>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM factures WHERE avancement_id = $1").bind(avancement_id).fetch_optional(&mut *db).await
 }
 
 /// Le chantier a-t-il déjà sa facture finale (brouillon compris) ?
@@ -840,15 +842,15 @@ pub struct Finances {
     pub reste: String,
 }
 
-pub async fn finances(db: &PgPool, chantier_id: i64) -> Result<Finances, sqlx::Error> {
-    let total: i64 = charger_blocs(db, chantier_id).await?.iter().map(|b| b.total_cents).sum();
+pub async fn finances(db: &mut PgConnection, chantier_id: i64) -> Result<Finances, sqlx::Error> {
+    let total: i64 = charger_blocs(&mut *db, chantier_id).await?.iter().map(|b| b.total_cents).sum();
     let lignes: Vec<(i64, i32, NaiveDate, String, i64, String, Option<i64>, Option<i64>)> = sqlx::query_as(
         "SELECT a.id, a.numero, a.date_avancement, a.reference, a.montant_ht_cents, a.statut::text, f.id, f.numero
          FROM avancements a LEFT JOIN factures f ON f.avancement_id = a.id
          WHERE a.chantier_id = $1 ORDER BY a.numero",
     )
     .bind(chantier_id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     let mut cumul = 0;
     let mut avance = 0;
@@ -883,7 +885,7 @@ pub async fn finances(db: &PgPool, chantier_id: i64) -> Result<Finances, sqlx::E
     Ok(Finances {
         avancements: vues,
         brouillon,
-        finale: a_une_finale(db, chantier_id).await?,
+        finale: a_une_finale(&mut *db, chantier_id).await?,
         total_cents: total,
         total: format_euros(total),
         avance: format_euros(avance),
@@ -894,7 +896,7 @@ pub async fn finances(db: &PgPool, chantier_id: i64) -> Result<Finances, sqlx::E
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/chantiers/{id}/avancements", post(creer))
+        .route("/chantiers/{id}/avancements", post(creer).route_layer(axum::middleware::from_fn(crate::profil::exiger_avancements)))
         .route("/chantiers/{id}/avancements/{avancement}", get(afficher))
         .route("/chantiers/{id}/avancements/{avancement}/infos", post(enregistrer_infos))
         .route("/chantiers/{id}/avancements/{avancement}/lignes/{cle}", post(saisir))

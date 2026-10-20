@@ -1,6 +1,8 @@
 // Tests de l'étape 8-4 : export des factures pour le comptable (ZIP avec PDF, UBL 2.1 et récapitulatif),
 // « uniquement non exportées », envoi au comptable (enregistré seulement : pas de clé Brevo pendant les tests).
 
+mod commun;
+
 use std::io::Read;
 
 use axum::{
@@ -9,7 +11,10 @@ use axum::{
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -79,7 +84,8 @@ fn contenu_du_zip(octets: &[u8]) -> Vec<(String, Vec<u8>)> {
 }
 
 #[sqlx::test]
-async fn un_dossier_d_export_complet(pool: PgPool) {
+async fn un_dossier_d_export_complet(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     sqlx::query("INSERT INTO societe (nom, nom_abrege, email, telephone, numero_tva) VALUES ('Ubique SRL', 'Ubique', 'info@ubique.be', '010', 'BE0123456789')")
         .execute(&pool)
         .await
@@ -152,7 +158,8 @@ async fn un_dossier_d_export_complet(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn demandes_refusees_et_envoi_au_comptable(pool: PgPool) {
+async fn demandes_refusees_et_envoi_au_comptable(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     assert_eq!(poster(&s, "/exports", "debut=2026-10-10&fin=2026-10-01&format=pdf&contenu=toutes").await.1.as_deref(), Some("/exports?erreur=periode"));
     assert_eq!(poster(&s, "/exports", "debut=x&fin=2026-10-01&format=pdf&contenu=toutes").await.1.as_deref(), Some("/exports?erreur=periode"));

@@ -1,12 +1,17 @@
 // Tests de l'étape 9-5 : les blocs du tableau de bord et la liste « À surveiller ».
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -70,7 +75,8 @@ async fn devis(pool: &PgPool, s: &Router, statut: &str, montant: i64) -> i64 {
 }
 
 #[sqlx::test]
-async fn un_tableau_de_bord_vide(pool: PgPool) {
+async fn un_tableau_de_bord_vide(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let page = lire(&site(&pool), "/").await;
     for attendu in ["Mes devis", "Mes factures", "Mes chantiers", "Mes notes de crédit", "À surveiller", "Ce mois-ci", "Rien à signaler"] {
         assert!(page.contains(attendu), "{attendu}");
@@ -79,7 +85,8 @@ async fn un_tableau_de_bord_vide(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_blocs_et_ce_qui_est_a_surveiller(pool: PgPool) {
+async fn les_blocs_et_ce_qui_est_a_surveiller(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     facture(&pool, &s, 10).await; // en retard de 10 jours : à relancer (7 jours)
     facture(&pool, &s, 0).await; // à envoyer, pas en retard

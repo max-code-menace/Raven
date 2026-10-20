@@ -7,6 +7,25 @@
 {% block entete %}{% include "_devis_entete.html" %}{% endblock %}
 
 {% block content %}
+{% if let Some(d) = dossier %}
+<section class="u-card" id="preuve">
+  <div class="u-card-h"><h2>Dossier de preuve de la signature</h2>{% if d.verifiee %}<span class="u-pastille s-accepte">E-mail vérifié</span>{% else %}<span class="u-pastille s-a-envoyer">E-mail non vérifié</span>{% endif %}</div>
+  <div class="u-card-b">
+    <p class="u-petit u-muet" style="margin:0">Signature électronique simple renforcée : elle est admissible comme preuve, mais en cas de contestation c'est à vous de démontrer qu'elle émane bien du client. Ce dossier ne change plus.</p>
+    <div class="grid gap-3 grid-cols-1 md:grid-cols-2">
+      <div><span class="u-cle">Signé le</span>{{ d.quand }}</div>
+      <div><span class="u-cle">Par</span>{{ d.nom }}</div>
+      <div><span class="u-cle">Adresse e-mail</span>{% if d.email.is_empty() %}aucune{% else %}{{ d.email }}{% endif %}</div>
+      <div><span class="u-cle">Vérification</span>{{ d.verification }}</div>
+      <div><span class="u-cle">Adresse IP</span>{% if d.ip.is_empty() %}non relevée{% else %}{{ d.ip }}{% endif %}</div>
+      <div><span class="u-cle">Navigateur</span>{% if d.navigateur.is_empty() %}non relevé{% else %}{{ d.navigateur }}{% endif %}</div>
+    </div>
+    <div><span class="u-cle">Empreinte SHA-256 du PDF signé</span><span class="mono" style="word-break:break-all">{{ d.empreinte }}</span></div>
+    <div><span class="u-cle">Texte accepté par le client</span><span>{{ d.texte_accepte }}</span></div>
+    <a class="btn btn-sm self-start" href="{{ d.telechargement }}">Télécharger le PDF signé</a>
+  </div>
+</section>
+{% endif %}
 <section class="u-card">
   <div class="u-card-h"><h2>Historique</h2></div>
   <div class="overflow-x-auto">

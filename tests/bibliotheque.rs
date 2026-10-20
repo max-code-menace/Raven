@@ -1,12 +1,17 @@
 // Tests de l'étape 9-3 : bibliothèque de prix (ouvrages) et insertion d'un ouvrage dans un devis.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -40,7 +45,8 @@ async fn poster(site: &Router, uri: &str, corps: &str) -> (StatusCode, Option<St
 const PANNEAUX: &str = "description=Panneaux+isolants+PIR+12+cm&genre=fourniture&categorie=Toiture&fournisseur=Brico+Pro&unite=m%C2%B2&prix_achat=28&marge=60&prix_vente=&remarque=Pose+comprise";
 
 #[sqlx::test]
-async fn creer_chercher_modifier_supprimer(pool: PgPool) {
+async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (code, page) = lire(&s, "/bibliotheque").await;
     assert_eq!(code, StatusCode::OK);
@@ -71,7 +77,7 @@ async fn creer_chercher_modifier_supprimer(pool: PgPool) {
     // Erreurs : tout est gardé, rien n'est enregistré.
     let (code, _, page) = poster(&s, "/bibliotheque", "description=&genre=fourniture&prix_achat=12").await;
     assert_eq!(code, StatusCode::OK);
-    assert!(page.contains("La description est obligatoire") && page.contains("Indique le prix de vente") && page.contains("value=\"12\""));
+    assert!(page.contains("La description est obligatoire") && page.contains("Indiquez le prix de vente") && page.contains("value=\"12\""));
     assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM ouvrages").fetch_one(&pool).await.unwrap(), 2);
 
     // Modifier : un prix de vente saisi recalcule la marge.
@@ -89,7 +95,8 @@ async fn creer_chercher_modifier_supprimer(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn inserer_un_ouvrage_dans_un_devis(pool: PgPool) {
+async fn inserer_un_ouvrage_dans_un_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/bibliotheque", PANNEAUX).await;
     let ouvrage: i64 = sqlx::query_scalar("SELECT id FROM ouvrages").fetch_one(&pool).await.unwrap();
@@ -106,7 +113,7 @@ async fn inserer_un_ouvrage_dans_un_devis(pool: PgPool) {
     // Sans taux de TVA par défaut, le devis demande d'abord de le choisir.
     sqlx::query("UPDATE devis SET taux_tva_id = NULL WHERE id = $1").bind(devis).execute(&pool).await.unwrap();
     let (_, _, bloc) = poster(&s, &format!("/devis/{devis}/bibliotheque"), &format!("ouvrage={ouvrage}")).await;
-    assert!(bloc.contains("Choisis d&#39;abord le taux de TVA par défaut") || bloc.contains("Choisis d'abord le taux de TVA par défaut"));
+    assert!(bloc.contains("Choisissez d&#39;abord le taux de TVA par défaut") || bloc.contains("Choisissez d'abord le taux de TVA par défaut"));
 
     sqlx::query("UPDATE devis SET taux_tva_id = (SELECT id FROM taux_tva WHERE taux_centiemes = 600) WHERE id = $1").bind(devis).execute(&pool).await.unwrap();
     let (code, _, bloc) = poster(&s, &format!("/devis/{devis}/bibliotheque"), &format!("ouvrage={ouvrage}")).await;

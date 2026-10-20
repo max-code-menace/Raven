@@ -4,13 +4,14 @@
 
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::Path,
     response::Redirect,
     routing::post,
 };
 use chrono::NaiveDate;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 
+use crate::base::Base;
 use crate::commun::format_euros;
 use crate::devis::statut;
 use crate::journal::{self, Genre};
@@ -35,8 +36,8 @@ struct Creation {
     import: String,
 }
 
-async fn creer(State(state): State<AppState>, Path(chantier_id): Path<i64>, axum::extract::Form(c): axum::extract::Form<Creation>) -> Result<Redirect, Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn creer(mut db: Base, Path(chantier_id): Path<i64>, axum::extract::Form(c): axum::extract::Form<Creation>) -> Result<Redirect, Erreur> {
+    let mut tx = db.begin().await?;
     let chantier: Option<(i64, i64)> = sqlx::query_as("SELECT numero, devis_id FROM chantiers WHERE id = $1")
         .bind(chantier_id)
         .fetch_optional(&mut *tx)
@@ -60,9 +61,9 @@ async fn creer(State(state): State<AppState>, Path(chantier_id): Path<i64>, axum
     .bind(chantier_id)
     .fetch_one(&mut *tx)
     .await?;
-    journal::noter(&mut tx, id, Genre::Creation, &format!("Avenant créé pour le chantier n° {numero_chantier}")).await?;
+    journal::noter(&mut tx, id, Genre::Creation, &format!("Avenant créé pour le {} n° {numero_chantier}", crate::profil::mot("chantier"))).await?;
     tx.commit().await?;
-    if c.import == "1" {
+    if c.import == "1" && crate::profil::actuel().import_metres {
         return Ok(Redirect::to(&format!("/devis/{id}/import")));
     }
     Ok(Redirect::to(&format!("/devis/{id}?ok=avenant")))
@@ -104,13 +105,13 @@ pub struct Recap {
     pub jours_acceptes: i64,
 }
 
-pub async fn recap(db: &PgPool, chantier_id: i64) -> Result<Recap, sqlx::Error> {
+pub async fn recap(db: &mut PgConnection, chantier_id: i64) -> Result<Recap, sqlx::Error> {
     let lignes: Vec<LigneBase> = sqlx::query_as(
         "SELECT id, numero, date_devis, reference, jours_ouvrables, montant_ht_cents, statut::text AS statut, date_acceptation
          FROM devis WHERE chantier_id = $1 ORDER BY numero",
     )
     .bind(chantier_id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     let acceptes = lignes.iter().filter(|l| l.statut == "accepte");
     let acceptes_ht_cents = acceptes.clone().map(|l| l.montant_ht_cents).sum();
@@ -139,5 +140,7 @@ pub async fn recap(db: &PgPool, chantier_id: i64) -> Result<Recap, sqlx::Error> 
 }
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/chantiers/{id}/avenants", post(creer))
+    Router::new()
+        .route("/chantiers/{id}/avenants", post(creer))
+        .route_layer(axum::middleware::from_fn(crate::profil::exiger_avenants))
 }

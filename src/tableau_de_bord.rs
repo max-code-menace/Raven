@@ -6,12 +6,13 @@
 //! non lu ») et disparaît quand l'action est faite.
 
 use askama::Template;
-use axum::{extract::State, response::Html};
+use axum::response::Html;
 use chrono::{Datelike, NaiveDate};
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
+use crate::base::Base;
 use crate::commun::format_euros;
-use crate::{AppState, Erreur};
+use crate::Erreur;
 
 /// Un compteur : nombre et montant.
 pub struct Compte {
@@ -65,23 +66,22 @@ struct Page {
 
 const MOIS: [&str; 12] = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
-async fn deux(db: &PgPool, sql: &'static str) -> Result<(i64, i64), sqlx::Error> {
-    sqlx::query_as(sql).fetch_one(db).await
+async fn deux(db: &mut PgConnection, sql: &'static str) -> Result<(i64, i64), sqlx::Error> {
+    sqlx::query_as(sql).fetch_one(&mut *db).await
 }
 
-pub async fn afficher(State(state): State<AppState>) -> Result<Html<String>, Erreur> {
-    let db = &state.db;
-    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(db).await?;
+pub async fn afficher(mut db: Base) -> Result<Html<String>, Erreur> {
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let debut_mois = aujourdhui.with_day(1).expect("le 1er existe");
 
     // Devis (sans les avenants, qui sont sur leur chantier).
-    let devis_attente = deux(db, "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint FROM devis WHERE chantier_id IS NULL AND statut IN ('envoye', 'envoi_en_cours', 'signe')").await?;
-    let devis_a_envoyer = deux(db, "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint FROM devis WHERE chantier_id IS NULL AND statut IN ('a_envoyer', 'echec_envoi')").await?;
-    let devis_brouillons = deux(db, "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint FROM devis WHERE chantier_id IS NULL AND statut = 'brouillon'").await?;
+    let devis_attente = deux(&mut *db, "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint FROM devis WHERE chantier_id IS NULL AND statut IN ('envoye', 'envoi_en_cours', 'signe')").await?;
+    let devis_a_envoyer = deux(&mut *db, "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint FROM devis WHERE chantier_id IS NULL AND statut IN ('a_envoyer', 'echec_envoi')").await?;
+    let devis_brouillons = deux(&mut *db, "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint FROM devis WHERE chantier_id IS NULL AND statut = 'brouillon'").await?;
     // Factures.
-    let factures_retard = deux(db, "SELECT count(*), COALESCE(sum(reste_cents), 0)::bigint FROM factures_etats WHERE etat = 'en_retard'").await?;
-    let factures_a_envoyer = deux(db, "SELECT count(*), COALESCE(sum(montant_ttc_cents), 0)::bigint FROM factures WHERE statut = 'a_envoyer' AND genre <> 'note_credit'").await?;
-    let factures_a_encaisser = deux(db, "SELECT count(*), COALESCE(sum(reste_cents), 0)::bigint FROM factures_etats WHERE reste_cents > 0").await?;
+    let factures_retard = deux(&mut *db, "SELECT count(*), COALESCE(sum(reste_cents), 0)::bigint FROM factures_etats WHERE etat = 'en_retard'").await?;
+    let factures_a_envoyer = deux(&mut *db, "SELECT count(*), COALESCE(sum(montant_ttc_cents), 0)::bigint FROM factures WHERE statut = 'a_envoyer' AND genre <> 'note_credit'").await?;
+    let factures_a_encaisser = deux(&mut *db, "SELECT count(*), COALESCE(sum(reste_cents), 0)::bigint FROM factures_etats WHERE reste_cents > 0").await?;
     // Chantiers.
     let (chantiers_en_cours, reste): (i64, i64) = sqlx::query_as(
         "SELECT count(*), COALESCE(sum(
@@ -91,17 +91,17 @@ pub async fn afficher(State(state): State<AppState>) -> Result<Html<String>, Err
                                 FROM factures f WHERE f.chantier_id = ch.id AND f.numero IS NOT NULL), 0)), 0)::bigint
          FROM chantiers ch JOIN devis d ON d.id = ch.devis_id WHERE ch.statut = 'en_cours'",
     )
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
-    let avancements_brouillons = deux(db, "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint FROM avancements WHERE statut = 'brouillon'").await?;
+    let avancements_brouillons = deux(&mut *db, "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint FROM avancements WHERE statut = 'brouillon'").await?;
     // Notes de crédit.
-    let notes_brouillons = deux(db, "SELECT count(*), COALESCE(sum(montant_ttc_cents), 0)::bigint FROM factures WHERE genre = 'note_credit' AND numero IS NULL").await?;
+    let notes_brouillons = deux(&mut *db, "SELECT count(*), COALESCE(sum(montant_ttc_cents), 0)::bigint FROM factures WHERE genre = 'note_credit' AND numero IS NULL").await?;
     let notes_annee: (i64, i64) = sqlx::query_as(
         "SELECT count(*), COALESCE(sum(montant_ttc_cents), 0)::bigint FROM factures
          WHERE genre = 'note_credit' AND numero IS NOT NULL AND extract(year FROM date_facture) = $1",
     )
     .bind(f64::from(aujourdhui.year()))
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
     // Ce mois-ci.
     let mois_facture: i64 = sqlx::query_scalar(
@@ -110,12 +110,12 @@ pub async fn afficher(State(state): State<AppState>) -> Result<Html<String>, Err
     )
     .bind(debut_mois)
     .bind(aujourdhui)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
     let mois_encaisse: i64 = sqlx::query_scalar("SELECT COALESCE(sum(montant_cents), 0)::bigint FROM paiements WHERE date_paiement BETWEEN $1 AND $2")
         .bind(debut_mois)
         .bind(aujourdhui)
-        .fetch_one(db)
+        .fetch_one(&mut *db)
         .await?;
     let (mois_devis_envoyes, mois_devis_acceptes): (i64, i64) = sqlx::query_as(
         "SELECT count(*), count(*) FILTER (WHERE statut = 'accepte') FROM devis
@@ -123,7 +123,7 @@ pub async fn afficher(State(state): State<AppState>) -> Result<Html<String>, Err
     )
     .bind(debut_mois)
     .bind(aujourdhui)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
 
     let page = Page {
@@ -145,16 +145,16 @@ pub async fn afficher(State(state): State<AppState>) -> Result<Html<String>, Err
         mois_devis_envoyes,
         mois_devis_acceptes,
         mois_conversion: crate::statistiques::part(mois_devis_acceptes, mois_devis_envoyes),
-        alertes: alertes(db).await?,
-        ouvertures: ouvertures(db).await?,
+        alertes: alertes(&mut *db).await?,
+        ouvertures: ouvertures(&mut *db).await?,
     };
     Ok(Html(page.render()?))
 }
 
 /// Ce qui demande une action aujourd'hui, le plus urgent d'abord.
-async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
+async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     let mut alertes = Vec::new();
-    let a_relancer: Vec<crate::rappels::Ligne> = crate::rappels::factures_en_retard(db).await?.into_iter().filter(|l| l.a_relancer).collect();
+    let a_relancer: Vec<crate::rappels::Ligne> = crate::rappels::factures_en_retard(&mut *db).await?.into_iter().filter(|l| l.a_relancer).collect();
     if !a_relancer.is_empty() {
         let total: i64 = a_relancer.iter().map(|l| l.reste_cents).sum();
         alertes.push(Alerte {
@@ -167,7 +167,7 @@ async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
     let signes: Vec<(i64, i64, i32, String)> = sqlx::query_as(
         "SELECT id, numero, extract(year FROM date_devis)::int, signe_par FROM devis WHERE statut = 'signe' ORDER BY signe_le",
     )
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     for (id, numero, annee, par) in signes {
         alertes.push(Alerte {
@@ -181,7 +181,7 @@ async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
         "SELECT id, numero, extract(year FROM date_devis)::int, ((now() AT TIME ZONE 'Europe/Brussels')::date - (statut_date AT TIME ZONE 'Europe/Brussels')::date)
          FROM devis WHERE chantier_id IS NULL AND statut = 'envoye' AND statut_date < now() - interval '21 days' ORDER BY statut_date",
     )
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     for (id, numero, annee, jours) in sans_reponse {
         alertes.push(Alerte {
@@ -191,7 +191,7 @@ async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
             action: "Ouvrir",
         });
     }
-    let recurrentes = crate::recurrences::nombre_a_preparer(db).await?;
+    let recurrentes = crate::recurrences::nombre_a_preparer(&mut *db).await?;
     if recurrentes > 0 {
         alertes.push(Alerte {
             couleur: "#0B6371",
@@ -200,7 +200,7 @@ async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
             action: "Préparer",
         });
     }
-    let a_envoyer: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE statut = 'a_envoyer'").fetch_one(db).await?;
+    let a_envoyer: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE statut = 'a_envoyer'").fetch_one(&mut *db).await?;
     if a_envoyer > 0 {
         alertes.push(Alerte {
             couleur: "#7A5100",
@@ -212,7 +212,7 @@ async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
     let brouillons: Vec<(i64, i64, i32, i64)> = sqlx::query_as(
         "SELECT a.id, ch.id, a.numero, ch.numero FROM avancements a JOIN chantiers ch ON ch.id = a.chantier_id WHERE a.statut = 'brouillon' ORDER BY a.id",
     )
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     for (id, chantier, numero, chantier_numero) in brouillons {
         alertes.push(Alerte {
@@ -226,7 +226,7 @@ async fn alertes(db: &PgPool) -> Result<Vec<Alerte>, sqlx::Error> {
 }
 
 /// Les 8 dernières ouvertures par les clients (30 derniers jours) : « La facture n° 120 a été ouverte. »
-async fn ouvertures(db: &PgPool) -> Result<Vec<Ouverture>, sqlx::Error> {
+async fn ouvertures(db: &mut PgConnection) -> Result<Vec<Ouverture>, sqlx::Error> {
     let lignes: Vec<(Option<i64>, Option<i64>, String, String)> = sqlx::query_as(
         "SELECT o.devis_id, o.facture_id,
                 CASE WHEN o.devis_id IS NOT NULL THEN
@@ -249,7 +249,7 @@ async fn ouvertures(db: &PgPool) -> Result<Vec<Ouverture>, sqlx::Error> {
          WHERE o.created_at > now() - interval '30 days'
          ORDER BY o.created_at DESC, o.id DESC LIMIT 8",
     )
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     Ok(lignes
         .into_iter()

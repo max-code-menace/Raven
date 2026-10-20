@@ -5,15 +5,16 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, Query, State},
+    extract::{Form, Path, Query},
     http::HeaderMap,
     response::{Html, Redirect},
     routing::get,
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::{FromRow, Postgres, Transaction};
+use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 
+use crate::base::Base;
 use crate::commun::{Choix, echapper_like, encoder_url, format_euros};
 use crate::{AppState, Erreur};
 
@@ -35,7 +36,7 @@ fn date_belge(d: NaiveDate) -> String {
 /// Crée le chantier d'un devis qu'on vient d'accepter et renvoie son numéro.
 /// Le compteur est incrémenté dans la transaction de l'acceptation : pas de trou, pas de doublon.
 pub async fn creer(tx: &mut Transaction<'_, Postgres>, devis_id: i64, date_debut: NaiveDate) -> Result<i64, sqlx::Error> {
-    let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE nom = 'chantier' RETURNING valeur")
+    let numero: i64 = sqlx::query_scalar("UPDATE compteurs SET valeur = valeur + 1 WHERE organisation_id = app_organisation() AND nom = 'chantier' RETURNING valeur")
         .fetch_one(&mut **tx)
         .await?;
     sqlx::query("INSERT INTO chantiers (numero, devis_id, date_debut) VALUES ($1, $2, $3)")
@@ -154,7 +155,7 @@ const CONDITIONS: &str = "WHERE ($1 = ''
            OR concat_ws(' ', a.rue, a.code_postal, a.ville) ILIKE $2)
       AND ($3 = 'tous' OR ch.statut::text = $3)";
 
-async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
+async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> Result<Html<String>, Erreur> {
     let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
     let filtre = filtre_statut(r.statut.trim());
@@ -167,7 +168,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     .bind(&q)
     .bind(&motif)
     .bind(filtre)
-    .fetch_one(&state.db)
+    .fetch_one(&mut *db)
     .await?;
 
     let pages = ((total + PAR_PAGE - 1) / PAR_PAGE).max(1);
@@ -183,7 +184,7 @@ async fn liste(State(state): State<AppState>, Query(r): Query<Recherche>, entete
     .bind(filtre)
     .bind(PAR_PAGE)
     .bind((page - 1) * PAR_PAGE)
-    .fetch_all(&state.db)
+    .fetch_all(&mut *db)
     .await?;
 
     let mut statuts: Vec<Choix> =
@@ -270,8 +271,8 @@ impl Retour {
             "finale" => "Ce chantier a déjà sa facture finale : plus d'avancement ni d'acompte possible.",
             "acompte" => "L'acompte doit être un pourcentage ou un montant HT positif, au plus le total devis/avenants.",
             "rien" => "Il n'y a rien à facturer.",
-            "avancement_brouillon" => "Valide ou supprime d'abord l'avancement en brouillon.",
-            "facture_brouillon" => "Valide ou supprime d'abord la facture en brouillon de ce chantier (un acompte en brouillon ne serait pas déduit).",
+            "avancement_brouillon" => "Validez ou supprimez d'abord l'avancement en brouillon.",
+            "facture_brouillon" => "Validez ou supprimez d'abord la facture en brouillon de ce chantier (un acompte en brouillon ne serait pas déduit).",
             "achat" => "L'achat n'est pas ajouté : date, catégorie et montant HT (différent de 0) sont obligatoires ; fournisseur et description 300 caractères au maximum.",
             _ => "",
         }
@@ -318,7 +319,7 @@ struct PageFiche {
     message_erreur: &'static str,
 }
 
-async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: Retour) -> Result<Html<String>, Erreur> {
+async fn charger_fiche(db: &mut PgConnection, id: i64, onglet: &'static str, retour: Retour) -> Result<Html<String>, Erreur> {
     let fiche: Option<FicheBase> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT ch.numero, ch.statut::text AS statut, ch.date_debut, d.id AS devis_id,
                 extract(year FROM d.date_devis)::int || '-' || d.numero AS devis_numero,
@@ -329,14 +330,14 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
          {DEPUIS} WHERE ch.id = $1"
     )))
     .bind(id)
-    .fetch_optional(&state.db)
+    .fetch_optional(&mut *db)
     .await?;
     let f = fiche.ok_or_else(Erreur::introuvable)?;
     let (libelle, classe) = statut(&f.statut);
-    let avenants = crate::avenants::recap(&state.db, id).await?;
-    let finances = crate::avancements::finances(&state.db, id).await?;
-    let factures = crate::factures_chantier::recap(&state.db, id, finances.total_cents).await?;
-    let suivi = crate::suivi_chantier::charger(&state.db, id).await?;
+    let avenants = crate::avenants::recap(&mut *db, id).await?;
+    let finances = crate::avancements::finances(&mut *db, id).await?;
+    let factures = crate::factures_chantier::recap(&mut *db, id, finances.total_cents).await?;
+    let suivi = crate::suivi_chantier::charger(&mut *db, id).await?;
     let page = PageFiche {
         id,
         onglet,
@@ -373,16 +374,16 @@ async fn charger_fiche(state: &AppState, id: i64, onglet: &'static str, retour: 
     Ok(Html(page.render()?))
 }
 
-async fn tableau_de_bord(State(state): State<AppState>, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
-    charger_fiche(&state, id, "tableau", retour).await
+async fn tableau_de_bord(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
+    charger_fiche(&mut *db, id, "tableau", retour).await
 }
 
-async fn devis_avenants(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    charger_fiche(&state, id, "devis", Retour::default()).await
+async fn devis_avenants(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+    charger_fiche(&mut *db, id, "devis", Retour::default()).await
 }
 
-async fn onglet_finances(State(state): State<AppState>, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
-    charger_fiche(&state, id, "finances", retour).await
+async fn onglet_finances(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
+    charger_fiche(&mut *db, id, "finances", retour).await
 }
 
 #[derive(Deserialize, Default)]
@@ -393,8 +394,8 @@ struct Modification {
 }
 
 /// Change le statut et la date de début. Rien d'autre : le reste vient du devis accepté.
-async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(m): Form<Modification>) -> Result<Redirect, Erreur> {
-    let existe: Option<i64> = sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1").bind(id).fetch_optional(&state.db).await?;
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(m): Form<Modification>) -> Result<Redirect, Erreur> {
+    let existe: Option<i64> = sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
     existe.ok_or_else(Erreur::introuvable)?;
     let Some(statut_choisi) = STATUTS.iter().map(|(v, _, _)| *v).find(|v| *v == m.statut.trim()) else {
         return Ok(Redirect::to(&format!("/chantiers/{id}?erreur=statut")));
@@ -406,7 +407,7 @@ async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(m)
         .bind(statut_choisi)
         .bind(date)
         .bind(id)
-        .execute(&state.db)
+        .execute(&mut *db)
         .await?;
     Ok(Redirect::to(&format!("/chantiers/{id}?ok=1")))
 }

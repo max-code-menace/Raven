@@ -1,11 +1,16 @@
 // Test de la reprise des factures de Vertuoza (données fictives).
 
+mod commun;
+
 use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app, reprise};
 
@@ -40,18 +45,19 @@ async fn fichier(pool: &PgPool) -> String {
 }
 
 #[sqlx::test]
-async fn reprendre_les_factures_de_vertuoza(pool: PgPool) {
+async fn reprendre_les_factures_de_vertuoza(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let texte = fichier(&pool).await;
 
     // Essai : le rapport, mais rien n'est gardé.
-    let r = reprise::importer(&pool, &texte, false).await.unwrap();
+    let r = reprise::importer(&pool, 1, &texte, false).await.unwrap();
     assert_eq!((r.factures, r.notes_credit, r.paiements, r.deja, r.enregistre), (2, 1, 2, 0, false));
     assert_eq!(r.clients_crees.len(), 2);
     let nombre: i64 = sqlx::query_scalar("SELECT count(*) FROM factures").fetch_one(&pool).await.unwrap();
     assert_eq!(nombre, 0, "un essai n'enregistre rien");
 
     // Enregistrer.
-    let r = reprise::importer(&pool, &texte, true).await.unwrap();
+    let r = reprise::importer(&pool, 1, &texte, true).await.unwrap();
     let rapport = r.to_string();
     assert!(rapport.contains("REPRISE ENREGISTRÉE") && rapport.contains("Compteur des factures : 124"), "{rapport}");
     // 3 852,54 payée ; 121,00 − 21,00 payé − 12,10 crédité = 87,90 à recevoir.
@@ -77,20 +83,21 @@ async fn reprendre_les_factures_de_vertuoza(pool: PgPool) {
     assert!(page.contains("Facture reprise de Vertuoza"));
 
     // Relancer : rien en double.
-    let r = reprise::importer(&pool, &texte, true).await.unwrap();
+    let r = reprise::importer(&pool, 1, &texte, true).await.unwrap();
     assert_eq!((r.factures, r.notes_credit, r.deja), (0, 0, 3));
     let nombre: i64 = sqlx::query_scalar("SELECT count(*) FROM factures").fetch_one(&pool).await.unwrap();
     assert_eq!(nombre, 3);
 }
 
 #[sqlx::test]
-async fn une_facture_deja_creee_ici_bloque_tout(pool: PgPool) {
+async fn une_facture_deja_creee_ici_bloque_tout(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let texte = fichier(&pool).await;
     let d = jour(&pool, -20).await;
     sqlx::query("INSERT INTO factures (genre, numero, statut, date_facture) VALUES ('simple', 130, 'a_envoyer', $1::date)").bind(&d).execute(&pool).await.unwrap();
-    let erreur = reprise::importer(&pool, &texte, true).await.unwrap_err();
+    let erreur = reprise::importer(&pool, 1, &texte, true).await.unwrap_err();
     assert!(erreur.contains("existe déjà dans Ubifacture"), "{erreur}");
     let reprises: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE reprise").fetch_one(&pool).await.unwrap();
     assert_eq!(reprises, 0, "rien n'est importé");
-    assert!(reprise::importer(&pool, "pas du json", false).await.is_err());
+    assert!(reprise::importer(&pool, 1, "pas du json", false).await.is_err());
 }

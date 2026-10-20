@@ -9,14 +9,15 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Query, State},
+    extract::Query,
     response::Html,
     routing::get,
 };
 use chrono::{Datelike, Duration, NaiveDate};
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
+use crate::base::Base;
 use crate::commun::{Choix, format_euros};
 use crate::{AppState, Erreur};
 
@@ -104,7 +105,7 @@ struct Filtre {
 }
 
 /// Chiffre d'affaires HT de chaque mois entre deux dates (notes de crédit déduites).
-async fn par_mois(db: &PgPool, debut: NaiveDate, fin: NaiveDate) -> Result<Vec<(String, i64)>, sqlx::Error> {
+async fn par_mois(db: &mut PgConnection, debut: NaiveDate, fin: NaiveDate) -> Result<Vec<(String, i64)>, sqlx::Error> {
     sqlx::query_as(
         "SELECT to_char(m, 'MM/YYYY'),
                 COALESCE((SELECT sum(CASE WHEN f.genre = 'note_credit' THEN -f.montant_ht_cents ELSE f.montant_ht_cents END)
@@ -115,13 +116,12 @@ async fn par_mois(db: &PgPool, debut: NaiveDate, fin: NaiveDate) -> Result<Vec<(
     )
     .bind(debut)
     .bind(fin)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await
 }
 
-async fn afficher(State(state): State<AppState>, Query(f): Query<Filtre>) -> Result<Html<String>, Erreur> {
-    let db = &state.db;
-    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(db).await?;
+async fn afficher(mut db: Base, Query(f): Query<Filtre>) -> Result<Html<String>, Erreur> {
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let (code, debut, fin) = periode(&f.periode, &f.du, &f.au, aujourdhui);
 
     let (nombre_factures, ca_ht, ca_ttc): (i64, i64, i64) = sqlx::query_as(
@@ -132,12 +132,12 @@ async fn afficher(State(state): State<AppState>, Query(f): Query<Filtre>) -> Res
     )
     .bind(debut)
     .bind(fin)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
     let encaisse: i64 = sqlx::query_scalar("SELECT COALESCE(sum(montant_cents), 0)::bigint FROM paiements WHERE date_paiement BETWEEN $1 AND $2")
         .bind(debut)
         .bind(fin)
-        .fetch_one(db)
+        .fetch_one(&mut *db)
         .await?;
     // Les impayés : la situation d'aujourd'hui, quelle que soit la période.
     let (nombre_a_payer, a_payer, nombre_en_retard, en_retard): (i64, i64, i64, i64) = sqlx::query_as(
@@ -145,7 +145,7 @@ async fn afficher(State(state): State<AppState>, Query(f): Query<Filtre>) -> Res
                 count(*) FILTER (WHERE etat = 'en_retard'), COALESCE(sum(reste_cents) FILTER (WHERE etat = 'en_retard'), 0)::bigint
          FROM factures_etats WHERE reste_cents > 0",
     )
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
     let (emis, emis_montant, en_cours, en_cours_montant, acceptes, acceptes_montant, refuses): (i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT count(*), COALESCE(sum(montant_ht_cents), 0)::bigint,
@@ -157,10 +157,10 @@ async fn afficher(State(state): State<AppState>, Query(f): Query<Filtre>) -> Res
     )
     .bind(debut)
     .bind(fin)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
 
-    let mois = par_mois(db, debut, fin).await?;
+    let mois = par_mois(&mut *db, debut, fin).await?;
     let plus_grand = mois.iter().map(|(_, m)| m.abs()).max().unwrap_or(0);
     let page = Page {
         periodes: PERIODES.iter().map(|(v, l)| Choix { valeur: (*v).into(), libelle: (*l).into(), choisi: *v == code }).collect(),

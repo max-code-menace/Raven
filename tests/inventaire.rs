@@ -2,13 +2,18 @@
 // factures récurrentes, ouvertures par les clients sur le tableau de bord, import de la bibliothèque, colonne
 // Chantier de la liste des factures.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -76,7 +81,8 @@ async fn facture(pool: &PgPool, s: &Router, date: chrono::NaiveDate, reference: 
 }
 
 #[sqlx::test]
-async fn la_numerotation_repart_a_1_chaque_annee(pool: PgPool) {
+async fn la_numerotation_repart_a_1_chaque_annee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let jour = aujourdhui(&pool).await;
     let annee = chrono::Datelike::year(&jour);
@@ -112,7 +118,8 @@ async fn la_numerotation_repart_a_1_chaque_annee(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn une_location_mensuelle(pool: PgPool) {
+async fn une_location_mensuelle(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let jour = aujourdhui(&pool).await;
     let modele = facture(&pool, &s, jour, "Location+-+Lot+1").await;
@@ -185,7 +192,8 @@ async fn une_location_mensuelle(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_ouvertures_par_les_clients(pool: PgPool) {
+async fn les_ouvertures_par_les_clients(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     sqlx::query("INSERT INTO societe (nom, nom_abrege, email, telephone) VALUES ('Ubique SRL', 'Ubique', 'info@ubique.be', '010')").execute(&pool).await.unwrap();
     let s = site(&pool);
     let jour = aujourdhui(&pool).await;
@@ -206,7 +214,8 @@ async fn les_ouvertures_par_les_clients(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn importer_la_bibliotheque(pool: PgPool) {
+async fn importer_la_bibliotheque(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (code, page) = lire(&s, "/bibliotheque/import").await;
     assert!(code == StatusCode::OK && page.contains("enctype=\"multipart/form-data\""));

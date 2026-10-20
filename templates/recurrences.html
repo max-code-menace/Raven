@@ -11,7 +11,7 @@
       <span class="u-ic">{% call ui::icone("horloge", 20) %}{% endcall %}</span>
       <div>
         <h1>Factures récurrentes</h1>
-        <div class="u-sous-titre">Les factures qui reviennent (location mensuelle…). Une récurrence se crée depuis une facture : menu « ⋯ » › Créer/voir la récurrence. Rien n'est créé ni envoyé sans ton clic.</div>
+        <div class="u-sous-titre">Les factures qui reviennent (location mensuelle…). Une récurrence se crée depuis une facture : menu « ⋯ » › Créer/voir la récurrence. Rien n'est créé ni envoyé sans votre clic.</div>
       </div>
     </div>
     <div class="u-actions">
@@ -25,7 +25,7 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 <section class="u-card">
   <div class="overflow-x-auto">
@@ -50,7 +50,7 @@
           <td class="n"><a class="btn u-ib" href="/factures/{{ l.modele }}/recurrence" aria-label="Voir la récurrence" title="Voir la récurrence">{% call ui::icone("crayon", 16) %}{% endcall %}</a></td>
         </tr>
         {% else %}
-        <tr class="vide"><td colspan="9">Aucune récurrence. Ouvre une facture (par exemple la location du mois) et choisis « Créer/voir la récurrence ».</td></tr>
+        <tr class="vide"><td colspan="9">Aucune récurrence. Ouvrez une facture (par exemple la location du mois) et choisissez « Créer/voir la récurrence ».</td></tr>
         {% endfor %}
       </tbody>
     </table>

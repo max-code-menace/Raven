@@ -6,15 +6,16 @@ use std::collections::HashMap;
 
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::Path,
     http::{HeaderValue, header},
     response::{IntoResponse, Response},
     routing::get,
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgConnection};
 
+use crate::base::Base;
 use crate::commun::{PAYS, libelle};
 use crate::devis_lignes::{Encodage, charger_encodage, charger_entete};
 use crate::fiches::{Genre, Options};
@@ -42,6 +43,14 @@ pub struct Societe {
 
 pub struct Donnees {
     pub id: i64,
+    /// Une ligne au taux « Franchise de TVA » : la mention légale est imprimée.
+    pub franchise: bool,
+    /// La société est en franchise de TVA.
+    pub regime_franchise: bool,
+    /// Des lignes chiffrées dont le taux ne correspond pas au régime de TVA de la société.
+    pub hors_regime: bool,
+    /// L'organisation parle de « projet » (sinon « chantier »).
+    pub projet: bool,
     pub numero: String,
     /// « Devis » ou « Avenant ».
     pub genre: &'static str,
@@ -69,9 +78,6 @@ impl Donnees {
         if self.reference.is_empty() {
             manques.push("La référence du devis".to_string());
         }
-        if self.responsable.is_empty() {
-            manques.push("Le responsable".to_string());
-        }
         if self.client.is_none() {
             manques.push("Le client".to_string());
         }
@@ -81,14 +87,21 @@ impl Donnees {
         if !self.enc.lignes.iter().any(|l| l.est_chiffre) {
             manques.push("Au moins une ligne chiffrée (onglet Encodage)".to_string());
         }
+        if self.hors_regime {
+            manques.push(if self.regime_franchise {
+                "Des lignes au taux « Franchise de TVA » (votre société est en franchise de TVA)".to_string()
+            } else {
+                "Des lignes sans le taux « Franchise de TVA », réservé aux sociétés en franchise (Réglages › Société)".to_string()
+            });
+        }
         match &self.societe {
-            None => manques.push("Les coordonnées de ta société (menu Société)".to_string()),
+            None => manques.push("Les coordonnées de votre société (Réglages › Société)".to_string()),
             Some(s) => {
                 if s.bloc.tva.is_empty() {
-                    manques.push("Le numéro de TVA de ta société (menu Société)".to_string());
+                    manques.push("Le numéro de TVA de votre société (Réglages › Société)".to_string());
                 }
                 if s.iban.is_empty() {
-                    manques.push("Un compte bancaire par défaut (menu Société)".to_string());
+                    manques.push("Un compte bancaire par défaut (Réglages › Société)".to_string());
                 }
             }
         }
@@ -115,7 +128,7 @@ fn depuis_adresse((nom, rue, numero, code_postal, ville, pays, tva): Adresse) ->
 
 /// L'entreprise ou le contact choisi ; `facturation` demande son adresse de facturation
 /// (qui est l'adresse normale quand « facturation identique » est coché sur sa fiche).
-pub(crate) async fn charger_bloc(db: &PgPool, entreprise: Option<i64>, contact: Option<i64>, facturation: bool) -> Result<Option<Bloc>, sqlx::Error> {
+pub(crate) async fn charger_bloc(db: &mut PgConnection, entreprise: Option<i64>, contact: Option<i64>, facturation: bool) -> Result<Option<Bloc>, sqlx::Error> {
     let champs = |nom: &str| {
         let colonne = |c: &str| {
             if facturation {
@@ -135,31 +148,31 @@ pub(crate) async fn charger_bloc(db: &PgPool, entreprise: Option<i64>, contact: 
     };
     if let Some(id) = entreprise {
         let sql = format!("{} FROM entreprises WHERE id = $1", champs("nom"));
-        let ligne: Option<Adresse> = sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(id).fetch_optional(db).await?;
+        let ligne: Option<Adresse> = sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(id).fetch_optional(&mut *db).await?;
         return Ok(ligne.map(depuis_adresse));
     }
     if let Some(id) = contact {
         let sql = format!("{} FROM contacts WHERE id = $1", champs("trim(concat_ws(' ', prenom, nom))"));
-        let ligne: Option<Adresse> = sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(id).fetch_optional(db).await?;
+        let ligne: Option<Adresse> = sqlx::query_as(sqlx::AssertSqlSafe(sql)).bind(id).fetch_optional(&mut *db).await?;
         return Ok(ligne.map(depuis_adresse));
     }
     Ok(None)
 }
 
-pub(crate) async fn charger_societe(db: &PgPool) -> Result<Option<Societe>, sqlx::Error> {
+pub(crate) async fn charger_societe(db: &mut PgConnection) -> Result<Option<Societe>, sqlx::Error> {
     let ligne: Option<(String, String, String, String, String, String, String, String, String)> = sqlx::query_as(
         "SELECT nom, rue, numero, code_postal, ville, pays, COALESCE(numero_tva, ''), email, telephone
-         FROM societe WHERE id = 1",
+         FROM societe WHERE organisation_id = app_organisation()",
     )
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let Some((nom, rue, numero, code_postal, ville, pays, tva, email, telephone)) = ligne else {
         return Ok(None);
     };
     let iban: Option<String> =
-        sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(db).await?;
-    let logo: Option<(String, Vec<u8>)> = sqlx::query_as("SELECT type_mime, contenu FROM societe_fichiers WHERE usage = 'logo'")
-        .fetch_optional(db)
+        sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
+    let logo: Option<(String, Vec<u8>)> = sqlx::query_as("SELECT type_mime, contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'logo'")
+        .fetch_optional(&mut *db)
         .await?;
     // L'extension dit à Typst quel format d'image lire.
     let logo = logo.and_then(|(mime, contenu)| match mime.as_str() {
@@ -197,8 +210,8 @@ struct Tete {
     remarque_2: String,
 }
 
-pub async fn charger_donnees(db: &PgPool, id: i64) -> Result<Donnees, Erreur> {
-    let entete = charger_entete(db, id).await?;
+pub async fn charger_donnees(db: &mut PgConnection, id: i64) -> Result<Donnees, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
     let tete: Tete = sqlx::query_as(
         "SELECT date_devis, reference, responsable, client_entreprise_id, client_contact_id, facturation_identique,
                 facturation_entreprise_id, facturation_contact_id, chantier_identique, chantier_rue, chantier_numero,
@@ -206,37 +219,57 @@ pub async fn charger_donnees(db: &PgPool, id: i64) -> Result<Donnees, Erreur> {
          FROM devis WHERE id = $1",
     )
     .bind(id)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
 
-    let client = charger_bloc(db, tete.client_entreprise_id, tete.client_contact_id, false).await?;
+    let client = charger_bloc(&mut *db, tete.client_entreprise_id, tete.client_contact_id, false).await?;
     let facturation = if tete.facturation_identique {
         None
     } else {
-        charger_bloc(db, tete.facturation_entreprise_id, tete.facturation_contact_id, true).await?
+        charger_bloc(&mut *db, tete.facturation_entreprise_id, tete.facturation_contact_id, true).await?
     };
     let chantier = if tete.chantier_identique {
         client.as_ref().map(|c| c.adresse.clone()).unwrap_or_default()
     } else {
         lignes_adresse(&tete.chantier_rue, &tete.chantier_numero, &tete.chantier_code_postal, &tete.chantier_ville, &tete.chantier_pays)
     };
-    let options = Options::charger(db, Genre::Entreprise).await?;
+    let options = Options::charger(&mut *db, Genre::Entreprise).await?;
     let conditions = tete
         .conditions_paiement_id
         .and_then(|cid| options.conditions.iter().find(|(i, _)| *i == cid).map(|(_, t)| t.clone()))
         .unwrap_or_default();
-    let enc = charger_encodage(db, id, &entete, String::new()).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
     let corrige: Option<String> = sqlx::query_scalar(
         "SELECT 'Chantier n° ' || ch.numero || ' · devis ' || extract(year FROM b.date_devis)::int || '-' || b.numero
          FROM devis a JOIN chantiers ch ON ch.id = a.chantier_id JOIN devis b ON b.id = ch.devis_id
          WHERE a.id = $1",
     )
     .bind(id)
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
 
+    let projet = crate::profil::projet_en_base(&mut *db).await?;
+    let corrige = corrige.map(|c| if projet { c.replacen("Chantier", "Projet", 1) } else { c });
+    let franchise: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM devis_lignes l JOIN taux_tva t ON t.id = l.taux_tva_id WHERE l.devis_id = $1 AND t.franchise)",
+    )
+    .bind(id)
+    .fetch_one(&mut *db)
+    .await?;
+    let regime_franchise = crate::societe::en_franchise(&mut *db).await?;
+    let hors_regime: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM devis_lignes l JOIN taux_tva t ON t.id = l.taux_tva_id WHERE l.devis_id = $1 AND t.franchise <> $2)",
+    )
+    .bind(id)
+    .bind(regime_franchise)
+    .fetch_one(&mut *db)
+    .await?;
     Ok(Donnees {
         id,
+        franchise,
+        regime_franchise,
+        hors_regime,
+        projet,
         numero: entete.numero,
         genre: entete.genre,
         corrige: corrige.unwrap_or_default(),
@@ -244,7 +277,7 @@ pub async fn charger_donnees(db: &PgPool, id: i64) -> Result<Donnees, Erreur> {
         date: tete.date_devis.format("%d/%m/%Y").to_string(),
         reference: tete.reference,
         responsable: tete.responsable,
-        societe: charger_societe(db).await?,
+        societe: charger_societe(&mut *db).await?,
         client,
         facturation,
         chantier,
@@ -379,6 +412,8 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("numero", litteral(&d.numero)),
         ("genre", litteral(d.genre)),
         ("corrige", litteral(&d.corrige)),
+        // Cette ligne porte l'adresse : « Chantier » (comme dans Vertuoza) ou, pour les autres métiers, « Adresse du projet ».
+        ("mot_chantier", litteral(if d.projet { "Adresse du projet" } else { "Chantier" })),
         ("date", litteral(&d.date)),
         ("reference", litteral(&d.reference)),
         ("responsable", litteral(&d.responsable)),
@@ -387,6 +422,8 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("facturation", d.facturation.as_ref().map(bloc_typst).unwrap_or_else(|| "none".to_string())),
         ("chantier", litteral(&d.chantier.join(", "))),
         ("conditions", litteral(&d.conditions)),
+        ("franchise", d.franchise.to_string()),
+        ("mention_franchise", litteral(crate::societe::MENTION_FRANCHISE)),
         ("remarque_1", litteral(&d.remarque_1)),
         ("remarque_2", litteral(&d.remarque_2)),
         ("segments", tableau(&segments)),
@@ -398,8 +435,8 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
 // ─── Le PDF ─────────────────────────────────────────────────────────────────
 
 /// Le PDF du devis, conditions générales comprises quand elles sont déposées dans Société.
-pub async fn pdf_du_devis(db: &PgPool, id: i64) -> Result<(String, Vec<u8>), Erreur> {
-    let donnees = charger_donnees(db, id).await?;
+pub async fn pdf_du_devis(db: &mut PgConnection, id: i64) -> Result<(String, Vec<u8>), Erreur> {
+    let donnees = charger_donnees(&mut *db, id).await?;
     let nom = format!("{}-{}.pdf", donnees.genre, donnees.numero);
     let (texte, fichiers) = source_typst(&donnees);
     let avait_un_logo = !fichiers.is_empty();
@@ -425,7 +462,7 @@ pub async fn pdf_du_devis(db: &PgPool, id: i64) -> Result<(String, Vec<u8>), Err
     };
 
     let conditions: Option<Vec<u8>> =
-        sqlx::query_scalar("SELECT contenu FROM societe_fichiers WHERE usage = 'conditions_generales'").fetch_optional(db).await?;
+        sqlx::query_scalar("SELECT contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'conditions_generales'").fetch_optional(&mut *db).await?;
     if let Some(conditions) = conditions {
         match tokio::task::spawn_blocking({
             let base = octets.clone();
@@ -448,12 +485,12 @@ struct ParametresPdf {
     telecharger: String,
 }
 
-async fn servir(State(state): State<AppState>, Path(id): Path<i64>, axum::extract::Query(o): axum::extract::Query<ParametresPdf>) -> Result<Response, Erreur> {
-    let (nom, octets) = pdf_du_devis(&state.db, id).await?;
+async fn servir(mut db: Base, Path(id): Path<i64>, axum::extract::Query(o): axum::extract::Query<ParametresPdf>) -> Result<Response, Erreur> {
+    let (nom, octets) = pdf_du_devis(&mut *db, id).await?;
     let telechargement = !o.telecharger.is_empty();
     if telechargement {
         // Seul le téléchargement est noté ; le simple affichage dans l'onglet Visualisation ne l'est pas.
-        let mut tx = state.db.begin().await?;
+        let mut tx = db.begin().await?;
         crate::journal::noter(&mut tx, id, crate::journal::Genre::Pdf, "PDF téléchargé").await?;
         tx.commit().await?;
     }

@@ -1,12 +1,17 @@
 // Tests de l'étape 7-2 : factures d'acompte, d'avancement et finale, créées depuis le chantier.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -145,7 +150,8 @@ async fn avancement_55(pool: &PgPool, s: &Router, ex: &Exemple) -> i64 {
 }
 
 #[sqlx::test]
-async fn l_exemple_reel_avancement_puis_facture_finale(pool: PgPool) {
+async fn l_exemple_reel_avancement_puis_facture_finale(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ex = exemple(&pool, &s).await;
     let av = avancement_55(&pool, &s, &ex).await;
@@ -163,7 +169,7 @@ async fn l_exemple_reel_avancement_puis_facture_finale(pool: PgPool) {
     assert_eq!((genre.as_str(), reference.as_str(), client.is_some(), avancement), ("avancement", "Avancement n° 1", true, Some(av)));
     assert_eq!(montants(&pool, fa).await, (363_447, 21_807, 385_254));
     let (_, page) = lire(&s, &format!("/factures/{fa}")).await;
-    for attendu in ["Facture d&#39;avancement", "Devis 2026-57", "1.1 Carrelage", "Avancement de la période : 50,00 %", "Chantier n° 1"] {
+    for attendu in ["Facture d&#39;avancement", "Devis 2026-57", "Carrelage", "Poste 1.1 · Avancement de la période : 50,00 %", "Chantier n° 1"] {
         assert!(page.contains(attendu) || page.contains(&attendu.replace("&#39;", "'")), "{attendu}");
     }
     assert!(!page.contains("name=\"quantite\""), "les lignes d'avancement ne se saisissent pas");
@@ -210,7 +216,8 @@ async fn l_exemple_reel_avancement_puis_facture_finale(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn l_acompte_est_deduit_de_la_facture_finale(pool: PgPool) {
+async fn l_acompte_est_deduit_de_la_facture_finale(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ex = exemple(&pool, &s).await;
 
@@ -233,7 +240,8 @@ async fn l_acompte_est_deduit_de_la_facture_finale(pool: PgPool) {
     assert_eq!(ht, 462_264);
     assert_eq!((tva, ttc), (27_736, 490_000));
     let (_, page) = lire(&s, &format!("/factures/{finale}")).await;
-    assert!(page.contains("Déduction des acomptes (facture n° 125)"));
+    let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
+    assert!(page.contains(&format!("Déduction des acomptes (facture n° {annee}-125)")));
     assert_eq!(valider_facture(&pool, &s, finale).await, 126);
     // Total facturé HT = total du chantier.
     let total: i64 = sqlx::query_scalar("SELECT sum(montant_ht_cents)::bigint FROM factures WHERE chantier_id = $1")
@@ -245,7 +253,8 @@ async fn l_acompte_est_deduit_de_la_facture_finale(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(pool: PgPool) {
+async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let ex = exemple(&pool, &s).await;
     for corps in ["mode=pourcentage&valeur=0", "mode=montant&valeur=999999", "mode=pourcentage&valeur=abc", "mode=x&valeur=10"] {
@@ -275,7 +284,8 @@ async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_acompte_se_repartit_entre_les_taux_et_suit_la_remise(pool: PgPool) {
+async fn un_acompte_se_repartit_entre_les_taux_et_suit_la_remise(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     // 1 000 € à 21 % et 1 000 € à 6 %, remise de 200 € : 1 800 € HT, soit 900 € par taux.
     let devis = devis_envoye(&pool, 180_000).await;

@@ -1,12 +1,17 @@
 // Tests des écrans : chaque test reçoit une base temporaire et appelle le site comme un navigateur.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -57,7 +62,8 @@ async fn compter(pool: &PgPool, table: &str) -> i64 {
 // ─── Pages de base ──────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_page_d_accueil_s_affiche(pool: PgPool) {
+async fn la_page_d_accueil_s_affiche(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, corps) = lire(&site(&pool), "/").await;
     assert_eq!(statut, StatusCode::OK);
     assert!(corps.contains("Ubifacture"));
@@ -66,14 +72,16 @@ async fn la_page_d_accueil_s_affiche(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_route_sante_interroge_la_base(pool: PgPool) {
+async fn la_route_sante_interroge_la_base(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, corps) = lire(&site(&pool), "/sante").await;
     assert_eq!(statut, StatusCode::OK);
     assert_eq!(corps, "Le serveur et la base répondent.");
 }
 
 #[sqlx::test]
-async fn une_page_inconnue_donne_404(pool: PgPool) {
+async fn une_page_inconnue_donne_404(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, _) = lire(&site(&pool), "/nimporte-quoi").await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
 }
@@ -81,7 +89,8 @@ async fn une_page_inconnue_donne_404(pool: PgPool) {
 // ─── Entreprises ────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn liste_vide_au_depart(pool: PgPool) {
+async fn liste_vide_au_depart(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, corps) = lire(&site(&pool), "/entreprises").await;
     assert_eq!(statut, StatusCode::OK);
     assert!(corps.contains("Aucune entreprise trouvée."));
@@ -89,7 +98,8 @@ async fn liste_vide_au_depart(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_formulaire_de_creation_s_affiche(pool: PgPool) {
+async fn le_formulaire_de_creation_s_affiche(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, corps) = lire(&site(&pool), "/entreprises/nouveau").await;
     assert_eq!(statut, StatusCode::OK);
     assert!(corps.contains("Nouvelle entreprise"));
@@ -102,7 +112,8 @@ async fn le_formulaire_de_creation_s_affiche(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn creer_une_entreprise_avec_plusieurs_profils(pool: PgPool) {
+async fn creer_une_entreprise_avec_plusieurs_profils(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (statut, lieu, _) = poster(
         &s,
@@ -133,7 +144,8 @@ async fn creer_une_entreprise_avec_plusieurs_profils(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_nom_vide_est_refuse_et_rien_n_est_enregistre(pool: PgPool) {
+async fn un_nom_vide_est_refuse_et_rien_n_est_enregistre(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, _, corps) = poster(&site(&pool), "/entreprises", "nom=+&langue=fr").await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(corps.contains("Le nom est obligatoire."));
@@ -141,7 +153,8 @@ async fn un_nom_vide_est_refuse_et_rien_n_est_enregistre(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_erreurs_gardent_ce_qui_a_ete_tape(pool: PgPool) {
+async fn les_erreurs_gardent_ce_qui_a_ete_tape(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, _, corps) = poster(
         &site(&pool),
         "/entreprises",
@@ -158,7 +171,8 @@ async fn les_erreurs_gardent_ce_qui_a_ete_tape(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_profil_ou_une_condition_inconnus_sont_refuses(pool: PgPool) {
+async fn un_profil_ou_une_condition_inconnus_sont_refuses(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (statut, _, corps) = poster(&s, "/entreprises", "nom=X&profils=roi&langue=fr").await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
@@ -170,7 +184,8 @@ async fn un_profil_ou_une_condition_inconnus_sont_refuses(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn adresse_de_facturation_identique_efface_la_seconde_adresse(pool: PgPool) {
+async fn adresse_de_facturation_identique_efface_la_seconde_adresse(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     poster(
         &site(&pool),
         "/entreprises",
@@ -186,7 +201,8 @@ async fn adresse_de_facturation_identique_efface_la_seconde_adresse(pool: PgPool
 }
 
 #[sqlx::test]
-async fn adresse_de_facturation_differente_est_gardee(pool: PgPool) {
+async fn adresse_de_facturation_differente_est_gardee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=B&langue=fr&facturation_rue=Rue+de+Liege&facturation_ville=Liege").await;
     let (identique, rue): (bool, Option<String>) =
@@ -199,7 +215,8 @@ async fn adresse_de_facturation_differente_est_gardee(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_recherche_filtre_par_nom_email_et_tva(pool: PgPool) {
+async fn la_recherche_filtre_par_nom_email_et_tva(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Dupont+SRL&email=info%40dupont.be&langue=fr").await;
     poster(&s, "/entreprises", "nom=Martin+SA&numero_tva=BE0999888777&langue=fr").await;
@@ -215,7 +232,8 @@ async fn la_recherche_filtre_par_nom_email_et_tva(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_jokers_de_la_recherche_sont_neutralises(pool: PgPool) {
+async fn les_jokers_de_la_recherche_sont_neutralises(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Dupont&langue=fr").await;
     let (_, corps) = lire(&s, "/entreprises?q=%25").await; // « % » tapé par l'utilisateur
@@ -225,7 +243,8 @@ async fn les_jokers_de_la_recherche_sont_neutralises(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_filtre_par_profil_fonctionne(pool: PgPool) {
+async fn le_filtre_par_profil_fonctionne(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Client+Un&profils=client&langue=fr").await;
     poster(&s, "/entreprises", "nom=Fournisseur+Un&profils=fournisseur_materiaux&langue=fr").await;
@@ -238,7 +257,8 @@ async fn le_filtre_par_profil_fonctionne(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn htmx_recoit_seulement_le_tableau(pool: PgPool) {
+async fn htmx_recoit_seulement_le_tableau(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Dupont&langue=fr").await;
     let (_, complet) = lire(&s, "/entreprises").await;
@@ -249,7 +269,8 @@ async fn htmx_recoit_seulement_le_tableau(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn pagination_vingt_par_page(pool: PgPool) {
+async fn pagination_vingt_par_page(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     sqlx::query("INSERT INTO entreprises (nom) SELECT 'Entreprise ' || lpad(n::text, 2, '0') FROM generate_series(1, 25) n")
         .execute(&pool)
         .await
@@ -269,7 +290,8 @@ async fn pagination_vingt_par_page(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn modifier_une_entreprise(pool: PgPool) {
+async fn modifier_une_entreprise(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Dupont&profils=client&langue=fr").await;
     let (id,): (i64,) = sqlx::query_as("SELECT id FROM entreprises").fetch_one(&pool).await.unwrap();
@@ -294,7 +316,8 @@ async fn modifier_une_entreprise(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn modifier_avec_une_erreur_ne_change_rien(pool: PgPool) {
+async fn modifier_avec_une_erreur_ne_change_rien(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Dupont&langue=fr").await;
     let (id,): (i64,) = sqlx::query_as("SELECT id FROM entreprises").fetch_one(&pool).await.unwrap();
@@ -306,7 +329,8 @@ async fn modifier_avec_une_erreur_ne_change_rien(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn une_entreprise_inexistante_donne_404(pool: PgPool) {
+async fn une_entreprise_inexistante_donne_404(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (statut, _) = lire(&s, "/entreprises/999/modifier").await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
@@ -315,7 +339,8 @@ async fn une_entreprise_inexistante_donne_404(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_html_tape_par_l_utilisateur_est_neutralise(pool: PgPool) {
+async fn le_html_tape_par_l_utilisateur_est_neutralise(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=%3Cscript%3Ealert(1)%3C%2Fscript%3E&langue=fr").await;
     let (_, corps) = lire(&s, "/entreprises").await;
@@ -326,7 +351,8 @@ async fn le_html_tape_par_l_utilisateur_est_neutralise(pool: PgPool) {
 // ─── Contacts ───────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn creer_un_contact_lie_a_une_entreprise(pool: PgPool) {
+async fn creer_un_contact_lie_a_une_entreprise(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Dupont+SRL&langue=fr").await;
     let (entreprise,): (i64,) = sqlx::query_as("SELECT id FROM entreprises").fetch_one(&pool).await.unwrap();
@@ -354,7 +380,8 @@ async fn creer_un_contact_lie_a_une_entreprise(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_recherche_de_contacts_trouve_aussi_par_entreprise_et_nom_complet(pool: PgPool) {
+async fn la_recherche_de_contacts_trouve_aussi_par_entreprise_et_nom_complet(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Batiroc+SA&langue=fr").await;
     let (entreprise,): (i64,) = sqlx::query_as("SELECT id FROM entreprises").fetch_one(&pool).await.unwrap();
@@ -368,7 +395,8 @@ async fn la_recherche_de_contacts_trouve_aussi_par_entreprise_et_nom_complet(poo
 }
 
 #[sqlx::test]
-async fn un_contact_sans_nom_ou_avec_une_entreprise_inconnue_est_refuse(pool: PgPool) {
+async fn un_contact_sans_nom_ou_avec_une_entreprise_inconnue_est_refuse(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let (statut, _, corps) = poster(&s, "/contacts", "prenom=Jean&langue=fr").await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
@@ -380,7 +408,8 @@ async fn un_contact_sans_nom_ou_avec_une_entreprise_inconnue_est_refuse(pool: Pg
 }
 
 #[sqlx::test]
-async fn modifier_un_contact_et_changer_d_entreprise(pool: PgPool) {
+async fn modifier_un_contact_et_changer_d_entreprise(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     poster(&s, "/entreprises", "nom=Premiere&langue=fr").await;
     poster(&s, "/entreprises", "nom=Seconde&langue=fr").await;
@@ -402,7 +431,8 @@ async fn modifier_un_contact_et_changer_d_entreprise(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_contact_inexistant_donne_404(pool: PgPool) {
+async fn un_contact_inexistant_donne_404(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, _) = lire(&site(&pool), "/contacts/999/modifier").await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
 }

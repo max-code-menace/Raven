@@ -1,12 +1,17 @@
 // Tests de l'étape 5b-4 : types de ligne avancés, remarque par ligne, prix d'achat, marge.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -60,7 +65,8 @@ async fn remplir(s: &Router, devis: i64, ligne: i64, corps: &str) -> String {
 // ─── Nouveaux types de ligne ────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn tous_les_types_peuvent_etre_ajoutes(pool: PgPool) {
+async fn tous_les_types_peuvent_etre_ajoutes(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     for genre in ["titre", "sous_titre", "texte", "poste_libre", "ouvrage", "fourniture", "equipement", "main_oeuvre", "sous_traitant", "saut_de_page"] {
@@ -87,7 +93,8 @@ async fn tous_les_types_peuvent_etre_ajoutes(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_menu_propose_tous_les_types_et_le_saut_de_page_n_a_pas_de_numero(pool: PgPool) {
+async fn le_menu_propose_tous_les_types_et_le_saut_de_page_n_a_pas_de_numero(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     for genre in ["titre", "fourniture", "saut_de_page", "main_oeuvre"] {
@@ -104,12 +111,13 @@ async fn le_menu_propose_tous_les_types_et_le_saut_de_page_n_a_pas_de_numero(poo
 }
 
 #[sqlx::test]
-async fn un_type_chiffre_demande_la_tva_par_defaut(pool: PgPool) {
+async fn un_type_chiffre_demande_la_tva_par_defaut(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(&pool).await.unwrap();
     let s = site(&pool);
     for genre in ["ouvrage", "fourniture", "equipement", "main_oeuvre", "sous_traitant"] {
         let (_, page) = poster(&s, &format!("/devis/{d}/lignes"), &format!("genre={genre}")).await;
-        assert!(page.contains("Choisis d&#39;abord le taux de TVA"), "{genre}");
+        assert!(page.contains("Choisissez d&#39;abord le taux de TVA"), "{genre}");
     }
     let (n,): (i64,) = sqlx::query_as("SELECT count(*) FROM devis_lignes").fetch_one(&pool).await.unwrap();
     assert_eq!(n, 0);
@@ -119,7 +127,8 @@ async fn un_type_chiffre_demande_la_tva_par_defaut(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn tous_les_types_chiffres_comptent_dans_les_totaux(pool: PgPool) {
+async fn tous_les_types_chiffres_comptent_dans_les_totaux(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     for genre in ["ouvrage", "fourniture", "equipement", "main_oeuvre", "sous_traitant"] {
@@ -131,7 +140,8 @@ async fn tous_les_types_chiffres_comptent_dans_les_totaux(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_base_n_autorise_un_prix_que_sur_les_types_chiffres(pool: PgPool) {
+async fn la_base_n_autorise_un_prix_que_sur_les_types_chiffres(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     for (position, genre) in ["ouvrage", "fourniture", "equipement", "main_oeuvre", "sous_traitant"].into_iter().enumerate() {
         let res = sqlx::query("INSERT INTO devis_lignes (devis_id, position, genre, prix_unitaire_e5, prix_achat_unitaire_e5) VALUES ($1, $2, $3::text::genre_ligne, 100, 50)")
@@ -156,7 +166,8 @@ async fn la_base_n_autorise_un_prix_que_sur_les_types_chiffres(pool: PgPool) {
 // ─── Remarque par ligne ─────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_remarque_s_enregistre_sur_tous_les_types_et_apparait_dans_le_pdf(pool: PgPool) {
+async fn la_remarque_s_enregistre_sur_tous_les_types_et_apparait_dans_le_pdf(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     let titre = ajouter_ligne(&pool, &s, d, "titre").await;
@@ -178,7 +189,8 @@ async fn la_remarque_s_enregistre_sur_tous_les_types_et_apparait_dans_le_pdf(poo
 // ─── Prix d'achat et marge de la ligne ──────────────────────────────────────
 
 #[sqlx::test]
-async fn le_prix_d_achat_s_enregistre_et_la_marge_de_la_ligne_est_renvoyee(pool: PgPool) {
+async fn le_prix_d_achat_s_enregistre_et_la_marge_de_la_ligne_est_renvoyee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
@@ -202,7 +214,8 @@ async fn le_prix_d_achat_s_enregistre_et_la_marge_de_la_ligne_est_renvoyee(pool:
 }
 
 #[sqlx::test]
-async fn l_interrupteur_montre_ou_cache_les_colonnes_sans_perdre_les_prix_d_achat(pool: PgPool) {
+async fn l_interrupteur_montre_ou_cache_les_colonnes_sans_perdre_les_prix_d_achat(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     let l = ajouter_ligne(&pool, &s, d, "fourniture").await;
@@ -234,7 +247,8 @@ async fn l_interrupteur_montre_ou_cache_les_colonnes_sans_perdre_les_prix_d_acha
 // ─── Frais généraux ─────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn les_frais_generaux_s_enregistrent_au_centieme_pres(pool: PgPool) {
+async fn les_frais_generaux_s_enregistrent_au_centieme_pres(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
@@ -264,7 +278,8 @@ async fn les_frais_generaux_s_enregistrent_au_centieme_pres(pool: PgPool) {
 // ─── Rentabilité ────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn la_page_totaux_montre_la_rentabilite_par_type_de_poste(pool: PgPool) {
+async fn la_page_totaux_montre_la_rentabilite_par_type_de_poste(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
@@ -290,7 +305,8 @@ async fn la_page_totaux_montre_la_rentabilite_par_type_de_poste(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn les_lignes_sans_prix_d_achat_sont_signalees(pool: PgPool) {
+async fn les_lignes_sans_prix_d_achat_sont_signalees(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
@@ -301,7 +317,8 @@ async fn les_lignes_sans_prix_d_achat_sont_signalees(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn l_ajustement_apparait_dans_la_rentabilite_et_les_ventes_valent_le_total_ht(pool: PgPool) {
+async fn l_ajustement_apparait_dans_la_rentabilite_et_les_ventes_valent_le_total_ht(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
@@ -318,7 +335,8 @@ async fn l_ajustement_apparait_dans_la_rentabilite_et_les_ventes_valent_le_total
 }
 
 #[sqlx::test]
-async fn les_heures_ne_comptent_que_pour_la_main_d_oeuvre_en_heures(pool: PgPool) {
+async fn les_heures_ne_comptent_que_pour_la_main_d_oeuvre_en_heures(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
@@ -335,7 +353,8 @@ async fn les_heures_ne_comptent_que_pour_la_main_d_oeuvre_en_heures(pool: PgPool
 // ─── Aperçu, lecture seule ──────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn le_pdf_du_client_ne_montre_jamais_les_prix_d_achat_ni_la_marge(pool: PgPool) {
+async fn le_pdf_du_client_ne_montre_jamais_les_prix_d_achat_ni_la_marge(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
@@ -354,7 +373,8 @@ async fn le_pdf_du_client_ne_montre_jamais_les_prix_d_achat_ni_la_marge(pool: Pg
 }
 
 #[sqlx::test]
-async fn un_devis_envoye_ne_change_plus_ni_la_marge_ni_les_frais(pool: PgPool) {
+async fn un_devis_envoye_ne_change_plus_ni_la_marge_ni_les_frais(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     let s = site(&pool);
     sqlx::query("UPDATE devis SET statut = 'envoye' WHERE id = $1").bind(d).execute(&pool).await.unwrap();
@@ -365,7 +385,8 @@ async fn un_devis_envoye_ne_change_plus_ni_la_marge_ni_les_frais(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_base_refuse_des_frais_generaux_hors_limites(pool: PgPool) {
+async fn la_base_refuse_des_frais_generaux_hors_limites(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let d = brouillon(&pool).await;
     for valeur in [-1, 10_001] {
         let res = sqlx::query("UPDATE devis SET frais_generaux_centiemes = $1 WHERE id = $2").bind(valeur).bind(d).execute(&pool).await;
@@ -377,7 +398,7 @@ async fn la_base_refuse_des_frais_generaux_hors_limites(pool: PgPool) {
 
 /// Le texte Typst qui sert à fabriquer le PDF du devis : tout ce que le client verra y figure.
 async fn typst(pool: &PgPool, devis: i64) -> String {
-    match ubifacture::devis_pdf::charger_donnees(pool, devis).await {
+    match ubifacture::devis_pdf::charger_donnees(&mut *pool.acquire().await.unwrap(), devis).await {
         Ok(donnees) => ubifacture::devis_pdf::source_typst(&donnees).0,
         Err(_) => panic!("devis introuvable"),
     }

@@ -1,12 +1,17 @@
 // Tests de l'étape 7-1 : factures simples, lignes, validation, numérotation continue et communication structurée.
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -98,7 +103,8 @@ async fn montants(pool: &PgPool, id: i64) -> (i64, i64, i64) {
 }
 
 #[sqlx::test]
-async fn une_facture_simple_de_bout_en_bout(pool: PgPool) {
+async fn une_facture_simple_de_bout_en_bout(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = nouvelle(&s).await;
     let (numero, statut, genre): (Option<i64>, String, String) =
@@ -161,7 +167,8 @@ async fn une_facture_simple_de_bout_en_bout(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_base_refuse_de_supprimer_ou_de_modifier_une_facture_numerotee(pool: PgPool) {
+async fn la_base_refuse_de_supprimer_ou_de_modifier_une_facture_numerotee(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = nouvelle(&s).await;
     completer(&pool, &s, id).await;
@@ -177,7 +184,8 @@ async fn la_base_refuse_de_supprimer_ou_de_modifier_une_facture_numerotee(pool: 
 }
 
 #[sqlx::test]
-async fn la_numerotation_est_continue_et_un_brouillon_supprime_ne_laisse_pas_de_trou(pool: PgPool) {
+async fn la_numerotation_est_continue_et_un_brouillon_supprime_ne_laisse_pas_de_trou(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let mut numeros = Vec::new();
     for i in 0..3 {
@@ -199,7 +207,8 @@ async fn la_numerotation_est_continue_et_un_brouillon_supprime_ne_laisse_pas_de_
 }
 
 #[sqlx::test]
-async fn une_facture_ne_peut_pas_etre_datee_avant_la_precedente(pool: PgPool) {
+async fn une_facture_ne_peut_pas_etre_datee_avant_la_precedente(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let premiere = nouvelle(&s).await;
     completer(&pool, &s, premiere).await;
@@ -222,7 +231,8 @@ async fn une_facture_ne_peut_pas_etre_datee_avant_la_precedente(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn une_facture_a_zero_ne_se_valide_pas(pool: PgPool) {
+async fn une_facture_a_zero_ne_se_valide_pas(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = nouvelle(&s).await;
     completer(&pool, &s, id).await;
@@ -233,7 +243,8 @@ async fn une_facture_a_zero_ne_se_valide_pas(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn saisies_refusees_et_lignes_supprimees(pool: PgPool) {
+async fn saisies_refusees_et_lignes_supprimees(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = nouvelle(&s).await;
     let ligne = poste(&pool, &s, id, "Travaux", "2", "10", 2100).await;
@@ -248,7 +259,7 @@ async fn saisies_refusees_et_lignes_supprimees(pool: PgPool) {
 
     // Un taux inconnu est refusé.
     let (_, _, reponse) = poster(&s, &format!("/factures/{id}/lignes/{ligne}"), "description=x&quantite=1&prix_unitaire=1&taux_tva_id=999999").await;
-    assert!(reponse.contains("Choisis un taux de TVA"));
+    assert!(reponse.contains("Choisissez un taux de TVA"));
 
     // Un titre et un texte ne comptent pas dans les totaux ; supprimer une ligne recalcule.
     poster(&s, &format!("/factures/{id}/lignes"), "genre=titre").await;
@@ -265,7 +276,8 @@ async fn saisies_refusees_et_lignes_supprimees(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn la_liste_filtre_et_totalise(pool: PgPool) {
+async fn la_liste_filtre_et_totalise(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let id = nouvelle(&s).await;
     completer(&pool, &s, id).await;

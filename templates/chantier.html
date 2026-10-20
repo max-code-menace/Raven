@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}Chantier N° {{ numero }} · Ubifacture{% endblock %}
+{% block title %}{{ crate::profil::mot("Chantier") }} N° {{ numero }} · Ubifacture{% endblock %}
 {% block nav_chantiers %}actif{% endblock %}
 
 {% block entete %}
 <header class="u-top avec-onglets">
   <div class="u-top-ligne">
     <div class="u-titre">
-      <a class="u-retour" href="/chantiers" aria-label="Retour aux chantiers" title="Retour aux chantiers">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
+      <a class="u-retour" href="/chantiers" aria-label="Retour aux {{ crate::profil::mot("chantiers") }}" title="Retour aux {{ crate::profil::mot("chantiers") }}">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
-        <h1>Chantier N° {{ numero }}{% if !reference.is_empty() %} - {{ reference }}{% endif %}</h1>
+        <h1>{{ crate::profil::mot("Chantier") }} N° {{ numero }}{% if !reference.is_empty() %} - {{ reference }}{% endif %}</h1>
         <div class="u-sous-titre">
           <span class="u-pastille {{ classe_statut }}">{{ statut }}</span>
           <span>{{ client }} · Début le {{ date_debut }}</span>
@@ -18,13 +18,18 @@
       </div>
     </div>
     <div class="u-actions">
+      {% if crate::profil::actuel().avenants %}
       <form method="post" action="/chantiers/{{ id }}/avenants">
         <button class="btn" type="submit" title="Crée un avenant en brouillon qui reprend l'en-tête du devis">Nouvel avenant</button>
       </form>
+      {% if crate::profil::actuel().import_metres %}
       <form method="post" action="/chantiers/{{ id }}/avenants">
         <input type="hidden" name="import" value="1">
         <button class="btn" type="submit" title="Crée un avenant en brouillon et importe le modèle Excel (montants positifs ou négatifs)">Avenant depuis Excel</button>
       </form>
+      {% endif %}
+      {% endif %}
+      {% if crate::profil::actuel().avancements %}
       {% if let Some(brouillon) = finances.brouillon %}
       <a class="btn btn-primary" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Reprendre le brouillon</a>
       {% else if !finances.finale %}
@@ -32,11 +37,12 @@
         <button class="btn btn-primary" type="submit">Nouvel avancement</button>
       </form>
       {% endif %}
+      {% endif %}
     </div>
   </div>
-  <nav class="u-onglets" aria-label="Parties du chantier">
+  <nav class="u-onglets" aria-label="Parties du {{ crate::profil::mot("chantier") }}">
     <a class="tab{% if onglet == "tableau" %} tab-active{% endif %}" href="/chantiers/{{ id }}">Tableau de bord</a>
-    <a class="tab{% if onglet == "devis" %} tab-active{% endif %}" href="/chantiers/{{ id }}/devis">Devis/avenants</a>
+    <a class="tab{% if onglet == "devis" %} tab-active{% endif %}" href="/chantiers/{{ id }}/devis">Devis{% if crate::profil::actuel().avenants %}/avenants{% endif %}</a>
     <a class="tab{% if onglet == "finances" %} tab-active{% endif %}" href="/chantiers/{{ id }}/finances">Finances</a>
   </nav>
 </header>
@@ -44,18 +50,18 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 {% if !message_erreur.is_empty() %}
-<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_erreur) }}</span></div>
 {% endif %}
 
 {% if onglet == "tableau" %}
 <section class="u-card">
-  <div class="u-card-h"><h2>{% call ui::icone("chantiers", 17) %}{% endcall %}Informations du chantier</h2></div>
+  <div class="u-card-h"><h2>{% call ui::icone("chantiers", 17) %}{% endcall %}Informations du {{ crate::profil::mot("chantier") }}</h2></div>
   <div class="u-infos">
     <div><span><span class="u-cle">Référence</span>{{ reference }}</span><span><span class="u-cle">Numéro</span><span class="mono">{{ numero }}</span></span></div>
-    <div><span><span class="u-cle">Client</span>{{ client }}</span><span><span class="u-cle">Adresse du chantier</span>{{ adresse }}</span></div>
+    <div><span><span class="u-cle">Client</span>{{ client }}</span><span><span class="u-cle">Adresse du {{ crate::profil::mot("chantier") }}</span>{{ adresse }}</span></div>
     <div><span><span class="u-cle">Date de début</span>{{ date_debut }}</span><span><span class="u-cle">Responsable</span>{{ responsable }}</span></div>
     <div><span><span class="u-cle">Gestionnaire</span>{% if gestionnaire.is_empty() %}—{% else %}{{ gestionnaire }}{% endif %}</span><span><span class="u-cle">Architecte</span>{% if architecte.is_empty() %}—{% else %}{{ architecte }}{% endif %}</span>
       <span><span class="u-cle">Devis de base</span><a href="/devis/{{ devis_id }}">N° {{ devis_numero }}</a>{% if !date_acceptation.is_empty() %}, accepté le {{ date_acceptation }}{% endif %}</span></div>
@@ -64,7 +70,7 @@
 
 <div class="grid gap-4 lg:grid-cols-3 items-start">
   <section class="u-card">
-    <div class="u-card-h"><h2>Montant du chantier</h2></div>
+    <div class="u-card-h"><h2>Montant du {{ crate::profil::mot("chantier") }}</h2></div>
     <div class="u-card-b">
       <span class="u-cle">Total devis/avenants HT</span>
       <span class="u-grand">{{ total_ht }}</span>
@@ -73,6 +79,7 @@
     </div>
   </section>
 
+  {% if crate::profil::actuel().avancements %}
   <section class="u-card">
     <div class="u-card-h"><h2>Avancement</h2><a class="u-petit" href="/chantiers/{{ id }}/finances">Finances</a></div>
     <div class="u-card-b">
@@ -81,6 +88,7 @@
       {% if !finances.pourcentage_avance.is_empty() %}<span class="u-petit u-muet">Avancé : {{ finances.avance }} ({{ finances.pourcentage_avance }})</span>{% endif %}
     </div>
   </section>
+  {% endif %}
 
   <section class="u-card">
     <div class="u-card-h"><h2>Facturation</h2><a class="u-petit" href="/chantiers/{{ id }}/finances">Finances</a></div>
@@ -95,6 +103,7 @@
 </div>
 
 <div class="grid gap-4 lg:grid-cols-3 items-start">
+  {% if crate::profil::actuel().achats %}
   <section class="u-card">
     <div class="u-card-h"><h2>Rentabilité</h2><span class="u-petit u-muet">HT</span></div>
     <table class="u-table">
@@ -121,6 +130,7 @@
       <span class="u-petit u-muet">Dépensé : {{ suivi.achats_reels }} sur {{ suivi.achats_prevus }} prévus ({{ suivi.pourcentage_budget_texte }}){% if suivi.depasse %} · budget dépassé{% endif %}</span>
     </div>
   </section>
+  {% endif %}
 
   <section class="u-card">
     <div class="u-card-h"><h2>Main d'œuvre</h2></div>
@@ -145,7 +155,7 @@
         </select>
       </label>
       <label class="form-control">
-        <span class="u-lbl">Début de chantier</span>
+        <span class="u-lbl">Début de {{ crate::profil::mot("chantier") }}</span>
         <input class="input input-bordered input-sm" type="date" name="date_debut" value="{{ date_debut_champ }}" required>
       </label>
       <button class="btn btn-sm self-end" type="submit">Enregistrer</button>
@@ -154,13 +164,14 @@
 </div>
 
 {% else if onglet == "finances" %}
+{% if crate::profil::actuel().avancements %}
 <details class="u-card" open>
   <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Avancements <span class="u-compte">{{ finances.avancements.len() }}</span></h2></summary>
   <div class="u-outils" style="justify-content:flex-end">
     {% if let Some(brouillon) = finances.brouillon %}
     <a class="btn btn-sm" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Ouvrir le brouillon</a>
     {% else if finances.finale %}
-    <span class="u-petit u-muet font-normal">Facture finale créée : le chantier est soldé.</span>
+    <span class="u-petit u-muet font-normal">Facture finale créée : le {{ crate::profil::mot("chantier") }} est soldé.</span>
     {% else %}
     <form method="post" action="/chantiers/{{ id }}/avancements">
       <button class="btn btn-sm" type="submit">{% call ui::icone("plus", 14) %}{% endcall %}Nouveau</button>
@@ -208,12 +219,13 @@
   <div class="u-pied">
     <span>{{ finances.avancements.len() }} élément(s)</span>
     <div class="u-totaux">
-      <div><small>Total chantier HT</small><strong>{{ finances.total }}</strong></div>
+      <div><small>Total {{ crate::profil::mot("chantier") }} HT</small><strong>{{ finances.total }}</strong></div>
       <div><small>Avancé (validé){% if !finances.pourcentage_avance.is_empty() %} · {{ finances.pourcentage_avance }}{% endif %}</small><strong>{{ finances.avance }}</strong></div>
       <div><small>Reste à avancer HT</small><strong>{{ finances.reste }}</strong></div>
     </div>
   </div>
 </details>
+{% endif %}
 
 <details class="u-card" open>
   <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Factures et notes de crédit <span class="u-compte">{{ factures.factures.len() }}</span></h2></summary>
@@ -284,8 +296,9 @@
   </div>
 </details>
 
+{% if crate::profil::actuel().achats %}
 <details class="u-card" id="achats" open>
-  <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Achats du chantier <span class="u-compte">{{ suivi.achats.len() }}</span></h2><span class="u-petit u-muet font-normal">saisis à la main en attendant les factures fournisseurs (phase 2)</span></summary>
+  <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Achats du {{ crate::profil::mot("chantier") }} <span class="u-compte">{{ suivi.achats.len() }}</span></h2><span class="u-petit u-muet font-normal">saisis à la main en attendant les factures fournisseurs (phase 2)</span></summary>
   <div class="u-outils" style="justify-content:flex-end">
     <details class="u-menu">
       <summary class="btn btn-sm">{% call ui::icone("plus", 14) %}{% endcall %}Ajouter un achat</summary>
@@ -359,6 +372,7 @@
 <section class="u-card">
   <div class="u-card-h" style="border-bottom:0"><h2 class="u-muet">Factures fournisseurs</h2><span class="u-bientot-note">phase 2 (Peppol)</span></div>
 </section>
+{% endif %}
 
 {% else %}
 <section class="u-card">
@@ -381,12 +395,15 @@
   </div>
 </section>
 
+{% if crate::profil::actuel().avenants || !avenants.is_empty() %}
 <section class="u-card">
   <div class="u-card-h"><h2>Avenants <span class="u-compte">{{ avenants.len() }}</span></h2>
     {# Crée un avenant en brouillon qui reprend l'en-tête du devis, puis ouvre son éditeur. #}
+    {% if crate::profil::actuel().avenants %}
     <form method="post" action="/chantiers/{{ id }}/avenants">
       <button class="btn btn-sm" type="submit">{% call ui::icone("plus", 14) %}{% endcall %}Nouvel avenant</button>
     </form>
+    {% endif %}
   </div>
   <div class="overflow-x-auto">
     <table class="u-table">
@@ -419,6 +436,7 @@
     <span>Total J. ouv. supplémentaires (avenants acceptés) : <strong>{{ jours_supplementaires }}</strong></span>
   </div>
 </section>
+{% endif %}
 
 <section class="u-card">
   <div class="u-card-h"><h2>Récapitulatif</h2></div>

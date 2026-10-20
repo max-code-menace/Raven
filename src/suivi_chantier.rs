@@ -11,14 +11,15 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, Query, State},
+    extract::{Form, Path, Query},
     response::{Html, Redirect},
     routing::{get, post},
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
+use crate::base::Base;
 use crate::calcul;
 use crate::commun::{Choix, echapper_like, format_euros};
 use crate::fiches::euros_vers_centimes;
@@ -88,19 +89,19 @@ pub(crate) fn part_du_budget(depense: i64, prevu: i64) -> i64 {
     (depense.max(0) * 100 / prevu).clamp(0, 100)
 }
 
-pub async fn charger(db: &PgPool, chantier_id: i64) -> Result<Suivi, sqlx::Error> {
+pub async fn charger(db: &mut PgConnection, chantier_id: i64) -> Result<Suivi, sqlx::Error> {
     // Le devis de base et les avenants acceptés.
     let devis: Vec<i64> = sqlx::query_scalar(
         "SELECT d.id FROM devis d WHERE d.id = (SELECT devis_id FROM chantiers WHERE id = $1)
          UNION ALL SELECT a.id FROM devis a WHERE a.chantier_id = $1 AND a.statut = 'accepte'",
     )
     .bind(chantier_id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     let mut prevu = calcul::Rentable::default();
     let mut sans_achat = 0;
     for id in devis {
-        let r = crate::devis_lignes::rentabilite_prevue(db, id).await?;
+        let r = crate::devis_lignes::rentabilite_prevue(&mut *db, id).await?;
         prevu.ventes_cents += r.total.ventes_cents;
         prevu.achats_cents += r.total.achats_cents;
         prevu.frais_generaux_cents += r.total.frais_generaux_cents;
@@ -118,7 +119,7 @@ pub async fn charger(db: &PgPool, chantier_id: i64) -> Result<Suivi, sqlx::Error
          WHERE f.chantier_id = $1 AND f.numero IS NOT NULL",
     )
     .bind(chantier_id)
-    .fetch_one(db)
+    .fetch_one(&mut *db)
     .await?;
 
     let lignes: Vec<(i64, NaiveDate, String, String, String, i64)> = sqlx::query_as(
@@ -126,12 +127,12 @@ pub async fn charger(db: &PgPool, chantier_id: i64) -> Result<Suivi, sqlx::Error
          FROM chantier_achats WHERE chantier_id = $1 ORDER BY date_achat, id",
     )
     .bind(chantier_id)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     let achats_reels: i64 = lignes.iter().map(|l| l.5).sum();
     let benefice_actuel = facture_ht - achats_reels;
     let disponible = prevu.achats_cents - achats_reels;
-    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
 
     Ok(Suivi {
         ventes_prevues: format_euros(prevu.ventes_cents),
@@ -199,8 +200,8 @@ fn lire(a: &NouvelAchat) -> Option<(NaiveDate, &'static str, String, String, i64
         .then_some((date, categorie, fournisseur, description, montant))
 }
 
-async fn ajouter(State(state): State<AppState>, Path(chantier_id): Path<i64>, Form(a): Form<NouvelAchat>) -> Result<Redirect, Erreur> {
-    let existe: Option<i64> = sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1").bind(chantier_id).fetch_optional(&state.db).await?;
+async fn ajouter(mut db: Base, Path(chantier_id): Path<i64>, Form(a): Form<NouvelAchat>) -> Result<Redirect, Erreur> {
+    let existe: Option<i64> = sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1").bind(chantier_id).fetch_optional(&mut *db).await?;
     existe.ok_or_else(Erreur::introuvable)?;
     let Some((date, categorie, fournisseur, description, montant)) = lire(&a) else {
         return Ok(Redirect::to(&format!("/chantiers/{chantier_id}/finances?erreur=achat#achats")));
@@ -215,13 +216,13 @@ async fn ajouter(State(state): State<AppState>, Path(chantier_id): Path<i64>, Fo
     .bind(&fournisseur)
     .bind(&description)
     .bind(montant)
-    .execute(&state.db)
+    .execute(&mut *db)
     .await?;
     Ok(Redirect::to(&format!("/chantiers/{chantier_id}/finances?ok=achat#achats")))
 }
 
-async fn supprimer(State(state): State<AppState>, Path((chantier_id, achat)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
-    let fait = sqlx::query("DELETE FROM chantier_achats WHERE id = $1 AND chantier_id = $2").bind(achat).bind(chantier_id).execute(&state.db).await?;
+async fn supprimer(mut db: Base, Path((chantier_id, achat)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {
+    let fait = sqlx::query("DELETE FROM chantier_achats WHERE id = $1 AND chantier_id = $2").bind(achat).bind(chantier_id).execute(&mut *db).await?;
     if fait.rows_affected() == 0 {
         return Err(Erreur::introuvable());
     }
@@ -230,8 +231,11 @@ async fn supprimer(State(state): State<AppState>, Path((chantier_id, achat)): Pa
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/achats", get(liste_achats).post(ajouter_depuis_liste))
-        .route("/chantiers/{id}/achats", post(ajouter))
+        .route(
+            "/achats",
+            get(liste_achats).post(ajouter_depuis_liste).route_layer(axum::middleware::from_fn(crate::profil::exiger_achats)),
+        )
+        .route("/chantiers/{id}/achats", post(ajouter).route_layer(axum::middleware::from_fn(crate::profil::exiger_achats)))
         .route("/chantiers/{id}/achats/{achat}/supprimer", post(supprimer))
 }
 
@@ -299,8 +303,7 @@ struct RechercheAchats {
     erreur: String,
 }
 
-async fn liste_achats(State(state): State<AppState>, Query(r): Query<RechercheAchats>) -> Result<Html<String>, Erreur> {
-    let db = &state.db;
+async fn liste_achats(mut db: Base, Query(r): Query<RechercheAchats>) -> Result<Html<String>, Erreur> {
     let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
     const FILTRE: &str = "FROM chantier_achats a JOIN chantiers ch ON ch.id = a.chantier_id JOIN devis d ON d.id = ch.devis_id
@@ -309,7 +312,7 @@ async fn liste_achats(State(state): State<AppState>, Query(r): Query<RechercheAc
         sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT count(*), COALESCE(sum(a.montant_ht_cents), 0)::bigint {FILTRE}")))
             .bind(&q)
             .bind(&motif)
-            .fetch_one(db)
+            .fetch_one(&mut *db)
             .await?;
     let lignes: Vec<(i64, String, NaiveDate, String, String, String, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT ch.id, CASE WHEN d.reference <> '' THEN d.reference ELSE 'n° ' || ch.numero END, a.date_achat, a.categorie::text,
@@ -318,15 +321,15 @@ async fn liste_achats(State(state): State<AppState>, Query(r): Query<RechercheAc
     )))
     .bind(&q)
     .bind(&motif)
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
     let chantiers: Vec<(i64, i64, String)> = sqlx::query_as(
         "SELECT ch.id, ch.numero, d.reference FROM chantiers ch JOIN devis d ON d.id = ch.devis_id
          ORDER BY ch.statut = 'en_cours' DESC, ch.numero DESC",
     )
-    .fetch_all(db)
+    .fetch_all(&mut *db)
     .await?;
-    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let page = PageAchats {
         q,
         lignes: lignes
@@ -354,7 +357,7 @@ async fn liste_achats(State(state): State<AppState>, Query(r): Query<RechercheAc
         categories: CATEGORIES.iter().enumerate().map(|(i, (v, l))| Choix { valeur: (*v).into(), libelle: (*l).into(), choisi: i == 0 }).collect(),
         aujourdhui: aujourdhui.to_string(),
         message: if r.ok == "achat" { "L'achat est enregistré sur son chantier." } else { "" },
-        erreur: if r.erreur == "achat" { "L'achat n'est pas enregistré : choisis le chantier, la date et un montant HT (un avoir : « -50 »)." } else { "" },
+        erreur: if r.erreur == "achat" { "L'achat n'est pas enregistré : choisissez le chantier, la date et un montant HT (un avoir : « -50 »)." } else { "" },
     };
     Ok(Html(page.render()?))
 }
@@ -367,9 +370,9 @@ struct AchatDepuisListe {
     achat: NouvelAchat,
 }
 
-async fn ajouter_depuis_liste(State(state): State<AppState>, Form(f): Form<AchatDepuisListe>) -> Result<Redirect, Erreur> {
+async fn ajouter_depuis_liste(mut db: Base, Form(f): Form<AchatDepuisListe>) -> Result<Redirect, Erreur> {
     let chantier: Option<i64> = match f.chantier.trim().parse::<i64>() {
-        Ok(id) => sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1").bind(id).fetch_optional(&state.db).await?,
+        Ok(id) => sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1").bind(id).fetch_optional(&mut *db).await?,
         Err(_) => None,
     };
     let (Some(chantier_id), Some((date, categorie, fournisseur, description, montant))) = (chantier, lire(&f.achat)) else {
@@ -385,7 +388,7 @@ async fn ajouter_depuis_liste(State(state): State<AppState>, Form(f): Form<Achat
     .bind(&fournisseur)
     .bind(&description)
     .bind(montant)
-    .execute(&state.db)
+    .execute(&mut *db)
     .await?;
     Ok(Redirect::to("/achats?ok=achat"))
 }

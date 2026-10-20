@@ -1,0 +1,29 @@
+{% extends "public_base.html" %}
+{% block titre %}Créer un compte{% endblock %}
+{% block content %}
+      <h2 class="font-semibold" style="margin:0">Créer un compte</h2>
+      {% if !erreurs.is_empty() %}
+      <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<div>{% for e in erreurs %}<div>{{ e }}</div>{% endfor %}</div></div>
+      {% endif %}
+      <form method="post" action="/inscription" style="display:flex;flex-direction:column;gap:16px;margin:0">
+        <label class="form-control">
+          <span class="u-lbl">Nom de votre entreprise</span>
+          <input class="input input-bordered w-full" name="entreprise" value="{{ entreprise }}" maxlength="120" autocomplete="organization" required autofocus>
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">E-mail</span>
+          <input class="input input-bordered w-full" type="email" name="email" value="{{ email }}" autocomplete="email" required>
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Mot de passe (10 caractères au moins)</span>
+          <input class="input input-bordered w-full" type="password" name="mot_de_passe" minlength="10" autocomplete="new-password" required>
+        </label>
+        <label class="form-control">
+          <span class="u-lbl">Encore une fois</span>
+          <input class="input input-bordered w-full" type="password" name="confirmation" minlength="10" autocomplete="new-password" required>
+        </label>
+        <div class="u-piege" aria-hidden="true"><label>Ne pas remplir <input name="site" tabindex="-1" autocomplete="off"></label></div>
+        <button class="btn btn-primary w-full" type="submit">Créer mon compte</button>
+      </form>
+      <p class="u-petit" style="margin:0">Déjà un compte ? <a class="link" href="/connexion">Se connecter</a></p>
+{% endblock %}

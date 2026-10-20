@@ -10,15 +10,15 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 {% if !message_erreur.is_empty() %}
-<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_erreur) }}</span></div>
 {% endif %}
 {% if !modifiable %}
 <div role="status" class="u-bandeau">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
-  <span>{% if avenant %}Cet avenant{% else %}Ce devis{% endif %} n'est plus un brouillon : il n'est plus modifiable. Pour le corriger, ouvre le menu Actions.</span>
+  <span>{% if avenant %}Cet avenant{% else %}Ce devis{% endif %} n'est plus un brouillon : il n'est plus modifiable. Pour le corriger, ouvrez le menu Actions.</span>
 </div>
 {% endif %}
 {% if !erreurs.is_empty() %}
@@ -39,7 +39,7 @@
         <div class="u-col">
           <h3>Détails {% if avenant %}de l'avenant{% else %}du devis{% endif %}</h3>
           {% call m::champ("Référence *", "reference", form.reference, "text") %}{% endcall %}
-          {% call m::champ("Responsable *", "responsable", form.responsable, "text") %}{% endcall %}
+          {% call m::champ("Responsable", "responsable", form.responsable, "text") %}{% endcall %}
           <div class="grid gap-3 sm:grid-cols-[1fr_130px]">
             {% call m::champ("Date *", "date_devis", form.date_devis, "date") %}{% endcall %}
             <label class="form-control w-full">
@@ -107,7 +107,7 @@
     </details>
 
     <details class="u-card" open>
-      <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Informations du chantier</h2></summary>
+      <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Informations du {{ crate::profil::mot("chantier") }}</h2></summary>
       <div class="u-deux">
         <div class="u-col">
           {% call m::liste_deroulante("Architecte", "architecte_id", architectes) %}{% endcall %}
@@ -116,7 +116,7 @@
         <div class="u-col group">
           <label class="flex items-center gap-2">
             <input type="checkbox" class="toggle toggle-sm" name="chantier_identique" value="on"{% if form.chantier_identique.is_some() %} checked{% endif %}>
-            <span>Adresse du chantier identique à celle du client</span>
+            <span>Adresse du {{ crate::profil::mot("chantier") }} identique à celle du client</span>
           </label>
           <div class="flex flex-col gap-3 group-has-[input:checked]:hidden">
             <div class="grid gap-3 sm:grid-cols-[1fr_110px]">
@@ -161,7 +161,7 @@
 {# Comme dans Vertuoza : les acomptes se demandent depuis l'onglet Informations du devis. Ils sont facturés sur le
    chantier, créé quand le devis est accepté (même calcul que l'onglet Finances du chantier). #}
 <section class="u-card" id="acomptes">
-  <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Acomptes</h2>{% if let Some(ch) = acomptes.chantier %}<a class="u-petit" href="/chantiers/{{ ch }}/finances">Finances du chantier</a>{% endif %}</div>
+  <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Acomptes</h2>{% if let Some(ch) = acomptes.chantier %}<a class="u-petit" href="/chantiers/{{ ch }}/finances">Finances du {{ crate::profil::mot("chantier") }}</a>{% endif %}</div>
   <div class="u-card-b">
     {% for a in acomptes.factures %}
     <div class="flex flex-wrap items-center gap-3">
@@ -173,7 +173,7 @@
     {% endfor %}
     {% if let Some(ch) = acomptes.chantier %}
       {% if acomptes.finale %}
-      <span class="u-muet">La facture finale du chantier est faite : plus d'acompte possible.</span>
+      <span class="u-muet">La facture finale du {{ crate::profil::mot("chantier") }} est faite : plus d'acompte possible.</span>
       {% else %}
       <form method="post" action="/chantiers/{{ ch }}/factures/acompte" class="flex flex-wrap items-end gap-2">
         <label class="form-control">
@@ -188,7 +188,7 @@
         </label>
         <button class="btn btn-primary" type="submit">{% call ui::icone("plus", 16) %}{% endcall %}Ajouter un acompte</button>
       </form>
-      <span class="u-petit u-muet">Crée la facture d'acompte en brouillon : tu la relis, tu la valides, tu l'envoies.</span>
+      <span class="u-petit u-muet">La facture d'acompte est créée en brouillon : vous la relisez, la validez, puis l'envoyez.</span>
       {% endif %}
     {% else %}
     <span class="u-muet">Les acomptes se facturent une fois le devis accepté (Actions › Accepter le devis).</span>

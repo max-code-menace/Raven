@@ -9,7 +9,7 @@
 
 {% block content %}
 {% if !message_ok.is_empty() %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
 {% if !enc.modifiable %}
 <div role="status" class="u-bandeau">

@@ -9,7 +9,7 @@
 use std::fmt::Write as _;
 
 use chrono::NaiveDate;
-use sqlx::PgPool;
+use sqlx::PgConnection;
 
 use crate::calcul;
 use crate::factures::{self, LigneBase};
@@ -80,11 +80,13 @@ fn pourcentage(centiemes: i32) -> String {
     }
 }
 
-/// La catégorie de TVA de la norme : S (taux normal ou réduit), AE (autoliquidation), Z (taux zéro).
-fn categorie(taux_centiemes: i32, autoliquidation: bool) -> &'static str {
-    match (autoliquidation, taux_centiemes) {
-        (true, _) => "AE",
-        (false, 0) => "Z",
+/// La catégorie de TVA de la norme : S (taux normal ou réduit), AE (autoliquidation), E (exonéré : franchise des
+/// petites entreprises, à confirmer avec le point d'accès Peppol), Z (taux zéro).
+fn categorie(taux_centiemes: i32, autoliquidation: bool, franchise: bool) -> &'static str {
+    match (autoliquidation, franchise, taux_centiemes) {
+        (true, _, _) => "AE",
+        (false, true, _) => "E",
+        (false, false, 0) => "Z",
         _ => "S",
     }
 }
@@ -141,6 +143,7 @@ pub(crate) fn document(d: &Document) -> String {
     };
     let t = factures::totaux(&d.lignes);
     let autoliq = |taux: i32| d.lignes.iter().any(|l| l.genre == "poste" && l.taux_centiemes == Some(taux) && l.autoliquidation);
+    let franchise = |taux: i32| d.lignes.iter().any(|l| l.genre == "poste" && l.taux_centiemes == Some(taux) && l.franchise);
     let eur = "currencyID=\"EUR\"";
 
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -158,6 +161,10 @@ pub(crate) fn document(d: &Document) -> String {
     }
     let _ = write!(xml, "<cbc:{nom_code}>{code_type}</cbc:{nom_code}>");
     balise(&mut xml, "cbc:Note", &d.remarque);
+    // Les mentions légales de TVA font partie de la facture : elles voyagent aussi dans le XML (BT-22).
+    for mention in crate::mentions_tva::a_imprimer(&d.lignes, d.lignes.iter().any(|l| l.genre == "poste" && l.franchise)) {
+        balise(&mut xml, "cbc:Note", mention);
+    }
     xml.push_str("<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>");
     // La référence de l'acheteur est obligatoire chez Peppol : la référence de la pièce, sinon son numéro.
     let reference = if d.reference.trim().is_empty() { d.numero.to_string() } else { d.reference.clone() };
@@ -179,7 +186,7 @@ pub(crate) fn document(d: &Document) -> String {
 
     let _ = write!(xml, "<cac:TaxTotal><cbc:TaxAmount {eur}>{}</cbc:TaxAmount>", montant(t.ttc_cents - t.ht_cents));
     for v in &t.tva {
-        let cat = categorie(v.taux_centiemes, autoliq(v.taux_centiemes));
+        let cat = categorie(v.taux_centiemes, autoliq(v.taux_centiemes), franchise(v.taux_centiemes));
         let _ = write!(
             xml,
             "<cac:TaxSubtotal><cbc:TaxableAmount {eur}>{}</cbc:TaxableAmount><cbc:TaxAmount {eur}>{}</cbc:TaxAmount>\
@@ -190,6 +197,9 @@ pub(crate) fn document(d: &Document) -> String {
         );
         if cat == "AE" {
             xml.push_str("<cbc:TaxExemptionReasonCode>VATEX-EU-AE</cbc:TaxExemptionReasonCode><cbc:TaxExemptionReason>Autoliquidation</cbc:TaxExemptionReason>");
+        }
+        if cat == "E" {
+            let _ = write!(xml, "<cbc:TaxExemptionReason>{}</cbc:TaxExemptionReason>", echapper(crate::societe::MENTION_FRANCHISE));
         }
         xml.push_str("<cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal>");
     }
@@ -229,7 +239,7 @@ pub(crate) fn document(d: &Document) -> String {
              <cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:ClassifiedTaxCategory></cac:Item>\
              <cac:Price><cbc:PriceAmount {eur}>{}</cbc:PriceAmount></cac:Price></cac:{ligne_nom}>",
             echapper(&nom),
-            categorie(taux, l.autoliquidation),
+            categorie(taux, l.autoliquidation, l.franchise),
             pourcentage(taux),
             montant(l.total_cents.abs())
         );
@@ -239,14 +249,14 @@ pub(crate) fn document(d: &Document) -> String {
 }
 
 /// Charge une facture (ou note de crédit) validée et écrit son UBL. `None` pour un brouillon.
-pub async fn de_la_facture(db: &PgPool, id: i64) -> Result<Option<String>, sqlx::Error> {
-    let Some(f) = factures::charger(db, id).await? else { return Ok(None) };
+pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<String>, sqlx::Error> {
+    let Some(f) = factures::charger(&mut *db, id).await? else { return Ok(None) };
     let Some(numero) = f.numero else { return Ok(None) };
-    let lignes = factures::charger_lignes(db, id).await?;
+    let lignes = factures::charger_lignes(&mut *db, id).await?;
     let societe: Option<(String, String, String, String, String, String, Option<String>, String, String)> = sqlx::query_as(
-        "SELECT nom, trim(concat_ws(' ', rue, numero)), code_postal, ville, pays, '', numero_tva, email, telephone FROM societe WHERE id = 1",
+        "SELECT nom, trim(concat_ws(' ', rue, numero)), code_postal, ville, pays, '', numero_tva, email, telephone FROM societe WHERE organisation_id = app_organisation()",
     )
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let vendeur = societe
         .map(|(nom, rue, code_postal, ville, pays, _, tva, email, telephone)| Partie {
@@ -266,14 +276,14 @@ pub async fn de_la_facture(db: &PgPool, id: i64) -> Result<Option<String>, sqlx:
     let acheteur: Option<(String, String, String, String, String, String, String, String)> = if let Some(e) = f.client_entreprise_id {
         sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT {colonnes} FROM (SELECT *, nom AS nom_affiche FROM entreprises) x WHERE id = $1")))
             .bind(e)
-            .fetch_optional(db)
+            .fetch_optional(&mut *db)
             .await?
     } else if let Some(c) = f.client_contact_id {
         sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {colonnes} FROM (SELECT *, trim(concat_ws(' ', prenom, nom)) AS nom_affiche FROM contacts) x WHERE id = $1"
         )))
         .bind(c)
-        .fetch_optional(db)
+        .fetch_optional(&mut *db)
         .await?
     } else {
         None
@@ -281,9 +291,9 @@ pub async fn de_la_facture(db: &PgPool, id: i64) -> Result<Option<String>, sqlx:
     let acheteur = acheteur
         .map(|(nom, rue, code_postal, ville, pays, tva, email, telephone)| Partie { nom, rue, code_postal, ville, pays, tva, email, telephone })
         .unwrap_or_default();
-    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE par_defaut").fetch_optional(db).await?;
+    let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
     let conditions = match f.conditions_paiement_id {
-        Some(c) => crate::fiches::Options::charger(db, crate::fiches::Genre::Entreprise)
+        Some(c) => crate::fiches::Options::charger(&mut *db, crate::fiches::Genre::Entreprise)
             .await?
             .conditions
             .into_iter()
@@ -293,7 +303,7 @@ pub async fn de_la_facture(db: &PgPool, id: i64) -> Result<Option<String>, sqlx:
         None => String::new(),
     };
     let facture_corrigee: Option<i64> = match f.facture_origine_id {
-        Some(o) => sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(o).fetch_one(db).await?,
+        Some(o) => sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(o).fetch_one(&mut *db).await?,
         None => None,
     };
     Ok(Some(document(&Document {
@@ -329,6 +339,7 @@ mod tests {
             taux_centiemes: Some(taux),
             total_cents: total,
             autoliquidation,
+            franchise: false,
         }
     }
 

@@ -4,13 +4,15 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path, State},
+    extract::{Form, Path},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use serde::Deserialize;
 
+use sqlx::{Connection as _, PgConnection};
+use crate::base::Base;
 use crate::calcul::{self, Ajustement};
 use crate::commun::format_euros;
 use crate::devis_statut::{Barre, charger_barre};
@@ -59,7 +61,7 @@ fn valider(f: &AjustementForm, sous_total_cents: i64) -> Result<Valide, String> 
     let remise = match f.sens.as_str() {
         "remise" => true,
         "majoration" => false,
-        _ => return Err("Choisis remise ou majoration.".to_string()),
+        _ => return Err("Choisissez remise ou majoration.".to_string()),
     };
     let signe = if remise { -1 } else { 1 };
     let e5 = calcul::lire_decimal_e5(f.valeur.trim())
@@ -86,7 +88,7 @@ fn valider(f: &AjustementForm, sous_total_cents: i64) -> Result<Valide, String> 
             }
             Ok(Valide { libelle, mode: "montant", valeur: signe * valeur })
         }
-        _ => Err("Choisis pourcentage ou montant.".to_string()),
+        _ => Err("Choisissez pourcentage ou montant.".to_string()),
     }
 }
 
@@ -109,15 +111,15 @@ struct Page {
     rentabilite: Option<RentabiliteVue>,
 }
 
-async fn construire(state: &AppState, id: i64, entete: Entete, form: Option<AjustementForm>, erreur: String) -> Result<Page, Erreur> {
-    let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
+async fn construire(db: &mut PgConnection, id: i64, entete: Entete, form: Option<AjustementForm>, erreur: String) -> Result<Page, Erreur> {
+    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
     let form = form.unwrap_or_else(|| AjustementForm::depuis(entete.ajustement, &entete.ajustement_libelle));
     Ok(Page {
         id,
         statut: entete.statut,
         classe_statut: entete.classe_statut,
         onglet: "totaux",
-        barre: charger_barre(&state.db, id).await?,
+        barre: charger_barre(&mut *db, id).await?,
         modifiable: entete.brouillon,
         a_un_ajustement: entete.ajustement != Ajustement::Aucun,
         erreur,
@@ -127,49 +129,49 @@ async fn construire(state: &AppState, id: i64, entete: Entete, form: Option<Ajus
     })
 }
 
-async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
-    Ok(Html(construire(&state, id, entete, None, String::new()).await?.render()?))
+async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
+    Ok(Html(construire(&mut *db, id, entete, None, String::new()).await?.render()?))
 }
 
-async fn enregistrer(State(state): State<AppState>, Path(id): Path<i64>, Form(f): Form<AjustementForm>) -> Result<Response, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(f): Form<AjustementForm>) -> Result<Response, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
     if !entete.brouillon {
         return Err(Erreur::conflit(MESSAGE_NON_MODIFIABLE));
     }
-    let sous_total = sous_total_cents(&state, id).await?;
+    let sous_total = sous_total_cents(&mut *db, id).await?;
     match valider(&f, sous_total) {
         Ok(v) => {
-            changer_ajustement(&state, id, &v.libelle, v.mode, v.valeur).await?;
+            changer_ajustement(&mut *db, id, &v.libelle, v.mode, v.valeur).await?;
             Ok(Redirect::to(&format!("/devis/{id}/totaux")).into_response())
         }
         Err(erreur) => {
-            let page = construire(&state, id, entete, Some(f), erreur).await?;
+            let page = construire(&mut *db, id, entete, Some(f), erreur).await?;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
         }
     }
 }
 
-async fn retirer(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
-    let entete = charger_entete(&state.db, id).await?;
+async fn retirer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
     if !entete.brouillon {
         return Err(Erreur::conflit(MESSAGE_NON_MODIFIABLE));
     }
-    changer_ajustement(&state, id, "", "aucun", 0).await?;
+    changer_ajustement(&mut *db, id, "", "aucun", 0).await?;
     Ok(Redirect::to(&format!("/devis/{id}/totaux")))
 }
 
-async fn sous_total_cents(state: &AppState, id: i64) -> Result<i64, Erreur> {
+async fn sous_total_cents(db: &mut PgConnection, id: i64) -> Result<i64, Erreur> {
     // Les lignes sans ajustement : on demande les totaux à un devis « vu sans ajustement ».
-    let mut entete = charger_entete(&state.db, id).await?;
+    let mut entete = charger_entete(&mut *db, id).await?;
     entete.ajustement = Ajustement::Aucun;
-    let enc = charger_encodage(&state.db, id, &entete, String::new()).await?;
+    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
     Ok(enc.totaux.sous_total_cents)
 }
 
 /// Enregistre l'ajustement et les nouveaux totaux dans la même transaction.
-async fn changer_ajustement(state: &AppState, id: i64, libelle: &str, mode: &str, valeur: i64) -> Result<(), Erreur> {
-    let mut tx = state.db.begin().await?;
+async fn changer_ajustement(db: &mut PgConnection, id: i64, libelle: &str, mode: &str, valeur: i64) -> Result<(), Erreur> {
+    let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     let res = sqlx::query(
         "UPDATE devis SET ajustement_libelle = $1, ajustement_mode = $2, ajustement_valeur = $3, updated_at = now()

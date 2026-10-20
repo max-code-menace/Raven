@@ -4,15 +4,16 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{DefaultBodyLimit, Multipart, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Query},
     http::{StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use axum_extra::extract::Form;
 use serde::Deserialize;
-use sqlx::{FromRow, PgPool};
+use sqlx::{Connection as _, FromRow, PgConnection};
 
+use crate::base::Base;
 use crate::commun::{Choix, PAYS, choix_fixes, email_valide, vide_en_none};
 use crate::{AppState, Erreur};
 
@@ -152,8 +153,61 @@ pub struct SocieteForm {
     telephones_supplementaires: Vec<String>,
     site_web: String,
     numero_tva: String,
+    /// « assujetti » ou « franchise » (petite entreprise).
+    regime_tva: String,
     iban: Vec<String>,
     bic: Vec<String>,
+}
+
+/// La mention que la loi demande sur les documents d'une société en franchise de TVA (à faire valider par le comptable).
+pub const MENTION_FRANCHISE: &str = "Régime particulier de franchise des petites entreprises.";
+
+/// La société de l'organisation de la connexion est-elle en franchise de TVA ?
+pub(crate) async fn en_franchise(db: &mut PgConnection) -> Result<bool, sqlx::Error> {
+    let franchise: Option<bool> =
+        sqlx::query_scalar("SELECT regime_tva = 'franchise' FROM societe WHERE organisation_id = app_organisation()").fetch_optional(db).await?;
+    Ok(franchise.unwrap_or(false))
+}
+
+/// Les régimes de TVA proposés.
+pub const REGIMES_TVA: [(&str, &str); 2] = [
+    ("assujetti", "Assujetti à la TVA"),
+    ("franchise", "Franchise de TVA des petites entreprises (pas de TVA sur les factures)"),
+];
+
+impl SocieteForm {
+    /// Le formulaire rempli par l'assistant de démarrage (un téléphone, un compte, nom abrégé = nom).
+    pub(crate) fn depuis_demarrage(
+        nom: &str,
+        rue: &str,
+        numero: &str,
+        code_postal: &str,
+        ville: &str,
+        pays: &str,
+        email: &str,
+        telephone: &str,
+        numero_tva: &str,
+        regime_tva: &str,
+        iban: &str,
+        bic: &str,
+    ) -> SocieteForm {
+        SocieteForm {
+            nom: nom.to_string(),
+            nom_abrege: nom.to_string(),
+            rue: rue.to_string(),
+            numero: numero.to_string(),
+            code_postal: code_postal.to_string(),
+            ville: ville.to_string(),
+            pays: pays.to_string(),
+            email: email.to_string(),
+            telephone: telephone.to_string(),
+            numero_tva: numero_tva.to_string(),
+            regime_tva: regime_tva.to_string(),
+            iban: vec![iban.to_string()],
+            bic: vec![bic.to_string()],
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(FromRow)]
@@ -171,6 +225,7 @@ struct SocieteLigne {
     telephones_supplementaires: Vec<String>,
     site_web: Option<String>,
     numero_tva: Option<String>,
+    regime_tva: String,
 }
 
 #[derive(FromRow)]
@@ -179,16 +234,16 @@ struct CompteLigne {
     bic: Option<String>,
 }
 
-async fn charger_formulaire(db: &PgPool) -> Result<SocieteForm, sqlx::Error> {
+async fn charger_formulaire(db: &mut PgConnection) -> Result<SocieteForm, sqlx::Error> {
     let societe: Option<SocieteLigne> = sqlx::query_as(
         "SELECT nom, nom_abrege, rue, numero, code_postal, ville, pays, email, emails_supplementaires,
-                telephone, telephones_supplementaires, site_web, numero_tva FROM societe WHERE id = 1",
+                telephone, telephones_supplementaires, site_web, numero_tva, regime_tva FROM societe WHERE organisation_id = app_organisation()",
     )
-    .fetch_optional(db)
+    .fetch_optional(&mut *db)
     .await?;
     let comptes: Vec<CompteLigne> =
-        sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires ORDER BY par_defaut DESC, id")
-            .fetch_all(db)
+        sqlx::query_as("SELECT iban, bic FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() ORDER BY par_defaut DESC, id")
+            .fetch_all(&mut *db)
             .await?;
 
     let mut form = match societe {
@@ -206,16 +261,17 @@ async fn charger_formulaire(db: &PgPool) -> Result<SocieteForm, sqlx::Error> {
             telephones_supplementaires: s.telephones_supplementaires,
             site_web: s.site_web.unwrap_or_default(),
             numero_tva: s.numero_tva.unwrap_or_default(),
+            regime_tva: s.regime_tva,
             ..Default::default()
         },
-        None => SocieteForm { pays: "BE".into(), ..Default::default() },
+        None => SocieteForm { pays: "BE".into(), regime_tva: "assujetti".into(), ..Default::default() },
     };
     form.iban = comptes.iter().map(|c| c.iban.clone()).collect();
     form.bic = comptes.iter().map(|c| c.bic.clone().unwrap_or_default()).collect();
     Ok(form)
 }
 
-struct Valeurs {
+pub(crate) struct Valeurs {
     nom: String,
     nom_abrege: String,
     rue: String,
@@ -229,10 +285,11 @@ struct Valeurs {
     telephones_supplementaires: Vec<String>,
     site_web: Option<String>,
     numero_tva: Option<String>,
+    regime_tva: String,
     comptes: Vec<(String, Option<String>)>,
 }
 
-fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
+pub(crate) fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
     let mut erreurs = Vec::new();
 
     let nom = f.nom.trim().to_string();
@@ -281,6 +338,11 @@ fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
         },
     };
 
+    let regime_tva = if f.regime_tva.is_empty() { "assujetti".to_string() } else { f.regime_tva.clone() };
+    if !REGIMES_TVA.iter().any(|(v, _)| *v == regime_tva) {
+        erreurs.push("Ce régime de TVA n'existe pas.".to_string());
+    }
+
     // Les lignes de compte sont envoyées par paires (IBAN, BIC), dans l'ordre. Les lignes
     // entièrement vides sont ignorées. Le premier compte est celui utilisé par défaut.
     let mut comptes = Vec::new();
@@ -324,20 +386,21 @@ fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
         telephones_supplementaires,
         site_web: vide_en_none(&f.site_web),
         numero_tva,
+        regime_tva,
         comptes,
     })
 }
 
-async fn enregistrer(db: &PgPool, v: &Valeurs) -> Result<(), sqlx::Error> {
+pub(crate) async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Error> {
     let mut tx = db.begin().await?;
     sqlx::query(
-        "INSERT INTO societe (id, nom, nom_abrege, rue, numero, code_postal, ville, pays, email,
-                              emails_supplementaires, telephone, telephones_supplementaires, site_web, numero_tva)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-         ON CONFLICT (id) DO UPDATE SET
+        "INSERT INTO societe (nom, nom_abrege, rue, numero, code_postal, ville, pays, email,
+                              emails_supplementaires, telephone, telephones_supplementaires, site_web, numero_tva, regime_tva)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         ON CONFLICT (organisation_id) DO UPDATE SET
             nom = $1, nom_abrege = $2, rue = $3, numero = $4, code_postal = $5, ville = $6, pays = $7,
             email = $8, emails_supplementaires = $9, telephone = $10, telephones_supplementaires = $11,
-            site_web = $12, numero_tva = $13, updated_at = now()",
+            site_web = $12, numero_tva = $13, regime_tva = $14, updated_at = now()",
     )
     .bind(&v.nom)
     .bind(&v.nom_abrege)
@@ -352,10 +415,11 @@ async fn enregistrer(db: &PgPool, v: &Valeurs) -> Result<(), sqlx::Error> {
     .bind(&v.telephones_supplementaires)
     .bind(&v.site_web)
     .bind(&v.numero_tva)
+    .bind(&v.regime_tva)
     .execute(&mut *tx)
     .await?;
 
-    sqlx::query("DELETE FROM societe_comptes_bancaires").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM societe_comptes_bancaires WHERE organisation_id = app_organisation()").execute(&mut *tx).await?;
     for (i, (iban, bic)) in v.comptes.iter().enumerate() {
         sqlx::query("INSERT INTO societe_comptes_bancaires (iban, bic, par_defaut) VALUES ($1, $2, $3)")
             .bind(iban)
@@ -369,17 +433,17 @@ async fn enregistrer(db: &PgPool, v: &Valeurs) -> Result<(), sqlx::Error> {
 
 // ─── Fichiers en base ───────────────────────────────────────────────────────
 
-async fn nom_du_fichier(db: &PgPool, fichier: Fichier) -> Result<Option<String>, sqlx::Error> {
-    sqlx::query_scalar("SELECT nom FROM societe_fichiers WHERE usage = $1")
+async fn nom_du_fichier(db: &mut PgConnection, fichier: Fichier) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT nom FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = $1")
         .bind(fichier.usage())
-        .fetch_optional(db)
+        .fetch_optional(&mut *db)
         .await
 }
 
-async fn version_du_logo(db: &PgPool) -> Result<i64, sqlx::Error> {
+async fn version_du_logo(db: &mut PgConnection) -> Result<i64, sqlx::Error> {
     let v: Option<i64> =
-        sqlx::query_scalar("SELECT extract(epoch FROM updated_at)::bigint FROM societe_fichiers WHERE usage = 'logo'")
-            .fetch_optional(db)
+        sqlx::query_scalar("SELECT extract(epoch FROM updated_at)::bigint FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = 'logo'")
+            .fetch_optional(&mut *db)
             .await?;
     Ok(v.unwrap_or(0))
 }
@@ -402,6 +466,7 @@ struct PageSociete {
     a_un_logo: bool,
     version_logo: i64,
     conditions_generales: Option<String>,
+    regimes: &'static [(&'static str, &'static str)],
 }
 
 /// Un champ ajouté par le bouton « Ajouter un e-mail » / « Ajouter un téléphone ».
@@ -420,7 +485,7 @@ struct LigneCompte {
 }
 
 async fn construire_page(
-    db: &PgPool,
+    db: &mut PgConnection,
     form: SocieteForm,
     erreurs: Vec<String>,
     enregistre: bool,
@@ -438,9 +503,10 @@ async fn construire_page(
     Ok(PageSociete {
         pays: choix_fixes(&PAYS, &[pays_actuel]),
         comptes,
-        a_un_logo: nom_du_fichier(db, Fichier::Logo).await?.is_some(),
-        version_logo: version_du_logo(db).await?,
-        conditions_generales: nom_du_fichier(db, Fichier::ConditionsGenerales).await?,
+        a_un_logo: nom_du_fichier(&mut *db, Fichier::Logo).await?.is_some(),
+        version_logo: version_du_logo(&mut *db).await?,
+        conditions_generales: nom_du_fichier(&mut *db, Fichier::ConditionsGenerales).await?,
+        regimes: &REGIMES_TVA,
         form,
         erreurs,
         enregistre,
@@ -453,32 +519,32 @@ struct Confirmation {
     ok: String,
 }
 
-async fn afficher(State(state): State<AppState>, Query(q): Query<Confirmation>) -> Result<Html<String>, Erreur> {
-    let form = charger_formulaire(&state.db).await?;
-    let page = construire_page(&state.db, form, Vec::new(), q.ok == "1").await?;
+async fn afficher(mut db: Base, Query(q): Query<Confirmation>) -> Result<Html<String>, Erreur> {
+    let form = charger_formulaire(&mut *db).await?;
+    let page = construire_page(&mut *db, form, Vec::new(), q.ok == "1").await?;
     Ok(Html(page.render()?))
 }
 
-async fn sauvegarder(State(state): State<AppState>, Form(form): Form<SocieteForm>) -> Result<Response, Erreur> {
+async fn sauvegarder(mut db: Base, Form(form): Form<SocieteForm>) -> Result<Response, Erreur> {
     match valider(&form) {
         Ok(valeurs) => {
-            enregistrer(&state.db, &valeurs).await?;
+            enregistrer(&mut *db, &valeurs).await?;
             Ok(Redirect::to("/parametres/societe?ok=1").into_response())
         }
         Err(erreurs) => {
-            let page = construire_page(&state.db, form, erreurs, false).await?;
+            let page = construire_page(&mut *db, form, erreurs, false).await?;
             Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
         }
     }
 }
 
-async fn erreur_de_fichier(db: &PgPool, message: String) -> Result<Response, Erreur> {
-    let form = charger_formulaire(db).await?;
-    let page = construire_page(db, form, vec![message], false).await?;
+async fn erreur_de_fichier(db: &mut PgConnection, message: String) -> Result<Response, Erreur> {
+    let form = charger_formulaire(&mut *db).await?;
+    let page = construire_page(&mut *db, form, vec![message], false).await?;
     Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
 }
 
-async fn televerser(fichier: Fichier, state: AppState, mut multipart: Multipart) -> Result<Response, Erreur> {
+async fn televerser(fichier: Fichier, mut db: Base, mut multipart: Multipart) -> Result<Response, Erreur> {
     let mut recu: Option<(String, Vec<u8>)> = None;
     loop {
         match multipart.next_field().await {
@@ -489,7 +555,7 @@ async fn televerser(fichier: Fichier, state: AppState, mut multipart: Multipart)
                         Ok(octets) => recu = Some((nom, octets.to_vec())),
                         Err(_) => {
                             let message = format!("{} est trop volumineux ou illisible.", fichier.nom_lisible());
-                            return erreur_de_fichier(&state.db, message).await;
+                            return erreur_de_fichier(&mut *db, message).await;
                         }
                     }
                 }
@@ -497,24 +563,24 @@ async fn televerser(fichier: Fichier, state: AppState, mut multipart: Multipart)
             Ok(None) => break,
             Err(_) => {
                 let message = format!("{} est trop volumineux ou illisible.", fichier.nom_lisible());
-                return erreur_de_fichier(&state.db, message).await;
+                return erreur_de_fichier(&mut *db, message).await;
             }
         }
     }
 
     let Some((nom_brut, contenu)) = recu.filter(|(_, c)| !c.is_empty()) else {
-        return erreur_de_fichier(&state.db, "Choisis un fichier avant de cliquer sur Envoyer.".to_string()).await;
+        return erreur_de_fichier(&mut *db, "Choisissez un fichier avant de cliquer sur Envoyer.".to_string()).await;
     };
     if contenu.len() > fichier.taille_max() {
         let message = format!("{} dépasse {} Mo.", fichier.nom_lisible(), fichier.taille_max() / (1024 * 1024));
-        return erreur_de_fichier(&state.db, message).await;
+        return erreur_de_fichier(&mut *db, message).await;
     }
     let Some(type_mime) = type_du_fichier(fichier, &contenu) else {
         let attendu = match fichier {
             Fichier::Logo => "une image PNG ou JPEG",
             Fichier::ConditionsGenerales => "un fichier PDF",
         };
-        return erreur_de_fichier(&state.db, format!("{} doit être {attendu}.", fichier.nom_lisible())).await;
+        return erreur_de_fichier(&mut *db, format!("{} doit être {attendu}.", fichier.nom_lisible())).await;
     };
 
     let defaut = match fichier {
@@ -524,30 +590,30 @@ async fn televerser(fichier: Fichier, state: AppState, mut multipart: Multipart)
     let nom = nom_de_fichier_propre(&nom_brut, defaut);
     sqlx::query(
         "INSERT INTO societe_fichiers (usage, nom, type_mime, contenu) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (usage) DO UPDATE SET nom = $2, type_mime = $3, contenu = $4, updated_at = now()",
+         ON CONFLICT (organisation_id, usage) DO UPDATE SET nom = $2, type_mime = $3, contenu = $4, updated_at = now()",
     )
     .bind(fichier.usage())
     .bind(nom)
     .bind(type_mime)
     .bind(contenu)
-    .execute(&state.db)
+    .execute(&mut *db)
     .await?;
     Ok(Redirect::to("/parametres/societe?ok=1").into_response())
 }
 
-async fn retirer(fichier: Fichier, state: AppState) -> Result<Redirect, Erreur> {
-    sqlx::query("DELETE FROM societe_fichiers WHERE usage = $1")
+async fn retirer(fichier: Fichier, mut db: Base) -> Result<Redirect, Erreur> {
+    sqlx::query("DELETE FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = $1")
         .bind(fichier.usage())
-        .execute(&state.db)
+        .execute(&mut *db)
         .await?;
     Ok(Redirect::to("/parametres/societe?ok=1"))
 }
 
-async fn telecharger(fichier: Fichier, state: AppState) -> Result<Response, Erreur> {
+async fn telecharger(fichier: Fichier, mut db: Base) -> Result<Response, Erreur> {
     let ligne: Option<(String, String, Vec<u8>)> =
-        sqlx::query_as("SELECT nom, type_mime, contenu FROM societe_fichiers WHERE usage = $1")
+        sqlx::query_as("SELECT nom, type_mime, contenu FROM societe_fichiers WHERE organisation_id = app_organisation() AND usage = $1")
             .bind(fichier.usage())
-            .fetch_optional(&state.db)
+            .fetch_optional(&mut *db)
             .await?;
     let (nom, type_mime, contenu) = ligne.ok_or_else(Erreur::introuvable)?;
     Ok((
@@ -564,7 +630,7 @@ async fn telecharger(fichier: Fichier, state: AppState) -> Result<Response, Erre
 
 pub fn routes() -> Router<AppState> {
     let televersement = |fichier: Fichier| {
-        post(move |State(s): State<AppState>, m: Multipart| televerser(fichier, s, m))
+        post(move |db: Base, m: Multipart| televerser(fichier, db, m))
             .layer(DefaultBodyLimit::max(LIMITE_REQUETE))
     };
     Router::new()
@@ -598,20 +664,20 @@ pub fn routes() -> Router<AppState> {
         )
         // Réponse vide : sert au bouton « Retirer » d'une ligne ajoutée.
         .route("/parametres/societe/ligne/vide", get(|| async { Html("") }))
-        .route("/parametres/societe/logo", get(|State(s): State<AppState>| telecharger(Fichier::Logo, s)))
+        .route("/parametres/societe/logo", get(|db: Base| telecharger(Fichier::Logo, db)))
         .route("/parametres/societe/logo/envoyer", televersement(Fichier::Logo))
         .route(
             "/parametres/societe/logo/retirer",
-            post(|State(s): State<AppState>| retirer(Fichier::Logo, s)),
+            post(|db: Base| retirer(Fichier::Logo, db)),
         )
         .route(
             "/parametres/societe/conditions-generales",
-            get(|State(s): State<AppState>| telecharger(Fichier::ConditionsGenerales, s)),
+            get(|db: Base| telecharger(Fichier::ConditionsGenerales, db)),
         )
         .route("/parametres/societe/conditions-generales/envoyer", televersement(Fichier::ConditionsGenerales))
         .route(
             "/parametres/societe/conditions-generales/retirer",
-            post(|State(s): State<AppState>| retirer(Fichier::ConditionsGenerales, s)),
+            post(|db: Base| retirer(Fichier::ConditionsGenerales, db)),
         )
 }
 

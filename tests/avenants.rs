@@ -1,12 +1,17 @@
 // Tests de l'étape 6-2 : avenants (un devis rattaché au chantier, numéroté dans le chantier).
 
+mod commun;
+
 use axum::{
     Router,
     body::Body,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use sqlx::PgPool;
+use sqlx::{
+    PgPool,
+    postgres::{PgConnectOptions, PgPoolOptions},
+};
 use tower::ServiceExt;
 use ubifacture::{AppState, app};
 
@@ -54,7 +59,7 @@ async fn chantier_de_base(pool: &PgPool, s: &Router) -> Base {
         .unwrap();
     let tva: i64 = sqlx::query_scalar("SELECT id FROM taux_tva WHERE taux_centiemes = 600").fetch_one(pool).await.unwrap();
     let conditions: i64 = sqlx::query_scalar("SELECT id FROM conditions_paiement ORDER BY id LIMIT 1").fetch_one(pool).await.unwrap();
-    sqlx::query("UPDATE compteurs SET valeur = 57 WHERE nom = 'devis'").execute(pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 57, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(pool).await.unwrap();
     let devis: i64 = sqlx::query_scalar(
         "INSERT INTO devis (numero, date_devis, statut, reference, responsable, client_entreprise_id, taux_tva_id,
                 conditions_paiement_id, montant_ht_cents, montant_ttc_cents)
@@ -109,7 +114,8 @@ async fn compteur_devis(pool: &PgPool) -> i64 {
 // ─── Création ───────────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn un_avenant_reprend_l_en_tete_du_devis_et_porte_le_numero_2(pool: PgPool) {
+async fn un_avenant_reprend_l_en_tete_du_devis_et_porte_le_numero_2(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let b = chantier_de_base(&pool, &s).await;
     let av = nouvel_avenant(&s, b.chantier).await;
@@ -152,13 +158,15 @@ async fn un_avenant_reprend_l_en_tete_du_devis_et_porte_le_numero_2(pool: PgPool
 }
 
 #[sqlx::test]
-async fn un_avenant_pour_un_chantier_inconnu_donne_404(pool: PgPool) {
+async fn un_avenant_pour_un_chantier_inconnu_donne_404(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let (statut, _, _) = poster(&site(&pool), "/chantiers/999/avenants", "").await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
 }
 
 #[sqlx::test]
-async fn les_avenants_ne_sont_pas_dans_la_liste_des_devis(pool: PgPool) {
+async fn les_avenants_ne_sont_pas_dans_la_liste_des_devis(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let b = chantier_de_base(&pool, &s).await;
     let av = nouvel_avenant(&s, b.chantier).await;
@@ -170,7 +178,8 @@ async fn les_avenants_ne_sont_pas_dans_la_liste_des_devis(pool: PgPool) {
 // ─── L'exemple réel ─────────────────────────────────────────────────────────
 
 #[sqlx::test]
-async fn l_exemple_reel_10384_13_moins_3780_36_donne_6603_77(pool: PgPool) {
+async fn l_exemple_reel_10384_13_moins_3780_36_donne_6603_77(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let b = chantier_de_base(&pool, &s).await;
     let av = nouvel_avenant(&s, b.chantier).await;
@@ -203,7 +212,8 @@ async fn l_exemple_reel_10384_13_moins_3780_36_donne_6603_77(pool: PgPool) {
 // ─── Jours ouvrables, duplication, PDF ──────────────────────────────────────
 
 #[sqlx::test]
-async fn les_jours_ouvrables_s_enregistrent_et_se_totalisent(pool: PgPool) {
+async fn les_jours_ouvrables_s_enregistrent_et_se_totalisent(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let b = chantier_de_base(&pool, &s).await;
     let av = nouvel_avenant(&s, b.chantier).await;
@@ -233,7 +243,8 @@ async fn les_jours_ouvrables_s_enregistrent_et_se_totalisent(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn un_devis_ordinaire_n_a_jamais_de_jours_ouvrables(pool: PgPool) {
+async fn un_devis_ordinaire_n_a_jamais_de_jours_ouvrables(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let b = chantier_de_base(&pool, &s).await;
     poster(&s, "/devis", "").await;
@@ -249,7 +260,8 @@ async fn un_devis_ordinaire_n_a_jamais_de_jours_ouvrables(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn dupliquer_un_avenant_le_garde_dans_son_chantier(pool: PgPool) {
+async fn dupliquer_un_avenant_le_garde_dans_son_chantier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let b = chantier_de_base(&pool, &s).await;
     let av = nouvel_avenant(&s, b.chantier).await;
@@ -269,7 +281,8 @@ async fn dupliquer_un_avenant_le_garde_dans_son_chantier(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn le_pdf_d_un_avenant_porte_son_nom(pool: PgPool) {
+async fn le_pdf_d_un_avenant_porte_son_nom(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let b = chantier_de_base(&pool, &s).await;
     let av = nouvel_avenant(&s, b.chantier).await;
@@ -279,7 +292,8 @@ async fn le_pdf_d_un_avenant_porte_son_nom(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn deux_avenants_ne_peuvent_avoir_le_meme_numero_dans_un_chantier(pool: PgPool) {
+async fn deux_avenants_ne_peuvent_avoir_le_meme_numero_dans_un_chantier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
     let b = chantier_de_base(&pool, &s).await;
     let insert = "INSERT INTO devis (numero, chantier_id) VALUES (2, $1)";

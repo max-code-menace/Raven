@@ -12,7 +12,7 @@
       <span class="u-ic">{% call ui::icone("reglages", 20) %}{% endcall %}</span>
       <div>
         <h1>Société</h1>
-        <div class="u-sous-titre">Réglages · les informations de ton entreprise, utilisées sur les devis et les factures</div>
+        <div class="u-sous-titre">Réglages · les informations de votre entreprise, utilisées sur les devis et les factures</div>
       </div>
     </div>
   </div>
@@ -89,6 +89,12 @@
       <div class="u-col">
         <h3>Identifiants légaux</h3>
         {% call m::champ("TVA", "numero_tva", form.numero_tva, "text") %}{% endcall %}
+        <label class="form-control w-full">
+          <span class="u-lbl">Régime de TVA</span>
+          <select class="select select-bordered w-full" name="regime_tva">
+            {% for (valeur, libelle) in regimes %}<option value="{{ valeur }}"{% if *valeur == form.regime_tva %} selected{% endif %}>{{ libelle }}</option>{% endfor %}
+          </select>
+        </label>
         <label class="form-control w-full">
           <span class="u-lbl">Devise</span>
           <input class="input input-bordered w-full" type="text" value="€ - EUR" disabled>

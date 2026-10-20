@@ -4,11 +4,12 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::Path,
     response::Html,
     routing::get,
 };
 
+use crate::base::Base;
 use crate::devis_pdf::charger_donnees;
 use crate::devis_statut::{Barre, charger_barre};
 use crate::{AppState, Erreur};
@@ -26,17 +27,17 @@ struct Page {
     lien_client: String,
 }
 
-async fn afficher(State(state): State<AppState>, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    let donnees = charger_donnees(&state.db, id).await?;
-    let entete = crate::devis_lignes::charger_entete(&state.db, id).await?;
+async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
+    let donnees = charger_donnees(&mut *db, id).await?;
+    let entete = crate::devis_lignes::charger_entete(&mut *db, id).await?;
     let page = Page {
         id,
         statut: entete.statut,
         classe_statut: entete.classe_statut,
         onglet: "visualisation",
-        barre: charger_barre(&state.db, id).await?,
+        barre: charger_barre(&mut *db, id).await?,
         a_completer: donnees.a_completer(),
-        lien_client: crate::page_client::lien(&state.db, crate::emails::Piece::Devis, id).await?,
+        lien_client: crate::page_client::lien(&mut *db, crate::emails::Piece::Devis, id).await?,
     };
     Ok(Html(page.render()?))
 }
