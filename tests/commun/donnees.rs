@@ -179,7 +179,7 @@ pub async fn remplir(pool: &PgPool, s: &Router) -> Donnees {
         recalculer(pool, id).await;
     }
     sqlx::query("UPDATE devis SET statut_date = date_devis + interval '1 day 10 hours'").execute(pool).await.unwrap();
-    sqlx::query("UPDATE compteurs SET valeur = 59 WHERE nom = 'devis'").execute(pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 59, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(pool).await.unwrap();
     sqlx::query("UPDATE devis SET marge_activee = true, frais_generaux_centiemes = 800 WHERE numero = 59").execute(pool).await.unwrap();
     sqlx::query("UPDATE devis SET client_contact_id = $1 WHERE numero = 50").bind(lambert).execute(pool).await.unwrap();
 

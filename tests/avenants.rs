@@ -59,7 +59,7 @@ async fn chantier_de_base(pool: &PgPool, s: &Router) -> Base {
         .unwrap();
     let tva: i64 = sqlx::query_scalar("SELECT id FROM taux_tva WHERE taux_centiemes = 600").fetch_one(pool).await.unwrap();
     let conditions: i64 = sqlx::query_scalar("SELECT id FROM conditions_paiement ORDER BY id LIMIT 1").fetch_one(pool).await.unwrap();
-    sqlx::query("UPDATE compteurs SET valeur = 57 WHERE nom = 'devis'").execute(pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 57, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(pool).await.unwrap();
     let devis: i64 = sqlx::query_scalar(
         "INSERT INTO devis (numero, date_devis, statut, reference, responsable, client_entreprise_id, taux_tva_id,
                 conditions_paiement_id, montant_ht_cents, montant_ttc_cents)

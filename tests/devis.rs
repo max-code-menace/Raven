@@ -346,7 +346,7 @@ async fn recherche_et_filtres_se_combinent(options: PgPoolOptions, connexion: Pg
 // ─── Pagination et htmx ─────────────────────────────────────────────────────
 
 async fn vingt_cinq_devis(pool: &PgPool) {
-    sqlx::query("UPDATE compteurs SET valeur = 25 WHERE nom = 'devis'").execute(pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 25, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(pool).await.unwrap();
     sqlx::query(
         "INSERT INTO devis (numero, date_devis, statut, montant_ht_cents, montant_ttc_cents)
          SELECT n, '2026-01-15', 'accepte', 100000, 121000 FROM generate_series(1, 25) n",

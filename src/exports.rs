@@ -147,12 +147,12 @@ async fn construire_zip(db: &mut PgConnection, pieces: &[Piece], format: &str) -
         let nom = nom_piece(&p.genre, p.numero, plusieurs_annees.then(|| p.date_facture.year()));
         if format != "ubl" {
             let f = factures::charger(&mut *db, p.id).await?.ok_or_else(Erreur::introuvable)?;
-            let (_, pdf) = crate::facture_pdf::pdf_de_la_facture(&mut *db, &f).await?;
+            let (_, pdf) = crate::archive::pdf(&mut *db, &f).await?;
             fichiers.push((format!("PDF/{nom}.pdf"), pdf));
         }
-        if format != "pdf"
-            && let Some(xml) = crate::ubl::de_la_facture(&mut *db, p.id).await?
-        {
+        if format != "pdf" {
+            let f = factures::charger(&mut *db, p.id).await?.ok_or_else(Erreur::introuvable)?;
+            let Some(xml) = crate::archive::ubl(&mut *db, &f).await? else { continue };
             fichiers.push((format!("UBL/{nom}.xml"), xml.into_bytes()));
         }
     }

@@ -142,7 +142,7 @@ async fn s_inscrire_confirmer_puis_demarrer(options: PgPoolOptions, connexion: P
         compteurs,
         vec![
             ("chantier".to_string(), 0, None),
-            ("devis".to_string(), 12, None),
+            ("devis".to_string(), 12, Some(annee)),
             ("facture".to_string(), 41, Some(annee)),
             ("note_credit".to_string(), 2, Some(annee)),
         ],

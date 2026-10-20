@@ -154,11 +154,8 @@ async fn enregistrer(mut db: Base, Form(s): Form<Saisie>) -> Result<Response, Er
     .fetch_one(&mut *tx)
     .await?;
     if !pieces {
-        sqlx::query("UPDATE compteurs SET valeur = $1 WHERE organisation_id = app_organisation() AND nom = 'devis'")
-            .bind(dernier_devis)
-            .execute(&mut *tx)
-            .await?;
-        for (nom, valeur) in [("facture", derniere_facture), ("note_credit", derniere_note_credit)] {
+        // Les trois numérotations sont annuelles : le dernier numéro est celui de l'année en cours.
+        for (nom, valeur) in [("devis", dernier_devis), ("facture", derniere_facture), ("note_credit", derniere_note_credit)] {
             sqlx::query(
                 "UPDATE compteurs SET valeur = $2, annee = CASE WHEN $2 > 0 THEN $3 END WHERE organisation_id = app_organisation() AND nom = $1",
             )

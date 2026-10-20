@@ -10,7 +10,7 @@ use axum::{
     routing::get,
 };
 use axum_extra::extract::Form;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use serde::Deserialize;
 use sqlx::{FromRow, PgConnection};
 
@@ -239,7 +239,8 @@ fn lire_jours_ouvrables(texte: &str) -> Option<i32> {
     }
 }
 
-fn valider(f: &DevisForm, r: &Referentiel, avenant: bool) -> Result<Valeurs, Vec<String>> {
+/// `annee_numero` : l'année du numéro d'un devis (un avenant n'en a pas : son numéro est propre à son chantier).
+fn valider(f: &DevisForm, r: &Referentiel, avenant: bool, annee_numero: Option<i32>) -> Result<Valeurs, Vec<String>> {
     let mut erreurs = Vec::new();
 
     // Un devis n'a pas de jours ouvrables supplémentaires : seul un avenant en accorde.
@@ -259,6 +260,12 @@ fn valider(f: &DevisForm, r: &Referentiel, avenant: bool) -> Result<Valeurs, Vec
     let date_devis = NaiveDate::parse_from_str(f.date_devis.trim(), "%Y-%m-%d").ok();
     if date_devis.is_none() {
         erreurs.push("La date du devis est obligatoire.".to_string());
+    }
+    // La numérotation est annuelle : le numéro « 2026-57 » reste dans son année.
+    if let (Some(d), Some(annee)) = (date_devis, annee_numero)
+        && d.year() != annee
+    {
+        erreurs.push(format!("La date doit rester en {annee} : le numéro de ce devis appartient à la numérotation de {annee}. Pour un devis daté d'une autre année, crée un nouveau devis."));
     }
 
     let client = Personne::lire(&f.client).filter(|p| r.existe(*p));
@@ -552,7 +559,7 @@ async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(form): Form<DevisFo
         return Err(Erreur::conflit("Ce devis n'est plus un brouillon : il ne peut plus être modifié."));
     }
     let referentiel = Referentiel::charger(&mut *db).await?;
-    match valider(&form, &referentiel, devis.chantier_id.is_some()) {
+    match valider(&form, &referentiel, devis.chantier_id.is_some(), devis.chantier_id.is_none().then_some(devis.annee)) {
         Ok(valeurs) => {
             if enregistrer_en_base(&mut *db, id, &valeurs).await? {
                 Ok(Redirect::to(&format!("/devis/{id}?ok=1")).into_response())

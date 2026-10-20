@@ -262,7 +262,7 @@ async fn dupliquer_copie_le_devis_en_brouillon_avec_le_numero_suivant(options: P
     .fetch_one(&pool)
     .await
     .unwrap();
-    sqlx::query("UPDATE compteurs SET valeur = 5 WHERE nom = 'devis'").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 5, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(&pool).await.unwrap();
     for (position, genre, texte) in [(1, "titre", "Lot A"), (2, "poste_libre", "Volet")] {
         let chiffre = genre == "poste_libre";
         sqlx::query(
@@ -336,7 +336,7 @@ async fn dupliquer_copie_le_devis_en_brouillon_avec_le_numero_suivant(options: P
 async fn dupliquer_deux_fois_donne_deux_numeros_et_aucun_trou(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "refuse").await;
-    sqlx::query("UPDATE compteurs SET valeur = 1 WHERE nom = 'devis'").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 1, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(&pool).await.unwrap();
     let s = site(&pool);
     for _ in 0..2 {
         assert_eq!(poster(&s, &format!("/devis/{d}/dupliquer"), "").await.0, StatusCode::SEE_OTHER);
@@ -349,7 +349,7 @@ async fn dupliquer_deux_fois_donne_deux_numeros_et_aucun_trou(options: PgPoolOpt
 async fn douze_duplications_en_meme_temps_donnent_douze_numeros_differents(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "envoye").await;
-    sqlx::query("UPDATE compteurs SET valeur = 1 WHERE nom = 'devis'").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE compteurs SET valeur = 1, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(&pool).await.unwrap();
     let s = site(&pool);
     let mut taches = Vec::new();
     for _ in 0..12 {

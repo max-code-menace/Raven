@@ -199,9 +199,7 @@ pub(crate) fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("lignes", tableau(&lignes)),
         ("totaux", totaux_typst),
         ("libelle_total", litteral(if d.note_credit { "Total TTC crédité" } else { "Total TTC à payer" })),
-        ("autoliquidation", totaux.autoliquidation.to_string()),
-        ("franchise", totaux.franchise.to_string()),
-        ("mention_franchise", litteral(crate::societe::MENTION_FRANCHISE)),
+        ("mentions", tableau(&crate::mentions_tva::a_imprimer(&d.lignes, totaux.franchise).iter().map(|m| litteral(m)).collect::<Vec<_>>())),
         ("paiement", paiement),
     ]);
     (format!("{MODELE}\n#facture({donnees})\n"), fichiers)
@@ -257,7 +255,7 @@ struct ParametresPdf {
 
 async fn servir(mut db: Base, Path(id): Path<i64>, Query(o): Query<ParametresPdf>) -> Result<Response, Erreur> {
     let f = factures::charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
-    let (nom, octets) = pdf_de_la_facture(&mut *db, &f).await?;
+    let (nom, octets) = crate::archive::pdf(&mut *db, &f).await?;
     let disposition = if o.telecharger.is_empty() { "inline" } else { "attachment" };
     let mut reponse = octets.into_response();
     let entetes = reponse.headers_mut();

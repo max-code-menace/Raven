@@ -38,6 +38,8 @@ struct Page {
     onglet: &'static str,
     barre: Barre,
     evenements: Vec<Evenement>,
+    /// Le dossier de preuve de la signature en ligne, s'il y en a un.
+    dossier: Option<crate::signature::Dossier>,
 }
 
 async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
@@ -55,6 +57,7 @@ async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Err
         classe_statut: entete.classe_statut,
         onglet: "historique",
         barre: charger_barre(&mut *db, id).await?,
+        dossier: crate::signature::dossier(&mut *db, id).await?,
         evenements: evenements
             .into_iter()
             .map(|e| Evenement { quand: e.quand, genre: Genre::libelle(&e.genre), detail: e.detail })

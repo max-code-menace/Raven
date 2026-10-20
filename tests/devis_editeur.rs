@@ -43,7 +43,7 @@ async fn poster(site: &Router, uri: &str, corps: &str) -> (StatusCode, Option<St
 }
 
 async fn nouveau_brouillon(pool: &PgPool) -> i64 {
-    sqlx::query_scalar("INSERT INTO devis (numero) VALUES (1) RETURNING id").fetch_one(pool).await.unwrap()
+    sqlx::query_scalar("INSERT INTO devis (numero, date_devis) VALUES (1, '2026-10-01') RETURNING id").fetch_one(pool).await.unwrap()
 }
 
 async fn entreprise(pool: &PgPool, nom: &str) -> i64 {
