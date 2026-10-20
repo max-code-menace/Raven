@@ -276,7 +276,7 @@ Après la V1, seulement si les utilisateurs le demandent : réception Peppol (fa
   - Tests : `tests/metier.rs` (projet et modules éteints puis rallumés, membre sans droit, bâtiment, import gardé pour Ubique, franchise de bout en bout avec UBL et PDF, 12 %, ligne hors régime refusée, PDF du devis) ; le test d'isolation couvre Réglages › Métier et modules (B y est du bâtiment pour couvrir toutes les adresses).
 - [ ] V1 de Raven, étape 4 : bibliothèque par secteur.
 - [ ] V1 de Raven, étape 5 : envoi Peppol.
-  - [x] 5-0 : comparaison des points d'accès (20/10/2026, `docs/peppol-points-acces.md`). Recommandation de Claude : Recommand (belge, prix publiés, toutes les organisations dans un compte), e-invoice.be en rechange ; devis à demander à Digiteal et Scrada. Raven n'inscrit pas l'organisation en réception (V1 : envoi seulement). **En attente du choix de Mahx** et des réponses des prestataires (10 questions dans le document).
+  - [x] 5-0 : comparaison des points d'accès (20/10/2026, `docs/peppol-points-acces.md`, vérifiée sur les sites des prestataires et la liste d'OpenPeppol). Recommandation de Claude : Recommand (belge, certifié, ≈ 150 €/mois pour 1 500 documents, toutes les organisations dans un compte, envoi de notre UBL, envoi seul avec `isSmpRecipient: false`, vérification d'identité en libre-service par `verificationUrl`, webhooks, bac à sable gratuit), e-invoice.be en rechange ; devis possibles chez Qvalia et Tigron/Peppyrus. **En attente du choix de Mahx** ; 6 points restent à demander (document).
 
 ## Fichiers de documentation
 - `docs/vertuoza-releve.md` : relevé complet de Vertuoza et décisions de Mahx.
