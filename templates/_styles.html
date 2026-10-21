@@ -42,41 +42,17 @@
   --u-menu: #13262D; --u-menu-texte: #DCE6E9; --u-menu-doux: #8FA4AB;
 }
 body { margin: 0; background: var(--u-fond); color: var(--u-encre);
-  font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+  font-family: var(--font-sans); font-size: 14px; line-height: 1.45; font-variant-numeric: tabular-nums; }
 a { color: var(--u-accent); }
 a:hover { color: var(--u-accent-fonce); }
-.mono, .u-num { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; }
+.mono, .u-num { font-family: var(--font-mono); font-size: 13px; }
 .u-muet { color: var(--u-texte2); }
 .u-petit { font-size: 12.5px; }
 
-/* ── Charpente : menu latéral + page ───────────────────────────────────── */
+/* ── Charpente : menu latéral (rv-side, _raven.html) + page ─────────────── */
 .u-app { display: flex; min-height: 100vh; }
-.u-side { flex: none; width: 236px; background: var(--u-menu); border-right: 1px solid var(--u-menu);
-  position: sticky; top: 0; height: 100vh; overflow-y: auto; box-sizing: border-box; padding: 16px 12px;
-  display: flex; flex-direction: column; gap: 14px; }
 .u-page { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.u-logo { display: flex; align-items: center; gap: 10px; padding: 2px 6px; text-decoration: none; color: #fff; }
-.u-logo:hover { color: #fff; }
-.u-logo span { width: 30px; height: 30px; border-radius: 8px; background: #1C8A9C; color: #fff;
-  display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 15px; }
-.u-logo strong { font-size: 15.5px; font-weight: 600; }
-.u-nav { display: flex; flex-direction: column; gap: 1px; }
-.u-nav a, .u-nav .u-groupe, .u-nav .u-bientot { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px;
-  border-radius: 8px; text-decoration: none; font-size: 14px; color: var(--u-menu-texte); }
-.u-nav a:hover { background: rgba(255,255,255,.09); color: #fff; }
-.u-nav .u-sous { height: 30px; padding-left: 38px; font-size: 13.5px; }
-.u-nav .u-groupe { cursor: default; color: var(--u-menu-doux); font-weight: 600; }
-.u-nav .actif { background: #1C8A9C; color: #fff; font-weight: 600; }
-.u-nav .actif:hover { background: #1C8A9C; color: #fff; }
-.u-nav .u-groupe.actif { background: transparent; }
-.u-nav .u-bientot { color: #5F757D; cursor: default; white-space: nowrap; }
-.u-nav a, .u-nav .u-groupe { white-space: nowrap; }
-.u-nav .u-bientot small, .u-bientot-note { margin-left: auto; font-size: 11px; color: #5F757D; font-weight: 400; }
-.u-nav svg { flex: none; }
-.u-side-bas { margin-top: auto; border-top: 1px solid rgba(255,255,255,.12); padding-top: 12px; }
-.u-deconnexion { display: flex; align-items: center; height: 30px; width: 100%; padding: 0 10px 0 38px; border: 0; background: transparent;
-  border-radius: 8px; font: 13.5px 'IBM Plex Sans', sans-serif; color: var(--u-menu-doux); cursor: pointer; text-align: left; }
-.u-deconnexion:hover { background: rgba(255,255,255,.09); color: #fff; }
+.u-bientot-note { margin-left: auto; font-size: 11px; color: #5F757D; font-weight: 400; }
 
 /* ── En-tête blanc des pages ───────────────────────────────────────────── */
 .u-top { background: var(--u-surface); border-bottom: 1px solid var(--u-ligne); padding: 18px 32px; }
@@ -185,7 +161,7 @@ details.u-card:not([open]) > summary .u-chevron { transform: rotate(-90deg); }
 .s-termine { background: #DDE2E7; color: #30363C; }
 
 /* ── Boutons, champs, menus ────────────────────────────────────────────── */
-.btn { font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; font-size: 13.5px; text-transform: none; height: 36px; min-height: 36px;
+.btn { font-family: var(--font-sans); font-weight: 500; font-size: 13.5px; text-transform: none; height: 36px; min-height: 36px;
   padding: 0 14px; border: 1px solid var(--u-bord); background: #fff; color: var(--u-encre); box-shadow: none; gap: 6px; }
 .btn:hover { background: #F7F8F6; border-color: var(--u-bord); color: var(--u-encre); }
 .btn-primary { background: var(--u-accent); border-color: var(--u-accent); color: #fff; }
@@ -204,9 +180,9 @@ details.u-card:not([open]) > summary .u-chevron { transform: rotate(-90deg); }
   background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
 .u-lbl { display: block; font-size: 12.5px; font-weight: 500; color: var(--u-texte3); margin-bottom: 6px; }
 .u-lbl i { font-style: normal; color: #B4471C; }
-.input, .select, .textarea { font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; border-color: var(--u-bord); border-radius: 8px; }
+.input, .select, .textarea { font-family: var(--font-sans); font-size: 14px; border-color: var(--u-bord); border-radius: 8px; }
 .input, .select { height: 36px; min-height: 36px; }
-.file-input { border-color: var(--u-bord); border-radius: 8px; font-family: 'IBM Plex Sans', sans-serif; font-size: 13px; }
+.file-input { border-color: var(--u-bord); border-radius: 8px; font-family: var(--font-sans); font-size: 13px; }
 .file-input::file-selector-button { background: #F5F6F4; color: var(--u-encre); border: 0; border-right: 1px solid var(--u-bord); text-transform: none; font-weight: 500; font-size: 13px; }
 .input-sm, .select-sm { height: 32px; min-height: 32px; font-size: 13.5px; }
 .input-xs, .select-xs { height: 28px; min-height: 28px; font-size: 12.5px; }
@@ -224,7 +200,7 @@ details.u-menu > summary::-webkit-details-marker { display: none; }
 .u-menu-liste.gauche { right: auto; left: 0; }
 .u-menu-liste form { margin: 0; }
 .u-mi { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 10px; border: 0; background: transparent;
-  border-radius: 6px; font: 14px 'IBM Plex Sans', sans-serif; color: var(--u-encre); cursor: pointer; text-decoration: none; box-sizing: border-box; }
+  border-radius: 6px; font: 14px var(--font-sans); color: var(--u-encre); cursor: pointer; text-decoration: none; box-sizing: border-box; }
 .u-mi:hover { background: #F2F4F1; color: var(--u-encre); }
 .u-mi.u-off { color: #9AA0A5; cursor: default; }
 .u-mi.u-off:hover { background: transparent; color: #9AA0A5; }
@@ -297,7 +273,6 @@ details.u-menu > summary::-webkit-details-marker { display: none; }
 /* ── Petits écrans : le menu passe au-dessus de la page ────────────────── */
 @media (max-width: 900px) {
   .u-app { flex-direction: column; }
-  .u-side { width: 100%; height: auto; position: static; border-right: 0; border-bottom: 1px solid var(--u-ligne); }
   .u-top, .u-body, .u-barre { padding-left: 16px; padding-right: 16px; }
   .u-deux > .u-col + .u-col { border-left: 0; border-top: 1px solid var(--u-ligne2); }
 }

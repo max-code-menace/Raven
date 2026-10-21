@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}Rappels de paiement · Ubifacture{% endblock %}
+{% block title %}Rappels de paiement · Raven{% endblock %}
 {% block nav_rappels %}actif{% endblock %}
 
 {% block entete %}
 <header class="u-top">
+  {% call ui::onglets_paiements("recevoir") %}{% endcall %}
   <div class="u-top-ligne">
     <div class="u-titre">
       <span class="u-ic">{% call ui::icone("cloche", 20) %}{% endcall %}</span>

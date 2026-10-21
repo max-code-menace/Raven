@@ -3,12 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block titre %}{% endblock %} · Ubifacture</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <title>{% block titre %}{% endblock %} · Raven</title>
+  {% include "_polices.html" %}
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  {% include "_raven.html" %}
   {% include "_styles.html" %}
   <style>.u-piege { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }</style>
 </head>
@@ -17,9 +16,9 @@
   <div class="u-card w-full {% block largeur %}max-w-sm{% endblock %}">
     <div class="u-card-b" style="gap:16px;padding:28px">
       <div class="flex items-center gap-3">
-        <span class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold text-lg" style="background:var(--u-accent)">U</span>
+        <span class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold text-lg" style="background:var(--u-accent)">R</span>
         <div>
-          <h1 class="text-xl font-semibold" style="margin:0">Ubifacture</h1>
+          <h1 class="text-xl font-semibold" style="margin:0">Raven</h1>
           <p class="u-petit u-muet" style="margin:0">Devis et factures</p>
         </div>
       </div>

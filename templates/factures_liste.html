@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}{% if liste.notes_credit %}Notes de crédit{% else %}Factures clients{% endif %} · Ubifacture{% endblock %}
+{% block title %}{% if liste.notes_credit %}Notes de crédit{% else %}Factures clients{% endif %} · Raven{% endblock %}
 {% block nav_factures %}{% if !liste.notes_credit %}actif{% endif %}{% endblock %}
 {% block nav_notes %}{% if liste.notes_credit %}actif{% endif %}{% endblock %}
 
 {% block entete %}
 <header class="u-top">
+  {% if liste.notes_credit %}{% call ui::onglets_factures("notes") %}{% endcall %}{% else %}{% call ui::onglets_factures("factures") %}{% endcall %}{% endif %}
   <div class="u-top-ligne">
     <div class="u-titre">
       <span class="u-ic">{% call ui::icone("finances", 20) %}{% endcall %}</span>

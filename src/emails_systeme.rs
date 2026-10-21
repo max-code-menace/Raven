@@ -15,7 +15,7 @@ use sqlx::PgPool;
 use crate::emails;
 
 /// Le nom affiché comme expéditeur.
-pub const NOM_DU_SITE: &str = "Ubifacture";
+pub const NOM_DU_SITE: &str = "Raven";
 
 /// Les e-mails gardés en mémoire quand rien ne part : (destinataire, objet, texte).
 static BOITE: Mutex<Vec<(String, String, String)>> = Mutex::new(Vec::new());

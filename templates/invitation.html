@@ -2,7 +2,7 @@
 {% block titre %}Invitation{% endblock %}
 {% block content %}
       <h2 class="font-semibold" style="margin:0">Rejoindre {{ organisation }}</h2>
-      <p style="margin:0">Vous êtes invité à utiliser Ubifacture avec {{ organisation }}. Choisissez votre mot de passe pour commencer.</p>
+      <p style="margin:0">Vous êtes invité à utiliser Raven avec {{ organisation }}. Choisissez votre mot de passe pour commencer.</p>
       {% if !erreur.is_empty() %}
       <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
       {% endif %}

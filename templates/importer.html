@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Importer · Raven{% endblock %}
+{% block nav_importer %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("importer", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Importer</h1>
+        <div class="u-sous-titre">Données · reprenez vos fichiers Excel ou CSV : clients, ouvrages{% if crate::profil::actuel().import_metres %}, métrés{% endif %}.</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{# Rien de neuf ici : chaque ligne mène à un import qui existe déjà. #}
+<section class="u-card">
+  <table class="u-table">
+    <tbody>
+      <tr>
+        <td><strong>Entreprises</strong><div class="u-petit u-muet">Les sociétés clientes ou fournisseurs, avec leur adresse et leur numéro de TVA.</div></td>
+        <td class="n"><a class="rv-btn rv-btn--ghost rv-btn--sm" href="/entreprises/import">{% call ui::icone("importer", 16) %}{% endcall %}Importer des entreprises</a></td>
+      </tr>
+      <tr>
+        <td><strong>Contacts</strong><div class="u-petit u-muet">Les personnes, reliées à leur entreprise par son nom.</div></td>
+        <td class="n"><a class="rv-btn rv-btn--ghost rv-btn--sm" href="/contacts/import">{% call ui::icone("importer", 16) %}{% endcall %}Importer des contacts</a></td>
+      </tr>
+      <tr>
+        <td><strong>Bibliothèque</strong><div class="u-petit u-muet">Vos ouvrages : description, unité, prix.</div></td>
+        <td class="n"><a class="rv-btn rv-btn--ghost rv-btn--sm" href="/bibliotheque/import">{% call ui::icone("importer", 16) %}{% endcall %}Importer des ouvrages</a></td>
+      </tr>
+      {% if crate::profil::actuel().import_metres %}
+      <tr>
+        <td><strong>Devis depuis un métré Excel</strong><div class="u-petit u-muet">Crée un devis brouillon et y importe le modèle Excel ; vous relisez l'aperçu avant d'importer.</div></td>
+        <td class="n">
+          <form method="post" action="/devis/import" style="margin:0">
+            <button class="rv-btn rv-btn--ghost rv-btn--sm" type="submit">{% call ui::icone("importer", 16) %}{% endcall %}Importer un métré</button>
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

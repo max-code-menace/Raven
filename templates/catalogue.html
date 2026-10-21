@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}Bibliothèques · Réglages · Ubifacture{% endblock %}
+{% block title %}Bibliothèques · Réglages · Raven{% endblock %}
 {% block nav_reglages_bibliotheques %}actif{% endblock %}
 
 {% block entete %}
 <header class="u-top">
+  {% call ui::onglets_reglages("bibliotheques") %}{% endcall %}
   <div class="u-top-ligne">
     <div class="u-titre">
       <span class="u-ic">{% call ui::icone("bibliotheque", 20) %}{% endcall %}</span>

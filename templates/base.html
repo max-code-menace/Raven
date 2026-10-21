@@ -3,50 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Ubifacture{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <title>{% block title %}Raven{% endblock %}</title>
+  {% include "_polices.html" %}
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  {% include "_raven.html" %}
   {% include "_styles.html" %}
 </head>
 <body>
 <div class="u-app">
-  {# Menu latéral, dans l'ordre de Vertuoza. Chaque écran allume son entrée avec un bloc nav_… #}
-  <aside class="u-side" aria-label="Menu principal">
-    <a class="u-logo" href="/"><span>U</span><strong>Ubifacture</strong></a>
-    <nav class="u-nav">
-      <a class="{% block nav_tableau %}{% endblock %}" href="/">{% call ui::icone("tableau", 18) %}{% endcall %}Tableau de bord</a>
-      <span class="u-groupe">{% call ui::icone("contacts", 18) %}{% endcall %}<span style="flex:1">Contacts</span></span>
-      <a class="u-sous {% block nav_entreprises %}{% endblock %}" href="/entreprises">Entreprises</a>
-      <a class="u-sous {% block nav_contacts %}{% endblock %}" href="/contacts">Contacts</a>
-      <a class="{% block nav_devis %}{% endblock %}" href="/devis">{% call ui::icone("devis", 18) %}{% endcall %}Devis</a>
-      <a class="{% block nav_bibliotheque %}{% endblock %}" href="/bibliotheque">{% call ui::icone("bibliotheque", 18) %}{% endcall %}Bibliothèque</a>
-      <a class="{% block nav_chantiers %}{% endblock %}" href="/chantiers">{% call ui::icone("chantiers", 18) %}{% endcall %}{{ crate::profil::mot("Chantiers") }}</a>
-      <span class="u-groupe">{% call ui::icone("finances", 18) %}{% endcall %}<span style="flex:1">Finances</span></span>
-      <a class="u-sous {% block nav_factures %}{% endblock %}" href="/factures">Factures clients</a>
-      <a class="u-sous {% block nav_notes %}{% endblock %}" href="/factures?genre=note_credit">Notes de crédit</a>
-      <a class="u-sous {% block nav_rappels %}{% endblock %}" href="/factures/rappels">Rappels de paiement</a>
-      <a class="u-sous {% block nav_recurrences %}{% endblock %}" href="/factures/recurrences">Factures récurrentes</a>
-      {% if crate::profil::actuel().achats %}<a class="u-sous {% block nav_achats %}{% endblock %}" href="/achats">Factures fournisseurs</a>{% else if crate::profil::actuel().reception %}<a class="u-sous {% block nav_recues %}{% endblock %}" href="/achats/recues">Factures fournisseurs</a>{% endif %}
-      <a class="u-sous {% block nav_exports %}{% endblock %}" href="/exports">Export factures</a>
-      <a class="{% block nav_statistiques %}{% endblock %}" href="/statistiques">{% call ui::icone("stats", 18) %}{% endcall %}Statistiques</a>
-    </nav>
-    <div class="u-side-bas u-nav">
-      <span class="u-groupe">{% call ui::icone("reglages", 18) %}{% endcall %}<span style="flex:1">Réglages</span></span>
-      <a class="u-sous {% block nav_reglages %}{% endblock %}" href="/parametres/societe">Société</a>
-      <a class="u-sous {% block nav_reglages_emails %}{% endblock %}" href="/parametres/emails">E-mails</a>
-      <a class="u-sous {% block nav_reglages_equipe %}{% endblock %}" href="/parametres/equipe">Équipe</a>
-      <a class="u-sous {% block nav_reglages_metier %}{% endblock %}" href="/parametres/metier">Métier et modules</a>
-      <a class="u-sous {% block nav_reglages_bibliotheques %}{% endblock %}" href="/parametres/bibliotheques">Bibliothèques</a>
-      <a class="u-sous {% block nav_reglages_peppol %}{% endblock %}" href="/parametres/peppol">Peppol</a>
-      <form method="post" action="/deconnexion" style="margin:0">
-        <button class="u-deconnexion" type="submit">Se déconnecter</button>
+  {# Menu du design de Raven (ordinateur seulement pour l'instant) : huit espaces, puis Données et le compte. Chaque écran allume son espace par un bloc nav_…
+     (plusieurs blocs par espace : les écrans gardent leurs noms d'avant). Les éditeurs replient le menu en rail
+     en donnant « rv-side--rail » au bloc rail. #}
+  <nav class="rv-side {% block rail %}{% endblock %}" aria-label="Menu principal">
+    <a class="rv-brand" href="/" title="Tableau de bord"><i>R</i><span class="rv-brand-nom">RAVEN</span></a>
+    <a class="rv-nav {% block nav_tableau %}{% endblock %}" href="/" title="Tableau de bord">{% call ui::icone("accueil", 19) %}{% endcall %}<span class="rv-nav-txt">Tableau de bord</span></a>
+    <a class="rv-nav {% block nav_devis %}{% endblock %}" href="/devis" title="Devis">{% call ui::icone("devis", 19) %}{% endcall %}<span class="rv-nav-txt">Devis</span></a>
+    <a class="rv-nav {% block nav_factures %}{% endblock %} {% block nav_notes %}{% endblock %} {% block nav_recurrences %}{% endblock %}" href="/factures" title="Factures">{% call ui::icone("factures", 19) %}{% endcall %}<span class="rv-nav-txt">Factures</span></a>
+    <a class="rv-nav {% block nav_rappels %}{% endblock %} {% block nav_recues %}{% endblock %} {% block nav_achats %}{% endblock %}" href="/factures/rappels" title="Paiements">{% call ui::icone("paiements", 19) %}{% endcall %}<span class="rv-nav-txt">Paiements</span></a>
+    <a class="rv-nav {% block nav_chantiers %}{% endblock %}" href="/chantiers" title="{{ crate::profil::mot("Chantiers") }}">{% call ui::icone("chantiers", 19) %}{% endcall %}<span class="rv-nav-txt">{{ crate::profil::mot("Chantiers") }}</span></a>
+    <a class="rv-nav {% block nav_entreprises %}{% endblock %} {% block nav_contacts %}{% endblock %}" href="/entreprises" title="Clients">{% call ui::icone("clients", 19) %}{% endcall %}<span class="rv-nav-txt">Clients</span></a>
+    <a class="rv-nav {% block nav_bibliotheque %}{% endblock %}" href="/bibliotheque" title="Bibliothèque">{% call ui::icone("bibliotheque", 19) %}{% endcall %}<span class="rv-nav-txt">Bibliothèque</span></a>
+    <a class="rv-nav {% block nav_statistiques %}{% endblock %}" href="/statistiques" title="Statistiques">{% call ui::icone("statistiques", 19) %}{% endcall %}<span class="rv-nav-txt">Statistiques</span></a>
+    <div class="rv-eyebrow rv-side-groupe">Données</div>
+    <a class="rv-nav {% block nav_importer %}{% endblock %}" href="/donnees/importer" title="Importer">{% call ui::icone("importer", 19) %}{% endcall %}<span class="rv-nav-txt">Importer</span></a>
+    <a class="rv-nav {% block nav_exports %}{% endblock %}" href="/exports" title="Exporter">{% call ui::icone("exporter", 19) %}{% endcall %}<span class="rv-nav-txt">Exporter</span></a>
+    <div class="rv-side-bas">
+      <a class="rv-nav {% block nav_reglages %}{% endblock %} {% block nav_reglages_emails %}{% endblock %} {% block nav_reglages_equipe %}{% endblock %} {% block nav_reglages_metier %}{% endblock %} {% block nav_reglages_bibliotheques %}{% endblock %} {% block nav_reglages_peppol %}{% endblock %}" href="/parametres/societe" title="Réglages">{% call ui::icone("reglages", 19) %}{% endcall %}<span class="rv-nav-txt">Réglages</span></a>
+      <form class="rv-nav-form" method="post" action="/deconnexion">
+        <button class="rv-nav" type="submit" title="Se déconnecter">{% call ui::icone("deconnexion", 19) %}{% endcall %}<span class="rv-nav-txt">Se déconnecter</span></button>
       </form>
     </div>
-  </aside>
+  </nav>
 
   <div class="u-page">
     {# En-tête blanc : icône ou retour, titre, statut, actions, onglets. #}

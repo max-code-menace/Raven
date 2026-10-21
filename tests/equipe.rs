@@ -72,7 +72,7 @@ async fn inviter_accepter_et_gerer_l_equipe(options: PgPoolOptions, connexion: P
 
     let r = lire(&s, "/parametres/equipe", &patron).await;
     assert!(r.statut == StatusCode::OK && r.corps.contains("patron@equipe.be") && r.corps.contains("(1 / 8)") && r.corps.contains("Inviter quelqu"));
-    assert!(lire(&s, "/", &patron).await.corps.contains("href=\"/parametres/equipe\""), "dans le menu");
+    assert!(lire(&s, "/parametres/societe", &patron).await.corps.contains("href=\"/parametres/equipe\">Équipe"), "Réglages › Équipe");
 
     // Inviter : un e-mail part avec un lien, l'invitation attend.
     let r = poster(&s, "/parametres/equipe/inviter", "email=Ouvrier%40equipe.be&role=membre", Some(&patron)).await;
