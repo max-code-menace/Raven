@@ -299,6 +299,39 @@ pub async fn remplir(pool: &PgPool, s: &Router) -> Donnees {
         .unwrap();
         import
     };
+    // Étape 5-3 : une facture fournisseur reçue par Peppol (fournisseur créé à l'arrivée), rattachée en partie au
+    // chantier ; une seconde encore à traiter.
+    let fournisseur: i64 = sqlx::query_scalar(
+        "INSERT INTO entreprises (nom, profils, numero_tva, rue, code_postal, ville) VALUES ('Négoce Matériaux Wavre', '{fournisseur_autres}', 'BE0987654394', 'Rue du Dépôt 4', '1300', 'Wavre') RETURNING id",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    for (document, numero, ht) in [("doc_vitrine_1", "NMW-2026-0412", 84_250_i64), ("doc_vitrine_2", "NMW-2026-0431", 12_900)] {
+        let recue: i64 = sqlx::query_scalar(
+            "INSERT INTO factures_recues (document_id, genre, expediteur, fournisseur_id, fournisseur_nom, fournisseur_tva, numero, date_facture,
+                 date_echeance, montant_ht_cents, montant_tva_cents, montant_ttc_cents, a_payer_cents, iban, communication, validation, donnees,
+                 xml, empreinte, pdf, recue_le)
+             VALUES ($1, 'facture', '0208:0987654394', $2, 'Négoce Matériaux Wavre', 'BE0987654394', $3, $4::date, $4::date + 30, $5, $5 * 21 / 100,
+                 $5 + $5 * 21 / 100, $5 + $5 * 21 / 100, 'BE68539007547034', '000041200048', 'valid',
+                 jsonb_build_object('lines', jsonb_build_array(jsonb_build_object('name', 'Blocs béton 14 cm, palette', 'quantity', '5.00', 'unitCode', 'C62',
+                     'netPriceAmount', '1.00', 'netAmount', ($5 / 100.0)::text, 'vat', jsonb_build_object('percentage', '21.00')))),
+                 '<Invoice><ID>' || $3 || '</ID></Invoice>', repeat('a', 64), '%PDF-1.4 facture fournisseur'::bytea, now())
+             RETURNING id",
+        )
+        .bind(document)
+        .bind(fournisseur)
+        .bind(numero)
+        .bind(&aujourdhui)
+        .bind(ht)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        if document == "doc_vitrine_1" {
+            poster(s, &format!("/achats/recues/{recue}/rattacher"), &format!("destination={chantier}&montant=600&categorie=fourniture")).await;
+        }
+    }
+
     // Étape 8-4 : un dossier d'export du jour, et l'adresse du comptable.
     poster(s, "/exports/comptable", "email=compta%40fiduciaire.example").await;
     poster(s, "/exports", &format!("debut={aujourdhui}&fin={aujourdhui}&format=les_deux&contenu=toutes")).await;

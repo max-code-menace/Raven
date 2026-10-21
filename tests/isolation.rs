@@ -68,6 +68,7 @@ async fn textes_de_a(pool: &PgPool) -> Vec<String> {
             SELECT nom AS x FROM entreprises UNION SELECT nom FROM contacts UNION SELECT reference FROM devis
             UNION SELECT reference FROM factures UNION SELECT description FROM ouvrages UNION SELECT nom FROM societe
             UNION SELECT fournisseur FROM chantier_achats UNION SELECT email_comptable FROM reglages
+            UNION SELECT numero FROM factures_recues UNION SELECT fournisseur_nom FROM factures_recues
             UNION SELECT description FROM devis_lignes UNION SELECT description FROM facture_lignes UNION SELECT nom FROM devis_signatures
             UNION SELECT u.email FROM utilisateurs u JOIN membres m ON m.utilisateur_id = u.id AND m.organisation_id = 1
             UNION SELECT email FROM invitations WHERE organisation_id = 1
@@ -104,6 +105,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
     let contacts = ids(pool, "SELECT id FROM contacts").await;
     let achats = ids(pool, "SELECT id FROM chantier_achats").await;
     let imports = ids(pool, "SELECT id FROM imports_excel").await;
+    let recues = ids(pool, "SELECT id FROM factures_recues").await;
     ids(pool, "SELECT id FROM recurrences").await;
     let comptes_a = ids(pool, "SELECT utilisateur_id FROM membres WHERE organisation_id = 1").await;
     let invitations_a = ids(pool, "SELECT id FROM invitations WHERE organisation_id = 1").await;
@@ -169,6 +171,13 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
             deux("POST", format!("/factures/{f}/paiements/{p}/supprimer"));
         }
     }
+    for &r in &recues {
+        for suite in ["", "/pdf", "/xml"] {
+            deux("GET", format!("/achats/recues/{r}{suite}"));
+        }
+        deux("POST", format!("/achats/recues/{r}/rattacher"));
+        deux("POST", format!("/achats/recues/{r}/annuler"));
+    }
     for &e in &exports {
         deux("GET", format!("/exports/{e}/telecharger"));
         deux("POST", format!("/exports/{e}/envoyer"));
@@ -197,7 +206,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
     for chemin in [
         "/", "/devis", "/factures", "/factures?statut=en_retard", "/chantiers", "/chantiers?statut=tous", "/entreprises", "/contacts",
         "/bibliotheque", "/bibliotheque/choisir?q=a", "/statistiques", "/statistiques?periode=12_mois", "/exports", "/factures/rappels",
-        "/factures/recurrences", "/achats", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
+        "/factures/recurrences", "/achats", "/achats/recues", "/achats/recues?vue=toutes&ok=filtre", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
         "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/parametres/peppol", "/parametres/bibliotheques", "/bibliotheque?vue=supprimes", "/bibliotheque?vue=a_completer", "/bibliotheque?vue=miens",
         "/admin", "/admin/catalogue", "/admin/organisations", "/admin/catalogue/graphisme.graphisme", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
     ] {
@@ -207,7 +216,8 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         "/factures/rappels", "/factures/recurrences/preparer", "/exports", "/parametres/emails/devis", "/parametres/rappels", "/demarrage",
         "/parametres/equipe/inviter", "/parametres/metier", "/parametres/rappels/mentions", "/parametres/bibliotheques", "/parametres/bibliotheques/nouveautes",
         "/admin/catalogue/publier", "/admin/catalogue/bibliotheques", "/bibliotheque/vider",
-        "/parametres/peppol/inscrire", "/parametres/peppol/actualiser",
+        "/parametres/peppol/inscrire", "/parametres/peppol/actualiser", "/parametres/peppol/reception", "/parametres/peppol/reception/arreter",
+        "/achats/recues/relever",
     ] {
         deux("POST", chemin.to_string());
     }
@@ -219,7 +229,7 @@ const FORMULAIRE: &str = "date=2026-10-01&reference=Intrus&responsable=Intrus&no
 &quantite=1&unite=h&prix_unitaire=1&pourcentage=50&montant=1&mode=pourcentage&valeur=10&libelle=Intrus&email=intrus%40exemple.be\
 &destinataires=intrus%40exemple.be&objet=Intrus&corps=Intrus&debut=2026-01-01&fin=2026-12-31&format=les_deux&contenu=toutes\
 &date_debut=2026-10-01&date_fin=2027-10-01&frequence=mois&intervalle=1&jours_avance=0&categorie=fourniture&fournisseur=Intrus\
-&prix_vente=1&prix_achat=1&marge=10&remplacer=oui&rappel_premier_jours=3&rappel_suivant_jours=3&motif=Intrus&q=a&confirme=oui";
+&prix_vente=1&prix_achat=1&marge=10&remplacer=oui&rappel_premier_jours=3&rappel_suivant_jours=3&motif=Intrus&q=a&confirme=oui&destination=sans";
 
 struct Reponse {
     statut: StatusCode,

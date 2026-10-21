@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}{{ genre }} {{ numero }} · {{ fournisseur }} · Ubifacture{% endblock %}
+{% block nav_achats %}actif{% endblock %}
+{% block nav_recues %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <a class="btn btn-sm" href="/achats/recues" aria-label="Retour">‹</a>
+      <div>
+        <h1>{{ genre }} fournisseur{% if !numero.is_empty() %} n° {{ numero }}{% endif %} · {{ fournisseur }}</h1>
+        <div class="u-sous-titre">{% if traitee %}<span class="u-pastille s-accepte">Traitée</span>{% else %}<span class="u-pastille s-a-envoyer">À traiter</span>{% endif %} Reçue par Peppol le {{ recue }}</div>
+      </div>
+    </div>
+    <div class="u-actions">
+      {% if a_pdf %}<a class="btn" href="/achats/recues/{{ id }}/pdf" target="_blank" rel="noopener">Voir le PDF</a>{% endif %}
+      <a class="btn" href="/achats/recues/{{ id }}/xml">Télécharger le XML</a>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+{% if !validation_ok %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ validation }}.</span></div>
+{% endif %}
+
+<div class="u-deux">
+  <div class="u-col">
+    <section class="u-card">
+      <div class="u-card-h"><h2>Fournisseur</h2></div>
+      <div class="u-card-b">
+        <p style="margin:0"><strong>{% match fournisseur_id %}{% when Some with (f) %}<a class="underline" href="/entreprises/{{ f }}">{{ fournisseur }}</a>{% when None %}{{ fournisseur }}{% endmatch %}</strong></p>
+        {% if !fournisseur_tva.is_empty() %}<p class="u-petit" style="margin:4px 0 0">TVA <span class="mono">{{ fournisseur_tva }}</span></p>{% endif %}
+        {% if !expediteur.is_empty() %}<p class="u-petit u-muet" style="margin:4px 0 0">Adresse Peppol <span class="mono">{{ expediteur }}</span></p>{% endif %}
+      </div>
+    </section>
+    <section class="u-card">
+      <div class="u-card-h"><h2>Pièce</h2></div>
+      <div class="u-card-b">
+        <table class="u-table">
+          <tbody>
+            <tr><td>Type</td><td>{{ genre }}</td></tr>
+            <tr><td>Numéro</td><td class="mono">{{ numero }}</td></tr>
+            <tr><td>Date</td><td>{{ date }}</td></tr>
+            {% if !echeance.is_empty() %}<tr><td>Échéance</td><td>{{ echeance }}</td></tr>{% endif %}
+            {% if !validation.is_empty() && validation_ok %}<tr><td>Contrôle</td><td>{{ validation }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+        {% if !remarque.is_empty() %}<p class="u-petit" style="margin:8px 0 0">{{ remarque }}</p>{% endif %}
+      </div>
+    </section>
+  </div>
+  <div class="u-col">
+    <section class="u-card">
+      <div class="u-card-h"><h2>Montants</h2></div>
+      <div class="u-card-b">
+        <table class="u-table">
+          <tbody>
+            <tr><td>Total HT</td><td class="n">{{ ht }}</td></tr>
+            {% for t in taux %}<tr><td class="u-muet">TVA {{ t.taux }} sur {{ t.base }}</td><td class="n">{{ t.tva }}</td></tr>{% endfor %}
+            <tr><td>Total TVA</td><td class="n">{{ tva }}</td></tr>
+            <tr><td><strong>Total TTC</strong></td><td class="n"><strong>{{ ttc }}</strong></td></tr>
+            {% if !note_credit %}<tr><td>À payer</td><td class="n">{{ a_payer }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+        {% if !note_credit && (!iban.is_empty() || !communication.is_empty()) %}
+        <p class="u-petit" style="margin:8px 0 0">{% if !iban.is_empty() %}IBAN <span class="mono">{{ iban }}</span>{% endif %}{% if !communication.is_empty() %} · communication <span class="mono">{{ communication }}</span>{% endif %}</p>
+        {% endif %}
+        {% if note_credit %}<p class="u-petit u-muet" style="margin:8px 0 0">Une note de crédit compte en négatif dans les achats.</p>{% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+
+<section class="u-card" id="repartition">
+  <div class="u-card-h"><h2>{% if crate::profil::actuel().achats %}Rattacher à un {{ crate::profil::mot("chantier") }}{% else %}Classer la facture{% endif %}</h2></div>
+  <div class="u-card-b" style="display:flex;flex-direction:column;gap:12px">
+    {% if parts.is_empty() %}
+    <p class="u-petit" style="margin:0">{% if crate::profil::actuel().achats %}Rattachée à un {{ crate::profil::mot("chantier") }}, la facture devient un achat du {{ crate::profil::mot("chantier") }} : son budget d'achat et sa rentabilité sont mis à jour. Vous pouvez la répartir sur plusieurs {{ crate::profil::mot("chantiers") }}, ou la classer sans {{ crate::profil::mot("chantier") }} (frais généraux).{% else %}Classez la facture une fois vérifiée : elle passe dans « Traitées ».{% endif %}</p>
+    {% else %}
+    <table class="u-table">
+      <thead><tr><th>Destination</th><th>Type</th><th>Description</th><th class="n">Montant HT</th></tr></thead>
+      <tbody>
+        {% for p in parts %}
+        <tr>
+          <td>{% match p.chantier_id %}{% when Some with (c) %}<a class="underline" href="/chantiers/{{ c }}/finances#achats">{{ p.destination }}</a>{% when None %}{{ p.destination }}{% endmatch %}</td>
+          <td>{{ p.categorie }}</td>
+          <td>{{ p.description }}</td>
+          <td class="n">{{ p.montant }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if traitee %}
+    <p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Traitée</span> Toute la base HT est répartie.</p>
+    {% else %}
+    <p class="u-petit" style="margin:0"><strong>Reste à répartir : {{ reste }} HT.</strong></p>
+    <form method="post" action="/achats/recues/{{ id }}/rattacher" class="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_auto] items-end" style="margin:0">
+      <label class="form-control">
+        <span class="u-lbl">Destination</span>
+        <select class="select select-bordered select-sm" name="destination" required>
+          {% if crate::profil::actuel().achats %}
+          <option value="">—</option>
+          {% for c in chantiers %}<option value="{{ c.valeur }}">{{ c.libelle }}</option>{% endfor %}
+          {% endif %}
+          <option value="sans">Sans {{ crate::profil::mot("chantier") }} (frais généraux)</option>
+        </select>
+      </label>
+      <label class="form-control">
+        <span class="u-lbl">Montant HT</span>
+        <input class="input input-bordered input-sm text-right" type="text" inputmode="decimal" name="montant" value="{{ reste_saisie }}" required>
+      </label>
+      <label class="form-control">
+        <span class="u-lbl">Type</span>
+        <select class="select select-bordered select-sm" name="categorie">
+          {% for c in categories %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="form-control">
+        <span class="u-lbl">Description</span>
+        <input class="input input-bordered input-sm" type="text" name="description" maxlength="300" placeholder="{{ genre }}{% if !numero.is_empty() %} n° {{ numero }}{% endif %}">
+      </label>
+      <button class="btn btn-primary btn-sm" type="submit">Enregistrer</button>
+    </form>
+    {% endif %}
+    {% if !parts.is_empty() %}
+    <form method="post" action="/achats/recues/{{ id }}/annuler" style="margin:0">
+      <button class="btn btn-sm" type="submit">Annuler la répartition</button>
+      <span class="u-petit u-muet">Les achats créés depuis cette facture sont retirés de leurs {{ crate::profil::mot("chantiers") }}.</span>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Lignes de la facture</h2></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>Description</th><th class="n">Quantité</th><th>Unité</th><th class="n">Prix unitaire HT</th><th class="n">Total HT</th><th class="n">TVA</th></tr></thead>
+      <tbody>
+        {% for l in lignes %}
+        <tr>
+          <td>{{ l.description }}{% if !l.detail.is_empty() %}<br><small class="u-muet">{{ l.detail }}</small>{% endif %}</td>
+          <td class="n">{{ l.quantite }}</td>
+          <td>{{ l.unite }}</td>
+          <td class="n">{{ l.prix }}</td>
+          <td class="n">{{ l.total }}</td>
+          <td class="n">{{ l.tva }}</td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="6">Le détail des lignes n'a pas pu être lu : voyez le PDF ou le XML.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Archive</h2></div>
+  <div class="u-card-b">
+    <p class="u-petit" style="margin:0">Le XML reçu est gardé tel quel, sans modification possible : c'est l'original de la facture. Empreinte SHA-256 : <span class="mono" style="word-break:break-all">{{ empreinte }}</span></p>
+  </div>
+</section>
+{% endblock %}

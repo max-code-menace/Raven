@@ -112,6 +112,9 @@ async fn main() {
     } else {
         println!("Peppol : non configuré (pas de RECOMMAND_CLE_API), rien ne part par Peppol.");
     }
+    // Réception : sans RECOMMAND_WEBHOOK_SECRET, l'adresse /peppol/webhook refuse tout ; les factures fournisseurs
+    // arrivent alors par la relève (bouton « Relever » et ouverture de la boîte de réception).
+    ubifacture::peppol::configurer_webhook(std::env::var("RECOMMAND_WEBHOOK_SECRET").ok());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001")
         .await

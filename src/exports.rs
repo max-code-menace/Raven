@@ -4,6 +4,7 @@
 //! UBL 2.1 ou les deux (choix de Mahx : les deux), toutes ou seulement celles qui n'ont encore jamais été exportées.
 //! Le dossier est un ZIP (`PDF/`, `UBL/`, `recapitulatif.csv`) gardé en base : on le télécharge ou on l'envoie par
 //! e-mail au comptable (modèle « Export pour le comptable »).
+//! Les factures fournisseurs reçues par Peppol (étape 5-3) y sont aussi, à part des ventes (`Achats/`).
 
 use std::io::Write as _;
 
@@ -139,9 +140,12 @@ fn nom_piece(genre: &str, numero: i64, annee: Option<i32>) -> String {
     if genre == "note_credit" { format!("Note-de-credit-{numero}") } else { format!("Facture-{numero}") }
 }
 
-/// Construit le ZIP du dossier d'export.
-async fn construire_zip(db: &mut PgConnection, pieces: &[Piece], format: &str) -> Result<Vec<u8>, Erreur> {
-    let mut fichiers: Vec<(String, Vec<u8>)> = vec![("recapitulatif.csv".to_string(), recapitulatif(pieces).into_bytes())];
+/// Construit le ZIP du dossier d'export : les ventes, puis les factures fournisseurs reçues par Peppol (`Achats/`).
+async fn construire_zip(db: &mut PgConnection, pieces: &[Piece], recues: &[crate::factures_recues::PieceRecue], format: &str) -> Result<Vec<u8>, Erreur> {
+    let mut fichiers: Vec<(String, Vec<u8>)> = Vec::new();
+    if !pieces.is_empty() {
+        fichiers.push(("recapitulatif.csv".to_string(), recapitulatif(pieces).into_bytes()));
+    }
     let plusieurs_annees = pieces.iter().any(|p| p.date_facture.year() != pieces[0].date_facture.year());
     for p in pieces {
         let nom = nom_piece(&p.genre, p.numero, plusieurs_annees.then(|| p.date_facture.year()));
@@ -156,6 +160,7 @@ async fn construire_zip(db: &mut PgConnection, pieces: &[Piece], format: &str) -
             fichiers.push((format!("UBL/{nom}.xml"), xml.into_bytes()));
         }
     }
+    fichiers.extend(crate::factures_recues::fichiers_export(recues, format));
     tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
@@ -220,7 +225,7 @@ impl Retour {
         match self.erreur.as_str() {
             "periode" => "La période n'est pas valable : deux dates, la seconde après la première.",
             "choix" => "Choisissez un format et un contenu.",
-            "vide" => "Aucune pièce validée dans cette période (ou toutes déjà exportées) : rien à exporter.",
+            "vide" => "Aucune pièce validée ni facture fournisseur reçue dans cette période (ou toutes déjà exportées) : rien à exporter.",
             "comptable" => "L'adresse du comptable n'est pas valable.",
             "sans_comptable" => "Indiquez d'abord l'adresse e-mail du comptable.",
             "trop_gros" => "Le dossier dépasse 10 Mo : trop gros pour un e-mail. Téléchargez-le et envoyez-le autrement, ou faites des périodes plus courtes.",
@@ -297,10 +302,11 @@ async fn creer(mut db: Base, Form(d): Form<Demande>) -> Result<Redirect, Erreur>
         return Ok(Redirect::to("/exports?erreur=choix"));
     };
     let pieces = pieces(&mut *db, debut, fin, contenu == "non_exportees").await?;
-    if pieces.is_empty() {
+    let recues = crate::factures_recues::pour_export(&mut *db, debut, fin, contenu == "non_exportees").await?;
+    if pieces.is_empty() && recues.is_empty() {
         return Ok(Redirect::to("/exports?erreur=vide"));
     }
-    let fichier = construire_zip(&mut *db, &pieces, format).await?;
+    let fichier = construire_zip(&mut *db, &pieces, &recues, format).await?;
     let nom = format!("Export-factures-{debut}-au-{fin}.zip");
     let mut tx = db.begin().await?;
     let id: i64 = sqlx::query_scalar(
@@ -311,13 +317,16 @@ async fn creer(mut db: Base, Form(d): Form<Demande>) -> Result<Redirect, Erreur>
     .bind(fin)
     .bind(format)
     .bind(contenu)
-    .bind(pieces.len() as i32)
+    .bind((pieces.len() + recues.len()) as i32)
     .bind(&nom)
     .bind(&fichier)
     .fetch_one(&mut *tx)
     .await?;
     for p in &pieces {
         sqlx::query("INSERT INTO export_pieces (export_id, facture_id) VALUES ($1, $2)").bind(id).bind(p.id).execute(&mut *tx).await?;
+    }
+    for r in &recues {
+        sqlx::query("INSERT INTO export_factures_recues (export_id, facture_recue_id) VALUES ($1, $2)").bind(id).bind(r.id).execute(&mut *tx).await?;
     }
     tx.commit().await?;
     Ok(Redirect::to("/exports?ok=cree"))
