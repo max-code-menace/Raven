@@ -478,3 +478,67 @@ async fn le_menu_a_huit_espaces_qui_menent_tous_a_un_ecran(options: PgPoolOption
     let (statut, page) = lire(&s, &lieu.unwrap()).await;
     assert!(statut == StatusCode::OK && page.contains("rv-side rv-side--rail"));
 }
+
+// Refonte du design, étape 2 : chaque composant partagé (_ui.html) s'affiche sur la page de démonstration.
+#[sqlx::test]
+async fn la_page_des_composants_montre_chaque_composant(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let (statut, page) = lire(&site(&pool), "/composants").await;
+    assert_eq!(statut, StatusCode::OK);
+    // Boutons : les quatre genres, un lien, un bouton carré, un bouton inactif avec sa raison.
+    for attendu in [
+        "class=\"rv-btn rv-btn--acc\"",
+        "class=\"rv-btn\" type=\"submit\"",
+        "class=\"rv-btn rv-btn--ink\"",
+        "class=\"rv-btn rv-btn--ghost rv-btn--sm\"",
+        "<a class=\"rv-btn\" href=\"/composants\">",
+        "rv-btn--icon\" type=\"submit\" aria-label=\"Supprimer le brouillon\"",
+        "disabled title=\"Choisissez d&#39;abord un client.\"",
+    ] {
+        assert!(page.contains(attendu), "bouton : {attendu}");
+    }
+    // Pastilles : les statuts du code, avec leur mot.
+    for attendu in [
+        "<span class=\"rv-pill rv-pill--draft\">Brouillon</span>",
+        "<span class=\"rv-pill\">Envoyé</span>",
+        "<span class=\"rv-pill rv-pill--done\">Accepté</span>",
+        "<span class=\"rv-pill rv-pill--refused\">Refusé</span>",
+        "<span class=\"rv-pill rv-pill--late\">! Échec envoi</span>",
+        "<span class=\"rv-pill rv-pill--late\">! En retard</span>",
+        "<span class=\"rv-pill rv-pill--done\">Payée</span>",
+        "<span class=\"rv-pill\">Partiellement payée</span>",
+        "<span class=\"rv-pill rv-pill--refused\">Créditée</span>",
+        "<span class=\"rv-pill\">En cours</span>",
+        "<span class=\"rv-pill rv-pill--done\">Terminé</span>",
+    ] {
+        assert!(page.contains(attendu), "pastille : {attendu}");
+    }
+    // Champs : intitulé relié, aide, montant à droite, erreur annoncée, liste, densité éditeur.
+    assert!(page.contains("<label class=\"rv-label\" for=\"demo-titre\">") && page.contains("<span class=\"rv-hint\" id=\"demo-titre-aide\">"));
+    assert!(page.contains("class=\"rv-input rv-input--num\" id=\"demo-acompte\" type=\"text\" inputmode=\"decimal\""));
+    assert!(page.contains("class=\"rv-input is-error\" id=\"demo-tva\"") && page.contains("aria-invalid=\"true\"") && page.contains("! Le numéro doit commencer par BE0 ou BE1."));
+    assert!(page.contains("<option value=\"2100\" selected>21 %</option>"));
+    assert!(page.contains("rv-input rv-input--num rv-input--sm\" id=\"demo-qte\""));
+    // Tableau : colonne de nombres à droite, montant écrit à la belge, ligne vide qui dit quoi faire.
+    assert!(page.contains("<th scope=\"col\" class=\"rv-r\">Montant TTC</th>"));
+    assert!(page.contains("<td class=\"rv-r rv-num\">7\u{a0}364,75\u{a0}€</td>"));
+    assert!(page.contains("<tr class=\"rv-vide\"><td colspan=\"4\">Aucun devis envoyé."));
+    // Bandeaux : trois tons, avec leur action.
+    assert!(page.contains("<div class=\"rv-banner\" role=\"status\">") && page.contains("rv-banner rv-banner--bad\" role=\"alert\"") && page.contains("rv-banner rv-banner--ok\""));
+    assert!(page.contains("<a class=\"rv-btn rv-btn--sm\" href=\"/composants\">Voir les rappels</a>"));
+    // Onglets : l'actif est annoncé, le compteur en petit.
+    assert!(page.contains("<a class=\"rv-tab is-on\" href=\"/composants\" aria-current=\"page\">Tous<small>8</small></a>"));
+    // Tuiles : une seule mise en avant, cliquable ou non.
+    assert_eq!(page.matches("rv-kpi rv-kpi--plate").count(), 1);
+    assert!(page.contains("<div class=\"rv-kpi\"><small>Contrat HT</small><b>13\u{a0}246,43\u{a0}€</b>"));
+    assert!(page.contains("<a class=\"rv-kpi\" href=\"/composants\"><small>Facturé HT</small>"));
+    // Totaux : Total HT, base et TVA par taux, Total TTC ; la remise avant le Total HT.
+    let ordre = ["Total HT", "Base 6 %", "TVA 6 %", "Base 21 %", "TVA 21 %", "Total TTC"];
+    let mut avant = 0;
+    for intitule in ordre {
+        let position = page[avant..].find(&format!("<span>{intitule}</span>")).unwrap_or_else(|| panic!("{intitule}")) + avant;
+        avant = position;
+    }
+    assert!(page.contains("<span>Remise fidélité</span><span>-500,00\u{a0}€</span>"));
+    assert!(page.contains("<div class=\"rv-totals-hors\">Taux de 6 % : le client fait sa déclaration sur la facture.</div>"));
+}

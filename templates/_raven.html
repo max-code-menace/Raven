@@ -251,6 +251,13 @@ a.rv-tab { display: inline-flex; align-items: center; text-decoration: none; }
 .rv-side--rail .rv-brand-nom { display: none; }
 .rv-brand { color: var(--ink); text-decoration: none; }
 .rv-brand:hover { color: var(--ink); }
+/* Composants Askama (étape 2) : tuile cliquable, liste vide, mentions sous les totaux. */
+a.rv-kpi { text-decoration: none; }
+a.rv-kpi:hover { color: var(--ink); border-color: var(--ink); }
+a.rv-kpi.rv-kpi--plate:hover { background: var(--acc-hover); }
+.rv-table tr.rv-vide td { height: auto; padding: 28px 14px; text-align: center; color: var(--mut); white-space: normal; }
+.rv-totals-hors { margin-top: 12px; color: var(--mut); font-size: 13px; }
+.rv-totals-hors:empty { display: none; }
 /* Onglets d'un espace (Factures, Paiements, Réglages), en haut de l'en-tête. */
 .u-top > .rv-tabs:first-child { margin: -8px 0 14px; }
 

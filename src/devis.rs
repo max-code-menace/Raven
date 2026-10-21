@@ -20,7 +20,7 @@ use crate::{AppState, Erreur};
 const PAR_PAGE: i64 = 20;
 
 /// Valeur en base, libellé affiché, couleur du badge.
-const STATUTS: [(&str, &str, &str); 8] = [
+pub(crate) const STATUTS: [(&str, &str, &str); 8] = [
     ("brouillon", "Brouillon", "s-brouillon"),
     ("a_envoyer", "À envoyer", "s-a-envoyer"),
     ("envoi_en_cours", "Envoi en cours", "s-envoye"),

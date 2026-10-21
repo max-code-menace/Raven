@@ -7,6 +7,7 @@ pub mod base;
 pub mod avenants;
 pub mod chantiers;
 pub mod commun;
+pub mod composants;
 pub mod comptes;
 pub mod connexion;
 pub mod contacts_import;
@@ -157,6 +158,7 @@ fn pages() -> Router<AppState> {
         .merge(recurrences::routes())
         .merge(exports::routes())
         .merge(donnees::routes())
+        .merge(composants::routes())
         .merge(page_client::routes())
         .merge(comptes::routes())
         .merge(demarrage::routes())

@@ -54,8 +54,12 @@
 {# Pied d'une liste : « Afficher 20 éléments » (le nombre par page n'est pas encore réglable). #}
 {% macro par_page() %}<span class="u-par-page">Afficher <strong>20</strong> éléments par page</span>{% endmacro %}
 
-{# Onglets d'un espace du menu (rv-tabs), en haut de l'en-tête d'un écran. #}
-{% macro onglet(adresse, libelle, allume) %}<a class="rv-tab{% if allume %} is-on{% endif %}" href="{{ adresse }}"{% if allume %} aria-current="page"{% endif %}>{{ libelle }}</a>{% endmacro %}
+{# ── Onglets (fiche Tabs) ─────────────────────────────────────────────────
+   Des liens : chaque onglet est une adresse (pas de JavaScript). Le groupe :
+     {% call ui::onglets("Statuts des devis") %}…des ui::onglet…{% endcall %}
+   compteur : un nombre déjà écrit en texte (« 8 »), ou rien. #}
+{% macro onglets(etiquette) %}<nav class="rv-tabs" aria-label="{{ etiquette }}">{{ caller() }}</nav>{% endmacro %}
+{% macro onglet(adresse, libelle, allume, compteur = "") %}<a class="rv-tab{% if allume %} is-on{% endif %}" href="{{ adresse }}"{% if allume %} aria-current="page"{% endif %}>{{ libelle }}{% if !compteur.is_empty() %}<small>{{ compteur }}</small>{% endif %}</a>{% endmacro %}
 
 {# Factures : les factures clients, les notes de crédit et les récurrentes. actif : "factures", "notes" ou "recurrences". #}
 {% macro onglets_factures(actif) %}<nav class="rv-tabs" aria-label="Factures">
@@ -79,3 +83,82 @@
   {%- call onglet("/parametres/bibliotheques", "Bibliothèques", actif == "bibliotheques") %}{% endcall -%}
   {%- call onglet("/parametres/peppol", "Peppol", actif == "peppol") %}{% endcall -%}
 </nav>{% endmacro %}
+
+{# ── Boutons (fiche Button) ───────────────────────────────────────────────
+   genre : "" (contour encre), "acc" (l'action principale, une seule par écran), "ink" (geste qui engage),
+   "ghost" (discret), plus "sm" (36 px). Exemple : {% call ui::bouton("Envoyer le devis", "acc", "plus") %}{% endcall %}.
+   Un bouton inactif dit pourquoi (raison, en info-bulle). Pour d'autres attributs (name, value, hx-…), écrire le
+   <button> à la main avec class="{{ crate::composants::classes_bouton("…") }}". #}
+{% macro bouton(libelle, genre = "", symbole = "", inactif = false, raison = "") %}<button class="{{ crate::composants::classes_bouton(genre) }}" type="submit"{% if inactif %} disabled title="{{ raison }}"{% endif %}>
+  {%- if !symbole.is_empty() %}{% call icone(symbole, 16) %}{% endcall %}{% endif %}{{ libelle }}</button>{% endmacro %}
+{# Une navigation qui a l'air d'un bouton. #}
+{% macro lien_bouton(adresse, libelle, genre = "", symbole = "") %}<a class="{{ crate::composants::classes_bouton(genre) }}" href="{{ adresse }}">
+  {%- if !symbole.is_empty() %}{% call icone(symbole, 16) %}{% endcall %}{% endif %}{{ libelle }}</a>{% endmacro %}
+{# Bouton carré sans libellé : l'étiquette est lue par les lecteurs d'écran et montrée au survol. #}
+{% macro bouton_icone(symbole, etiquette, genre = "") %}<button class="{{ crate::composants::classes_bouton(genre) }} rv-btn--icon" type="submit" aria-label="{{ etiquette }}" title="{{ etiquette }}">{% call icone(symbole, 16) %}{% endcall %}</button>{% endmacro %}
+
+{# ── Pastille de statut (fiche StatusPill) ────────────────────────────────
+   p vient de crate::composants::pastille_devis / pastille_facture / pastille_chantier : toujours le mot du statut. #}
+{% macro pastille(p) %}<span class="rv-pill{% if !p.classe.is_empty() %} {{ p.classe }}{% endif %}">{{ p.mot }}</span>{% endmacro %}
+
+{# ── Champs (fiche Field) ─────────────────────────────────────────────────
+   Intitulé au-dessus, aide dessous ; une erreur remplace l'aide (« ! … », contour rouge). L'id doit être unique. #}
+{% macro champ(id, intitule, nom, valeur, aide = "", erreur = "", genre = "text", dense = false) %}<div class="rv-field">
+  <label class="rv-label" for="{{ id }}">{{ intitule }}</label>
+  <input class="rv-input{% if dense %} rv-input--sm{% endif %}{% if !erreur.is_empty() %} is-error{% endif %}" id="{{ id }}" type="{{ genre }}" name="{{ nom }}" value="{{ valeur }}"
+    {%- if !erreur.is_empty() %} aria-invalid="true"{% endif %}{% if !erreur.is_empty() || !aide.is_empty() %} aria-describedby="{{ id }}-aide"{% endif %}>
+  {%- if !erreur.is_empty() %}<span class="rv-error" id="{{ id }}-aide">! {{ erreur }}</span>{% else if !aide.is_empty() %}<span class="rv-hint" id="{{ id }}-aide">{{ aide }}</span>{% endif %}
+</div>{% endmacro %}
+{# Montant, quantité, pourcentage : à droite, en mono, virgule décimale acceptée. La valeur arrive déjà écrite en texte. #}
+{% macro champ_montant(id, intitule, nom, valeur, aide = "", erreur = "", dense = false) %}<div class="rv-field">
+  <label class="rv-label" for="{{ id }}">{{ intitule }}</label>
+  <input class="rv-input rv-input--num{% if dense %} rv-input--sm{% endif %}{% if !erreur.is_empty() %} is-error{% endif %}" id="{{ id }}" type="text" inputmode="decimal" name="{{ nom }}" value="{{ valeur }}"
+    {%- if !erreur.is_empty() %} aria-invalid="true"{% endif %}{% if !erreur.is_empty() || !aide.is_empty() %} aria-describedby="{{ id }}-aide"{% endif %}>
+  {%- if !erreur.is_empty() %}<span class="rv-error" id="{{ id }}-aide">! {{ erreur }}</span>{% else if !aide.is_empty() %}<span class="rv-hint" id="{{ id }}-aide">{{ aide }}</span>{% endif %}
+</div>{% endmacro %}
+{# Liste de choix (crate::commun::Choix). #}
+{% macro champ_liste(id, intitule, nom, choix, aide = "", erreur = "") %}<div class="rv-field">
+  <label class="rv-label" for="{{ id }}">{{ intitule }}</label>
+  <select class="rv-input{% if !erreur.is_empty() %} is-error{% endif %}" id="{{ id }}" name="{{ nom }}"
+    {%- if !erreur.is_empty() %} aria-invalid="true"{% endif %}{% if !erreur.is_empty() || !aide.is_empty() %} aria-describedby="{{ id }}-aide"{% endif %}>
+    {%- for c in choix %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor -%}
+  </select>
+  {%- if !erreur.is_empty() %}<span class="rv-error" id="{{ id }}-aide">! {{ erreur }}</span>{% else if !aide.is_empty() %}<span class="rv-hint" id="{{ id }}-aide">{{ aide }}</span>{% endif %}
+</div>{% endmacro %}
+
+{# ── Tableau de consultation (fiche Table) ────────────────────────────────
+   colonnes : « N°|Client|Montant TTC:n|Statut » (« :n » = colonne de nombres, à droite en mono).
+   Les lignes viennent du bloc appelant : {% call ui::tableau("…") %}<tr>…</tr>{% endcall %}. #}
+{% macro tableau(colonnes) %}<div class="rv-table-wrap"><table class="rv-table">
+  <thead><tr>{% for c in crate::composants::colonnes(colonnes) %}<th scope="col"{% if c.nombre %} class="rv-r"{% endif %}>{{ c.titre }}</th>{% endfor %}</tr></thead>
+  <tbody>{{ caller() }}</tbody>
+</table></div>{% endmacro %}
+{# Une cellule de montant (centimes → « 4 431,84 € »). #}
+{% macro cellule_montant(centimes) %}<td class="rv-r rv-num">{{ crate::composants::euros(centimes) }}</td>{% endmacro %}
+{# Une liste vide dit quoi faire. #}
+{% macro ligne_vide(nb_colonnes, message) %}<tr class="rv-vide"><td colspan="{{ nb_colonnes }}">{{ message }}</td></tr>{% endmacro %}
+
+{# ── Bandeau (fiche Banner) ───────────────────────────────────────────────
+   Une seule phrase (bloc appelant) et l'action qui règle le problème. ton : "" (jaune, à regarder),
+   "bad" (rouge, à corriger), "ok" (vert, réussi). #}
+{% macro bandeau(ton = "", action = "", adresse = "") %}<div class="rv-banner{% if ton == "bad" %} rv-banner--bad{% else if ton == "ok" %} rv-banner--ok{% endif %}" role="{% if ton == "bad" %}alert{% else %}status{% endif %}">
+  <span>{{ caller() }}</span>
+  {%- if !action.is_empty() %}<a class="rv-btn rv-btn--sm" href="{{ adresse }}">{{ action }}</a>{% endif %}
+</div>{% endmacro %}
+
+{# ── Tuile chiffrée (fiche KpiTile) ───────────────────────────────────────
+   valeur déjà écrite (crate::composants::euros(…) ou un nombre) ; adresse : la liste qu'elle résume ;
+   en_avant : la seule tuile jaune de l'écran. #}
+{% macro tuile(intitule, valeur, contexte = "", adresse = "", en_avant = false) %}
+  {%- if adresse.is_empty() %}<div class="rv-kpi{% if en_avant %} rv-kpi--plate{% endif %}">{% else %}<a class="rv-kpi{% if en_avant %} rv-kpi--plate{% endif %}" href="{{ adresse }}">{% endif -%}
+  <small>{{ intitule }}</small><b>{{ valeur }}</b>{% if !contexte.is_empty() %}<span>{{ contexte }}</span>{% endif %}
+  {%- if adresse.is_empty() %}</div>{% else %}</a>{% endif %}{% endmacro %}
+
+{# ── Totaux (fiche Totals) ────────────────────────────────────────────────
+   r vient de crate::composants::recap(&totaux, libellé de la remise) : rien n'est recalculé ici.
+   Le bloc appelant porte ce qui est hors total (mentions de TVA…), ou rien. #}
+{% macro totaux(r) %}<div class="rv-totals">
+  {%- for l in r.lignes %}<div class="rv-totals-row{% if l.detail %} rv-totals-sub{% endif %}"><span>{{ l.intitule }}</span><span>{{ l.montant }}</span></div>{% endfor -%}
+  <div class="rv-totals-row rv-totals-sum"><span>Total TTC</span><span>{{ r.ttc }}</span></div>
+  <div class="rv-totals-hors">{{ caller() }}</div>
+</div>{% endmacro %}

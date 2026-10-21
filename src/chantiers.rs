@@ -21,9 +21,9 @@ use crate::{AppState, Erreur};
 const PAR_PAGE: i64 = 20;
 
 /// Valeur en base, libellé affiché, couleur du badge.
-const STATUTS: [(&str, &str, &str); 2] = [("en_cours", "En cours", "s-chantier"), ("termine", "Terminé", "s-termine")];
+pub(crate) const STATUTS: [(&str, &str, &str); 2] = [("en_cours", "En cours", "s-chantier"), ("termine", "Terminé", "s-termine")];
 
-fn statut(valeur: &str) -> (&'static str, &'static str) {
+pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
     STATUTS.iter().find(|(v, _, _)| *v == valeur).map(|(_, l, c)| (*l, *c)).unwrap_or(("Inconnu", "s-brouillon"))
 }
 
