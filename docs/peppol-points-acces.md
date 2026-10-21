@@ -7,7 +7,7 @@ Recherche faite par Claude le 20/10/2026. Première version écrite depuis des m
 - **Plusieurs organisations** (nos clients) derrière un seul compte Raven, sans coût fixe par organisation.
 - Suivi du statut d'envoi (idéalement par webhook), environnement de test.
 - Prestataire certifié OpenPeppol, hébergé en UE, contrat de sous-traitance (RGPD).
-- Réception : **après la V1** (mais un prestataire qui sait la faire évite de changer plus tard).
+- Réception : **dans la V1** (décision de Mahx du 21/10/2026) : Ubique reçoit ses factures fournisseurs dans Vertuoza et les rattache à ses chantiers.
 
 Ordre de grandeur pour chiffrer : **100 organisations × 15 factures Peppol par mois = 1 500 documents par mois** (les factures aux particuliers ne passent pas par Peppol).
 
@@ -36,7 +36,7 @@ Entre **0,07 € et 0,25 € par facture**. Une organisation qui envoie 15 factu
 Sur Peppol, une entreprise ne peut être inscrite comme **destinataire** (pour un type de document) que chez **un seul** point d'accès (confirmé par Recommand et Scrada). Beaucoup de nos clients seront déjà inscrits ailleurs (chez leur comptable, Billit, Hermes…) pour recevoir leurs factures.
 - Pour la V1 (envoi seulement), Raven ne doit **pas** inscrire l'organisation comme destinataire, sinon il lui prend sa réception. Scrada le confirme : l'inscription n'est nécessaire que pour recevoir, pas pour envoyer. Chez Recommand : réglage `isSmpRecipient: false` à la création de la société (« sending only »).
 - La société qui envoie doit quand même **prouver son identité** (KYC). Chez Recommand, c'est en **libre-service** : la création de la société par l'API renvoie un lien de vérification (`verificationUrl`) que Raven montre à l'utilisateur ; un représentant autorisé fait le contrôle d'identité dans son navigateur (le lien peut être transmis à la bonne personne), sans compte Recommand ; Raven est prévenu par le webhook `company.verification` (vérifiée, refusée, erreur). Changer le numéro de TVA ou d'entreprise oblige à refaire la vérification.
-- Plus tard, pour la réception : migration des identifiants depuis l'ancien prestataire par des « migration keys » (ou désinscription chez l'ancien, avec un trou de réception entre les deux).
+- Réception (dans la V1, en option par organisation) : `isSmpRecipient: true`, factures reçues par le webhook `document.received`. Pour une organisation déjà inscrite ailleurs (Ubique chez Vertuoza) : migration des identifiants depuis l'ancien prestataire par des « migration keys » (ou désinscription chez l'ancien, avec un trou de réception entre les deux).
 
 ## Recommandation de Claude
 1. **Recommand en premier choix** : belge, certifié, prix publiés et les plus bas parmi ceux qui sont publiés à notre volume (≈ 150 €/mois pour 1 500 documents), toutes nos organisations dans un seul compte sans frais par organisation, envoi de **notre propre UBL**, envoi seul sans prendre la réception du client, vérification d'identité en libre-service (principe du produit), webhooks, bac à sable gratuit, code ouvert (on ne reste pas coincé si le prestataire disparaît). On peut ouvrir un compte et un bac à sable aujourd'hui, sans contrat.

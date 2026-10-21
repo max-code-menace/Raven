@@ -22,7 +22,7 @@ Décisions fermes, à ne pas remettre en question :
 - **Isolation** (choix technique de Claude, accepté) : une colonne `organisation_id` dans chaque table de données, plus la sécurité au niveau des lignes de PostgreSQL (RLS) en second filet, plus un test d'isolation par écran. Pas de base ni de schéma par client.
 - **Ubique = organisation n° 1.**
 - **Reprise des données de Vertuoza : en pause**, reprise une fois le multi-organisation fait (bascule d'Ubique toujours possible le 1er janvier 2027).
-- **Peppol : l'envoi des factures est dans la V1** (par un point d'accès agréé, prestataire à choisir). La réception vient après la V1.
+- **Peppol : l'envoi des factures est dans la V1** (par un point d'accès agréé : Recommand, choisi le 20/10/2026). **La réception aussi** (décision de Mahx du 21/10/2026, voir plus bas).
 - **Profil métier** choisi à l'inscription, modifiable dans les réglages : il règle le vocabulaire (« Chantier » pour le bâtiment, « Projet » pour les autres métiers) et les modules allumés. Bâtiment : avancements, avenants, achats et rentabilité allumés. Autres métiers : ces modules éteints mais activables. Factures récurrentes et statistiques pour tous. Les modules existants sont gardés, aucun n'est supprimé.
 - **Formules** : Indépendant 35 € HT par mois (1 utilisateur), Entreprise 59 € HT par mois (jusqu'à 8 utilisateurs).
 - **Paiement des abonnements : Mollie**, dès le départ (domiciliation SEPA, Bancontact, carte).
@@ -30,6 +30,10 @@ Décisions fermes, à ne pas remettre en question :
 - **Nom commercial : Raven** (marque et nom de domaine à vérifier avant tout affichage public). Le code garde le nom `ubifacture`.
 - **Société qui vend Raven : à créer** (à voir avec un comptable ; ne bloque pas le développement).
 - **Vouvoiement** dans tout le produit (écrans, messages, e-mails, pages publiques) : décision de Mahx du 19/10/2026. Les explications de Claude à Mahx et la ligne de commande restent au tutoiement.
+
+## Décisions de Mahx (21/10/2026, étape 5)
+- **Réception Peppol dans la V1** (avant : après la V1). Raison : Ubique reçoit déjà ses factures fournisseurs dans Vertuoza (BigMat, etc.) et les rattache à ses chantiers pour suivre ses dépenses ; sans cela, Ubique ne peut pas quitter Vertuoza. Contenu : boîte de réception des factures fournisseurs (à traiter, PDF), rattachement à un chantier (devient un achat du chantier : budget et rentabilité à jour), factures fournisseurs dans l'export pour le comptable.
+- Réception **en option par organisation** (une entreprise ne reçoit que par un seul point d'accès : la prendre sans prévenir priverait son comptable de ses factures) ; allumée par défaut pour le bâtiment, avec un avertissement clair. Ubique : inscription déplacée de Vertuoza vers Recommand à la bascule (clé de transfert de Vertuoza ou désinscription chez eux).
 
 ## Décisions de Mahx (15/10/2026)
 - **Page client en ligne** (consulter, signer, payer par QR code) : **oui, dès la phase 1**.
@@ -101,12 +105,12 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés. Dossier du proj
 2. **Comptes en libre-service** : inscription, vérification de l'e-mail, mot de passe oublié, invitations (jusqu'à 8), rôles propriétaire / membre ; assistant de démarrage (identité, TVA, IBAN, logo, premier numéro, régime de TVA, profil métier).
 3. **Simplifier et rendre multi-métier** : profil métier (Chantier ou Projet, modules allumés) ; modules propres à Ubique et Vertuoza (reprise, import du modèle Excel de Mahx, import de la bibliothèque de Vertuoza) retirés des écrans ; modèles d'e-mails neutres ; franchise de TVA et 12 %.
 4. **Bibliothèque par secteur** : catalogue commun en arborescence (Bâtiment › menuiserie, gyproc, maçonnerie… ; Espaces verts ; Peinture ; Graphisme…), copié dans l'organisation selon son métier ; descriptions et unités, prix laissés à l'utilisateur.
-5. **Envoi Peppol** : l'UBL existant envoyé par l'API d'un point d'accès agréé, statut d'envoi, identifiant Peppol du client.
+5. **Peppol (envoi et réception)** : l'UBL existant envoyé par l'API de Recommand, statut d'envoi, identifiant Peppol du client ; réception des factures fournisseurs (boîte de réception, rattachement à un chantier, export pour le comptable), en option par organisation.
 6. **Abonnements Mollie** : essai gratuit, deux formules, limite d'utilisateurs, impayés, factures d'abonnement émises par Raven lui-même.
 7. **Mise en production** : configuration par variables d'environnement, CI (build + tests), hébergement UE, sauvegardes avec restauration testée, journaux et alertes, Tailwind local, e-mails envoyés depuis le domaine de Raven (réponse vers l'organisation), en-têtes de sécurité, relecture de sécurité ; pages légales (CGV, confidentialité, contrat de traitement des données) et page d'accueil.
 8. **Bêta fermée** : 5 à 10 utilisateurs de métiers différents (dont Ubique), puis lancement.
 
-Après la V1, seulement si les utilisateurs le demandent : réception Peppol (factures fournisseurs à valider et rattacher), CodaBox (extraits CODA, rapprochement par la communication structurée), statistiques avancées.
+Après la V1, seulement si les utilisateurs le demandent : CodaBox (extraits CODA, rapprochement par la communication structurée), statistiques avancées.
 
 ## Prochaine session (point de reprise, 19/10/2026)
 **Où on en est** : étapes 0 à 3 de la V1 de Raven faites, branche `claude/stoic-allen-z04f7l` (poussée, arbre propre), 387 tests réussis, 0 avertissement. Migrations jusqu'à `0029`.
@@ -275,7 +279,7 @@ Après la V1, seulement si les utilisateurs le demandent : réception Peppol (fa
   - **Vouvoiement** dans tous les écrans, messages et e-mails du site (inscription, mot de passe, invitation).
   - Tests : `tests/metier.rs` (projet et modules éteints puis rallumés, membre sans droit, bâtiment, import gardé pour Ubique, franchise de bout en bout avec UBL et PDF, 12 %, ligne hors régime refusée, PDF du devis) ; le test d'isolation couvre Réglages › Métier et modules (B y est du bâtiment pour couvrir toutes les adresses).
 - [ ] V1 de Raven, étape 4 : bibliothèque par secteur.
-- [ ] V1 de Raven, étape 5 : envoi Peppol.
+- [ ] V1 de Raven, étape 5 : Peppol, envoi et réception (réception ajoutée à la V1 par Mahx le 21/10/2026). Plan : 5-2 envoi par Recommand ; 5-3 réception (boîte de réception, rattachement à un chantier, export comptable des achats, réglage par organisation).
   - [x] 5-0 : comparaison des points d'accès (20/10/2026, `docs/peppol-points-acces.md`, vérifiée sur les sites des prestataires et la liste d'OpenPeppol). Recommandation de Claude : Recommand (belge, certifié, ≈ 150 €/mois pour 1 500 documents, toutes les organisations dans un compte, envoi de notre UBL, envoi seul avec `isSmpRecipient: false`, vérification d'identité en libre-service par `verificationUrl`, webhooks, bac à sable gratuit), e-invoice.be en rechange ; devis possibles chez Qvalia et Tigron/Peppyrus. **Choix validé par Mahx le 20/10/2026** ; 6 points restent à demander (document).
   - [x] 5-1 : identifiant Peppol et contrôles avant l'envoi (20/10/2026, 446 tests). Migration `0035_identifiant_peppol.sql` (`peppol_id` des entreprises et des contacts, format ISO 6523 « 0208:0123456789 »). `src/peppol.rs` : adresse Peppol d'un client = celle de sa fiche, sinon déduite de son numéro de TVA belge (schéma **0208**, numéro d'entreprise, chiffres de contrôle modulo 97 vérifiés) ; aucune déduction hors de Belgique. Champ « Identifiant Peppol » sur les fiches (entreprise et contact), remis au propre ou refusé avec une explication. UBL : `EndpointID` du vendeur et de l'acheteur en 0208 (avant : 9925, et 9930 à tort pour tout numéro étranger ; les factures déjà archivées ne changent pas). Fiche d'une facture validée : bloc **Facturation électronique** (adresse Peppol du client, « Prête pour Peppol » ou la liste de ce qu'il faut corriger : TVA du client invalide, client étranger sans identifiant, TVA de la société manquante ou invalide ; un particulier reçoit sa facture par e-mail ; une facture reprise n'est pas renvoyée). Tests : `tests/peppol.rs`. **Ensuite (5-2)** : compte Recommand de Mahx (bac à sable gratuit), clé d'API dans les secrets, envoi par l'API, statut d'envoi (webhooks), inscription et vérification de chaque organisation (`isSmpRecipient: false`, `verificationUrl`) dans Réglages.
 
