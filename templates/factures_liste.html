@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}{% if liste.notes_credit %}Notes de crédit{% else %}Factures clients{% endif %} · Ubifacture{% endblock %}
+{% block title %}{% if liste.notes_credit %}Notes de crédit{% else %}Factures clients{% endif %} · Raven{% endblock %}
 {% block nav_factures %}{% if !liste.notes_credit %}actif{% endif %}{% endblock %}
 {% block nav_notes %}{% if liste.notes_credit %}actif{% endif %}{% endblock %}
 

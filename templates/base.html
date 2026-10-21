@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Ubifacture{% endblock %}</title>
+  <title>{% block title %}Raven{% endblock %}</title>
   {% include "_polices.html" %}
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
@@ -13,12 +13,12 @@
 </head>
 <body>
 <div class="u-app">
-  {# Menu du design de Raven : huit espaces, puis Données et le compte. Chaque écran allume son espace par un bloc nav_…
+  {# Menu du design de Raven (ordinateur seulement pour l'instant) : huit espaces, puis Données et le compte. Chaque écran allume son espace par un bloc nav_…
      (plusieurs blocs par espace : les écrans gardent leurs noms d'avant). Les éditeurs replient le menu en rail
      en donnant « rv-side--rail » au bloc rail. #}
   <nav class="rv-side {% block rail %}{% endblock %}" aria-label="Menu principal">
-    <a class="rv-brand" href="/" title="Accueil"><i>U</i><span class="rv-brand-nom">UBIFACTURE</span></a>
-    <a class="rv-nav {% block nav_tableau %}{% endblock %}" href="/" title="Accueil">{% call ui::icone("accueil", 19) %}{% endcall %}<span class="rv-nav-txt">Accueil</span></a>
+    <a class="rv-brand" href="/" title="Tableau de bord"><i>R</i><span class="rv-brand-nom">RAVEN</span></a>
+    <a class="rv-nav {% block nav_tableau %}{% endblock %}" href="/" title="Tableau de bord">{% call ui::icone("accueil", 19) %}{% endcall %}<span class="rv-nav-txt">Tableau de bord</span></a>
     <a class="rv-nav {% block nav_devis %}{% endblock %}" href="/devis" title="Devis">{% call ui::icone("devis", 19) %}{% endcall %}<span class="rv-nav-txt">Devis</span></a>
     <a class="rv-nav {% block nav_factures %}{% endblock %} {% block nav_notes %}{% endblock %} {% block nav_recurrences %}{% endblock %}" href="/factures" title="Factures">{% call ui::icone("factures", 19) %}{% endcall %}<span class="rv-nav-txt">Factures</span></a>
     <a class="rv-nav {% block nav_rappels %}{% endblock %} {% block nav_recues %}{% endblock %} {% block nav_achats %}{% endblock %}" href="/factures/rappels" title="Paiements">{% call ui::icone("paiements", 19) %}{% endcall %}<span class="rv-nav-txt">Paiements</span></a>

@@ -66,7 +66,7 @@ async fn la_page_d_accueil_s_affiche(options: PgPoolOptions, connexion: PgConnec
     let pool = commun::reserve(options, connexion).await;
     let (statut, corps) = lire(&site(&pool), "/").await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(corps.contains("Ubifacture"));
+    assert!(corps.contains("RAVEN") && !corps.contains("Ubifacture"));
     assert!(corps.contains("href=\"/entreprises\""));
     assert!(lire(&site(&pool), "/entreprises").await.1.contains("href=\"/contacts\""), "Clients › Contacts");
 }
@@ -437,7 +437,7 @@ async fn un_contact_inexistant_donne_404(options: PgPoolOptions, connexion: PgCo
     assert_eq!(statut, StatusCode::NOT_FOUND);
 }
 
-// Refonte du design, étape 1 : le menu à huit espaces, Données et le compte ; chaque entrée mène à un écran qui répond.
+// Refonte du design, étape 1 : le menu à huit espaces (Tableau de bord en premier), Données et le compte ; chaque entrée mène à un écran qui répond.
 #[sqlx::test]
 async fn le_menu_a_huit_espaces_qui_menent_tous_a_un_ecran(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
@@ -445,7 +445,7 @@ async fn le_menu_a_huit_espaces_qui_menent_tous_a_un_ecran(options: PgPoolOption
     let (statut, page) = lire(&s, "/").await;
     assert_eq!(statut, StatusCode::OK);
     let mut avant = 0;
-    for libelle in ["Accueil", "Devis", "Factures", "Paiements", "Chantiers", "Clients", "Bibliothèque", "Statistiques", "Importer", "Exporter", "Réglages", "Se déconnecter"] {
+    for libelle in ["Tableau de bord", "Devis", "Factures", "Paiements", "Chantiers", "Clients", "Bibliothèque", "Statistiques", "Importer", "Exporter", "Réglages", "Se déconnecter"] {
         let position = page.find(&format!("<span class=\"rv-nav-txt\">{libelle}</span>")).unwrap_or_else(|| panic!("{libelle} absent du menu"));
         assert!(position > avant, "{libelle} n'est pas à sa place");
         avant = position;
