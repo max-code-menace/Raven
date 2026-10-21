@@ -1172,7 +1172,8 @@ pub(crate) async fn reste_a_crediter(db: &mut PgConnection, facture_id: i64, sau
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct ApresValidation {
-    /// « email » : ouvrir l'envoi par e-mail juste après (un seul clic, comme l'envoi dans Vertuoza).
+    /// « email » : ouvrir l'envoi par e-mail juste après (un seul clic, comme l'envoi dans Vertuoza) ; « peppol » :
+    /// l'envoyer par Peppol juste après.
     puis: String,
 }
 
@@ -1246,6 +1247,16 @@ async fn valider(mut db: Base, Path(id): Path<i64>, Form(apres): Form<ApresValid
     }
     if apres.puis == "email" {
         return Ok(Redirect::to(&format!("/factures/{id}/email")));
+    }
+    if apres.puis == "peppol"
+        && let Some(validee) = charger(&mut *db, id).await?
+    {
+        // La facture est validée quoi qu'il arrive ; un envoi refusé se lit dans le bloc « Facturation électronique ».
+        return Ok(Redirect::to(&match crate::peppol::envoyer_facture(&mut db, &validee).await {
+            Ok(true) => format!("/factures/{id}?ok=peppol#peppol"),
+            Ok(false) => format!("/factures/{id}?erreur=peppol#peppol"),
+            Err(_) => format!("/factures/{id}?ok=validee#peppol"),
+        }));
     }
     Ok(Redirect::to(&format!("/factures/{id}?ok=validee")))
 }

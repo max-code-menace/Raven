@@ -138,13 +138,26 @@ async fn ce_qui_empeche_l_envoi_est_dit_sur_la_facture(options: PgPoolOptions, c
 }
 
 #[sqlx::test]
-async fn un_brouillon_n_a_pas_de_bloc_peppol(options: PgPoolOptions, connexion: PgConnectOptions) {
+async fn un_brouillon_montre_deja_le_bloc_peppol(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
     societe(&pool, "BE0123456749").await;
     let s = site(&pool);
     let (_, lieu, _) = poster(&s, "/factures", "").await;
-    let (_, page) = lire(&s, lieu.unwrap().split('?').next().unwrap()).await;
-    assert!(!page.contains("id=\"peppol\""), "{page}");
+    let id: i64 = lieu.unwrap().strip_prefix("/factures/").unwrap().split('?').next().unwrap().parse().unwrap();
+    // Un brouillon pour un client belge : le bloc dit déjà où la facture partira, sans bouton d'envoi (pas de numéro).
+    let c = client(&pool, Some("BE0987654394"), "BE", None).await;
+    let condition: i64 = sqlx::query_scalar("SELECT id FROM conditions_paiement WHERE \"type\" = 'comptant'").fetch_one(&pool).await.unwrap();
+    let aujourdhui: String = sqlx::query_scalar("SELECT ((now() AT TIME ZONE 'Europe/Brussels')::date)::text").fetch_one(&pool).await.unwrap();
+    poster(&s, &format!("/factures/{id}"), &format!("date={aujourdhui}&reference=Travaux&client=e{c}&conditions_paiement_id={condition}")).await;
+    let (_, page) = lire(&s, &format!("/factures/{id}")).await;
+    assert!(page.contains("id=\"peppol\"") && page.contains("0208:0987654394") && page.contains("Prête pour Peppol"), "{page}");
+    assert!(!page.contains(&format!("action=\"/factures/{id}/peppol\"")), "pas d'envoi d'un brouillon");
+    // Incomplet (aucune ligne) : « Valider… » reste visible, grisé, avec la raison ; le rappel d'enregistrer est là.
+    assert!(page.contains("disabled title=\"Complétez d'abord les points du bloc « Avant de valider »\"") && page.contains("Enregistrer les informations » pour qu'elles comptent"), "{page}");
+    // Ce qu'il faut corriger se voit aussi avant la validation.
+    sqlx::query("UPDATE entreprises SET numero_tva = 'BE0987654321' WHERE id = $1").bind(c).execute(&pool).await.unwrap();
+    let (_, page) = lire(&s, &format!("/factures/{id}")).await;
+    assert!(page.contains("À corriger avant l'envoi par Peppol (vous pouvez déjà valider"), "{page}");
 }
 
 #[sqlx::test]
