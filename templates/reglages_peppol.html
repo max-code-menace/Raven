@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Peppol · Réglages · Ubifacture{% endblock %}
+{% block nav_reglages_peppol %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("reglages", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Peppol</h1>
+        <div class="u-sous-titre">Réglages · envoyer vos factures électroniques à vos clients entreprises</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Facturation électronique</h2></div>
+  <div class="u-card-b" style="display:flex;flex-direction:column;gap:12px">
+    <p class="u-petit" style="margin:0">Depuis le 1er janvier 2026, une entreprise belge envoie ses factures à ses clients entreprises par le réseau Peppol. Ubifacture les envoie pour vous par Recommand, un point d'accès agréé. Vos clients particuliers continuent de recevoir leurs factures par e-mail.</p>
+
+    {% if !envoi_actif %}
+    <p class="u-petit u-muet" style="margin:0">L'envoi par Peppol n'est pas encore configuré sur ce serveur.</p>
+    {% else %}
+    {% match inscription.societe_id %}
+    {% when None %}
+    <p class="u-petit" style="margin:0"><strong>Étape 1 : inscrire votre entreprise.</strong> Elle sera inscrite sous votre numéro d'entreprise{% if !numero_entreprise.is_empty() %} (<span class="mono">{{ numero_entreprise }}</span>){% endif %}, pour l'envoi seulement : vos factures reçues continuent d'arriver là où vous les recevez aujourd'hui.</p>
+    {% if proprietaire %}
+    <form method="post" action="/parametres/peppol/inscrire" style="margin:0">
+      <button class="btn btn-primary btn-sm" type="submit">Inscrire mon entreprise</button>
+    </form>
+    {% else %}
+    <p class="u-petit u-muet" style="margin:0">Seul un propriétaire peut inscrire l'entreprise.</p>
+    {% endif %}
+    {% when Some with (_id) %}
+    {% if inscription.verifiee %}
+    <p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Prête</span> Votre entreprise est inscrite et vérifiée : vos factures peuvent partir par Peppol, depuis leur fiche (bloc « Facturation électronique »).</p>
+    {% else %}
+    <p class="u-petit" style="margin:0"><span class="u-pastille s-a-envoyer">À vérifier</span> <strong>Étape 2 : prouver votre identité.</strong> Peppol exige qu'une personne autorisée à représenter l'entreprise (gérant, administrateur…) confirme son identité, une seule fois. Sans cela, aucune facture ne peut partir.</p>
+    {% if !inscription.lien.is_empty() %}
+    <p class="u-petit" style="margin:0">Ouvrez la page de vérification, ou envoyez ce lien à la personne autorisée :</p>
+    <input class="input input-bordered input-sm mono w-full" type="text" value="{{ inscription.lien }}" readonly aria-label="Lien de vérification">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a class="btn btn-primary btn-sm" href="{{ inscription.lien }}" target="_blank" rel="noopener">Ouvrir la vérification</a>
+      <form method="post" action="/parametres/peppol/actualiser" style="margin:0">
+        <button class="btn btn-sm" type="submit">J'ai terminé la vérification</button>
+      </form>
+    </div>
+    {% else %}
+    <form method="post" action="/parametres/peppol/actualiser" style="margin:0">
+      <button class="btn btn-sm" type="submit">Obtenir le lien de vérification</button>
+    </form>
+    {% endif %}
+    {% endif %}
+    {% endmatch %}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

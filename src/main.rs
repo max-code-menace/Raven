@@ -97,6 +97,18 @@ async fn main() {
         println!("E-mails : mode test (pas de BREVO_CLE_API), les e-mails sont seulement enregistrés.");
     }
 
+    // Peppol : sans RECOMMAND_CLE_API et RECOMMAND_SECRET, rien ne part par Peppol.
+    ubifacture::peppol::configurer(
+        std::env::var("RECOMMAND_CLE_API").ok(),
+        std::env::var("RECOMMAND_SECRET").ok(),
+        std::env::var("RECOMMAND_ADRESSE").ok(),
+    );
+    if ubifacture::peppol::envoi_actif() {
+        println!("Peppol : envoi par Recommand activé (la clé dit s'il s'agit du bac à sable ou du vrai réseau).");
+    } else {
+        println!("Peppol : non configuré (pas de RECOMMAND_CLE_API), rien ne part par Peppol.");
+    }
+
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3001")
         .await
         .expect("impossible d'ouvrir le port 3001");

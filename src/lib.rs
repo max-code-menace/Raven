@@ -157,6 +157,7 @@ fn pages() -> Router<AppState> {
         .merge(demarrage::routes())
         .merge(equipe::routes())
         .merge(metier::routes())
+        .merge(peppol::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
         .merge(bibliotheque_import::routes())

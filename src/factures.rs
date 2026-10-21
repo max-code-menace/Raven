@@ -618,6 +618,7 @@ impl Retour {
             "payee" => "Le paiement est enregistré : la facture est payée.",
             "paiement_retire" => "Le paiement est retiré.",
             "email_envoye" => "La pièce est envoyée par e-mail.",
+            "peppol" => "La pièce est partie par Peppol.",
             "rappel_envoye" => "Le rappel de paiement est envoyé.",
             "email_enregistre" => "Mode test : l'e-mail est enregistré (Réglages › E-mails) mais n'est pas parti, car aucune clé Brevo n'est configurée. Marquez la pièce comme envoyée à la main si vous l'avez envoyée autrement.",
             _ => "",
@@ -626,6 +627,7 @@ impl Retour {
 
     fn message_erreur(&self) -> &'static str {
         match self.erreur.as_str() {
+            "peppol" => "L'envoi par Peppol a échoué : la raison est dans le bloc « Facturation électronique ».",
             "infos" => "Les informations n'ont pas été enregistrées : vérifiez la date, le client, la référence (200 caractères) et la remarque (2 000 caractères).",
             "paiement_date" => "Le paiement n'est pas enregistré : la date est vide ou dans le futur.",
             "paiement_montant" => "Le paiement n'est pas enregistré : le montant doit être positif et ne pas dépasser le reste à recevoir.",
@@ -665,6 +667,7 @@ pub(crate) fn libelle_evenement(genre: &str) -> &'static str {
         "email" => "E-mail",
         "rappel" => "Rappel",
         "client" => "Client",
+        "peppol" => "Peppol",
         _ => "Événement",
     }
 }

@@ -155,7 +155,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         }
         for suite in [
             "", "/lignes", "/valider", "/envoyee", "/supprimer", "/crediter", "/email", "/rappel", "/paiements", "/recurrence",
-            "/recurrence/supprimer",
+            "/recurrence/supprimer", "/peppol", "/peppol/actualiser",
         ] {
             deux("POST", format!("/factures/{f}{suite}"));
         }
@@ -195,13 +195,14 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         "/", "/devis", "/factures", "/factures?statut=en_retard", "/chantiers", "/chantiers?statut=tous", "/entreprises", "/contacts",
         "/bibliotheque", "/bibliotheque/choisir?q=a", "/statistiques", "/statistiques?periode=12_mois", "/exports", "/factures/rappels",
         "/factures/recurrences", "/achats", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
-        "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
+        "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/parametres/peppol", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
     ] {
         deux("GET", chemin.to_string());
     }
     for chemin in [
         "/factures/rappels", "/factures/recurrences/preparer", "/exports", "/parametres/emails/devis", "/parametres/rappels", "/demarrage",
-        "/parametres/equipe/inviter", "/parametres/metier", "/parametres/rappels/mentions",
+        "/parametres/equipe/inviter", "/parametres/metier", "/parametres/rappels/mentions", "/parametres/peppol/inscrire",
+        "/parametres/peppol/actualiser",
     ] {
         deux("POST", chemin.to_string());
     }
