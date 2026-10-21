@@ -24,9 +24,12 @@ fn compte((nombre, centimes): (i64, i64)) -> Compte {
     Compte { nombre, montant: format_euros(centimes) }
 }
 
-/// Une ligne de « À surveiller » : couleur du point (statut), texte, lien.
+/// Une ligne de « À surveiller » : son étiquette (une pastille de statut, ou un drapeau jaune quand ce n'est pas un
+/// statut), texte, lien.
 pub struct Alerte {
-    pub couleur: &'static str,
+    pub etiquette: String,
+    /// Classes de l'étiquette : « rv-pill … » ou « rv-flag ».
+    pub classe: String,
     pub texte: String,
     pub lien: String,
     pub action: &'static str,
@@ -54,6 +57,10 @@ struct Page {
     notes_brouillons: Compte,
     notes_annee: Compte,
     annee: i32,
+    /// « Mercredi 21 octobre », au-dessus du titre.
+    jour_texte: String,
+    /// La ligne sous le titre : combien de choses demandent une action.
+    resume: String,
     mois_texte: String,
     mois_facture: String,
     mois_encaisse: String,
@@ -64,6 +71,7 @@ struct Page {
     ouvertures: Vec<Ouverture>,
 }
 
+const JOURS: [&str; 7] = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const MOIS: [&str; 12] = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
 async fn deux(db: &mut PgConnection, sql: &'static str) -> Result<(i64, i64), sqlx::Error> {
@@ -126,6 +134,7 @@ pub async fn afficher(mut db: Base) -> Result<Html<String>, Erreur> {
     .fetch_one(&mut *db)
     .await?;
 
+    let alertes = alertes(&mut *db).await?;
     let page = Page {
         devis_attente: compte(devis_attente),
         devis_a_envoyer: compte(devis_a_envoyer),
@@ -139,16 +148,31 @@ pub async fn afficher(mut db: Base) -> Result<Html<String>, Erreur> {
         notes_brouillons: compte(notes_brouillons),
         notes_annee: compte(notes_annee),
         annee: aujourdhui.year(),
+        jour_texte: format!("{} {} {}", JOURS[aujourdhui.weekday().num_days_from_monday() as usize], aujourdhui.day(), MOIS[aujourdhui.month0() as usize]),
         mois_texte: format!("{} {}", MOIS[aujourdhui.month0() as usize], aujourdhui.year()),
         mois_facture: format_euros(mois_facture),
         mois_encaisse: format_euros(mois_encaisse),
         mois_devis_envoyes,
         mois_devis_acceptes,
         mois_conversion: crate::statistiques::part(mois_devis_acceptes, mois_devis_envoyes),
-        alertes: alertes(&mut *db).await?,
+        resume: resume(alertes.len()),
+        alertes,
         ouvertures: ouvertures(&mut *db).await?,
     };
     Ok(Html(page.render()?))
+}
+
+fn resume(n: usize) -> String {
+    match n {
+        0 => "Rien ne demande votre attention aujourd'hui.".to_string(),
+        1 => "Une chose demande votre attention aujourd'hui.".to_string(),
+        n => format!("{n} choses demandent votre attention aujourd'hui."),
+    }
+}
+
+/// Les classes d'une pastille de statut, pour l'étiquette d'une alerte.
+fn pilule(p: crate::composants::Pastille) -> String {
+    if p.classe.is_empty() { "rv-pill".to_string() } else { format!("rv-pill {}", p.classe) }
 }
 
 /// Ce qui demande une action aujourd'hui, le plus urgent d'abord.
@@ -158,7 +182,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     if !a_relancer.is_empty() {
         let total: i64 = a_relancer.iter().map(|l| l.reste_cents).sum();
         alertes.push(Alerte {
-            couleur: "#953A0A",
+            etiquette: crate::composants::pastille_facture("en_retard").mot,
+            classe: pilule(crate::composants::pastille_facture("en_retard")),
             texte: format!("{} facture(s) en retard à relancer aujourd'hui ({} à recevoir).", a_relancer.len(), format_euros(total)),
             lien: "/factures/rappels".to_string(),
             action: "Envoyer les rappels",
@@ -171,7 +196,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     .await?;
     for (id, numero, annee, par) in signes {
         alertes.push(Alerte {
-            couleur: "#1C6B3C",
+            etiquette: crate::composants::pastille_devis("signe").mot,
+            classe: pilule(crate::composants::pastille_devis("signe")),
             texte: format!("Le devis {annee}-{numero} est signé en ligne{} : il reste à l'accepter.", if par.is_empty() { String::new() } else { format!(" par {par}") }),
             lien: format!("/devis/{id}"),
             action: "Accepter",
@@ -185,7 +211,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     .await?;
     for (id, numero, annee, jours) in sans_reponse {
         alertes.push(Alerte {
-            couleur: "#7A5100",
+            etiquette: crate::composants::pastille_devis("envoye").mot,
+            classe: pilule(crate::composants::pastille_devis("envoye")),
             texte: format!("Le devis {annee}-{numero} est envoyé depuis {jours} jours, sans réponse."),
             lien: format!("/devis/{id}"),
             action: "Ouvrir",
@@ -194,7 +221,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     let recurrentes = crate::recurrences::nombre_a_preparer(&mut *db).await?;
     if recurrentes > 0 {
         alertes.push(Alerte {
-            couleur: "#0B6371",
+            etiquette: "À préparer".to_string(),
+            classe: "rv-flag".to_string(),
             texte: format!("{recurrentes} facture(s) récurrente(s) à préparer (location…)."),
             lien: "/factures/recurrences".to_string(),
             action: "Préparer",
@@ -203,7 +231,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     let recues = crate::factures_recues::nombre_a_traiter(&mut *db).await?;
     if recues > 0 {
         alertes.push(Alerte {
-            couleur: "#0B6371",
+            etiquette: "À traiter".to_string(),
+            classe: "rv-flag".to_string(),
             texte: format!("{recues} facture(s) fournisseur reçue(s) par Peppol à traiter (rattacher à un chantier ou classer)."),
             lien: "/achats/recues".to_string(),
             action: "Traiter",
@@ -212,7 +241,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     let a_envoyer: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE statut = 'a_envoyer'").fetch_one(&mut *db).await?;
     if a_envoyer > 0 {
         alertes.push(Alerte {
-            couleur: "#7A5100",
+            etiquette: crate::composants::pastille_facture("a_envoyer").mot,
+            classe: pilule(crate::composants::pastille_facture("a_envoyer")),
             texte: format!("{a_envoyer} pièce(s) validée(s) pas encore envoyée(s) au client."),
             lien: "/factures?statut=a_envoyer".to_string(),
             action: "Voir",
@@ -225,7 +255,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     .await?;
     for (id, chantier, numero, chantier_numero) in brouillons {
         alertes.push(Alerte {
-            couleur: "#4A5058",
+            etiquette: crate::composants::pastille_devis("brouillon").mot,
+            classe: pilule(crate::composants::pastille_devis("brouillon")),
             texte: format!("L'avancement n° {numero} du chantier n° {chantier_numero} est resté en brouillon."),
             lien: format!("/chantiers/{chantier}/avancements/{id}"),
             action: "Reprendre",

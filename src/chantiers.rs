@@ -112,6 +112,7 @@ pub struct Ligne {
     pub montant_ht: String,
     pub statut: &'static str,
     pub classe_statut: &'static str,
+    pub pastille: crate::composants::Pastille,
 }
 
 pub struct Liste {
@@ -206,6 +207,7 @@ async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> 
                     montant_ht: format_euros(l.montant_ht_cents),
                     statut: libelle,
                     classe_statut: classe,
+                    pastille: crate::composants::pastille_chantier(&l.statut),
                 }
             })
             .collect(),

@@ -2,8 +2,8 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}Importer des {% if contact %}contacts{% else %}entreprises{% endif %} · Raven{% endblock %}
-{% block nav_entreprises %}{% if !contact %}actif{% endif %}{% endblock %}
-{% block nav_contacts %}{% if contact %}actif{% endif %}{% endblock %}
+{% block nav_entreprises %}{% if !contact %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_contacts %}{% if contact %}aria-current="page"{% endif %}{% endblock %}
 
 {% block entete %}
 <header class="u-top">

@@ -1,70 +1,49 @@
 {% import "_ui.html" as ui %}
-<div class="overflow-x-auto">
-  <table class="u-table">
-    <thead>
-      <tr>
-        <th>N°</th>
-        <th>Début de {{ crate::profil::mot("chantier") }}</th>
-        <th>Référence</th>
-        <th>Client</th>
-        <th>Adresse</th>
-        <th class="n">Devis + avenants HT</th>
-        <th>Statut</th>
-        <th class="n"><span class="sr-only">Actions</span></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for l in liste.lignes %}
-      <tr>
-        <td class="mono nw"><a href="/chantiers/{{ l.id }}">{{ l.numero }}</a></td>
-        <td class="nw">{{ l.debut }}</td>
-        <td><a href="/chantiers/{{ l.id }}">{{ l.reference }}</a></td>
-        <td>{{ l.client }}</td>
-        <td>{{ l.adresse }}</td>
-        <td class="n">{{ l.montant_ht }}</td>
-        <td><span class="u-pastille {{ l.classe_statut }}">{{ l.statut }}</span></td>
-        <td class="n">
-          <div class="inline-flex gap-0.5">
-            <a class="btn u-ib" href="/chantiers/{{ l.id }}" aria-label="Ouvrir le {{ crate::profil::mot("chantier") }}" title="Ouvrir le {{ crate::profil::mot("chantier") }}">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
-            <details class="u-menu">
-              <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
-              <div class="u-menu-liste">
-                <a class="u-mi" href="/chantiers/{{ l.id }}">Tableau de bord</a>
-                <a class="u-mi" href="/chantiers/{{ l.id }}/devis">Devis et avenants</a>
-                <a class="u-mi" href="/chantiers/{{ l.id }}/finances">Finances (avancements, factures)</a>
-                <div class="u-sep"></div>
-                {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
-              </div>
-            </details>
+{% call ui::tableau("N°|Début|Référence|Client|Adresse|Devis + avenants HT:n|Statut|Actions:cache") %}
+  {% for l in liste.lignes %}
+  <tr class="is-link">
+    <td class="rv-num"><a class="rv-lien" href="/chantiers/{{ l.id }}">{{ l.numero }}</a></td>
+    <td class="rv-num rv-mut">{{ l.debut }}</td>
+    <td><a class="rv-lien" href="/chantiers/{{ l.id }}">{{ l.reference }}</a></td>
+    <td>{{ l.client }}</td>
+    <td class="rv-mut">{{ l.adresse }}</td>
+    <td class="rv-r rv-num">{{ l.montant_ht }}</td>
+    <td>{% call ui::pastille(l.pastille) %}{% endcall %}</td>
+    <td class="rv-r">
+      <span class="rv-ligne-actions">
+        <a class="rv-btn rv-btn--icon" href="/chantiers/{{ l.id }}" aria-label="Ouvrir le {{ crate::profil::mot("chantier") }} {{ l.numero }}" title="Ouvrir">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
+        <details class="rv-menu-wrap">
+          <summary class="rv-btn rv-btn--icon" aria-label="Plus d'actions sur le {{ crate::profil::mot("chantier") }} {{ l.numero }}" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
+          <div class="rv-menu">
+            <a class="rv-menu-item" href="/chantiers/{{ l.id }}">Tableau de bord du {{ crate::profil::mot("chantier") }}</a>
+            <a class="rv-menu-item" href="/chantiers/{{ l.id }}/devis">Devis et avenants</a>
+            <a class="rv-menu-item" href="/chantiers/{{ l.id }}/finances">Finances (avancements, factures)</a>
           </div>
-        </td>
-      </tr>
-      {% else %}
-      <tr class="vide">
-        <td colspan="8">Aucun {{ crate::profil::mot("chantier") }} trouvé.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+        </details>
+      </span>
+    </td>
+  </tr>
+  {% else %}
+  {% call ui::ligne_vide(8, format!("Aucun {} trouvé. Un {} se crée en acceptant un devis.", crate::profil::mot("chantier"), crate::profil::mot("chantier"))) %}{% endcall %}
+  {% endfor %}
+{% endcall %}
 
-<div class="u-pied">
-  {% call ui::par_page() %}{% endcall %}
-  <span>{{ liste.total }} {{ crate::profil::mot("chantier") }}{% if liste.total > 1 %}s{% endif %}</span>
-  <div class="u-totaux">
-    <div><small>Devis + avenants HT</small><strong>{{ liste.total_ht }}</strong></div>
-    <div><small>Reste à facturer HT</small><strong>{{ liste.reste_a_facturer }}</strong></div>
-    <div><small>Reste à recevoir TTC</small><strong style="color:#0B6371">{{ liste.reste_a_recevoir }}</strong></div>
+<div class="rv-pied">
+  <span><span class="rv-num">{{ liste.total }}</span> {{ crate::profil::mot("chantier") }}{% if liste.total > 1 %}s{% endif %}</span>
+  <div class="rv-pied-totaux">
+    <span>Devis + avenants HT<b>{{ liste.total_ht }}</b></span>
+    <span>Reste à facturer HT<b>{{ liste.reste_a_facturer }}</b></span>
+    <span>Reste à recevoir TTC<b>{{ liste.reste_a_recevoir }}</b></span>
   </div>
-  <div class="u-pages">
+  <div class="rv-pages">
     {% if liste.page > 1 %}
-    <a href="/chantiers?{{ liste.requete }}&page={{ liste.page - 1 }}"
+    <a class="rv-btn rv-btn--ghost rv-btn--sm" href="/chantiers?{{ liste.requete }}&page={{ liste.page - 1 }}"
        hx-get="/chantiers?{{ liste.requete }}&page={{ liste.page - 1 }}"
        hx-target="#liste" hx-push-url="true" aria-label="Page précédente">←</a>
     {% endif %}
-    <span class="actif">Page {{ liste.page }} / {{ liste.pages }}</span>
+    <span>Page <span class="rv-num">{{ liste.page }} / {{ liste.pages }}</span></span>
     {% if liste.page < liste.pages %}
-    <a href="/chantiers?{{ liste.requete }}&page={{ liste.page + 1 }}"
+    <a class="rv-btn rv-btn--ghost rv-btn--sm" href="/chantiers?{{ liste.requete }}&page={{ liste.page + 1 }}"
        hx-get="/chantiers?{{ liste.requete }}&page={{ liste.page + 1 }}"
        hx-target="#liste" hx-push-url="true" aria-label="Page suivante">→</a>
     {% endif %}

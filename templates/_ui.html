@@ -127,10 +127,11 @@
 </div>{% endmacro %}
 
 {# ── Tableau de consultation (fiche Table) ────────────────────────────────
-   colonnes : « N°|Client|Montant TTC:n|Statut » (« :n » = colonne de nombres, à droite en mono).
+   colonnes : « N°|Client|Montant TTC:n|Statut|Actions:cache » (« :n » = colonne de nombres, à droite en mono ;
+   « :cache » = titre lu seulement par les lecteurs d'écran).
    Les lignes viennent du bloc appelant : {% call ui::tableau("…") %}<tr>…</tr>{% endcall %}. #}
 {% macro tableau(colonnes) %}<div class="rv-table-wrap"><table class="rv-table">
-  <thead><tr>{% for c in crate::composants::colonnes(colonnes) %}<th scope="col"{% if c.nombre %} class="rv-r"{% endif %}>{{ c.titre }}</th>{% endfor %}</tr></thead>
+  <thead><tr>{% for c in crate::composants::colonnes(colonnes) %}<th scope="col"{% if c.nombre || c.cache %} class="rv-r"{% endif %}>{% if c.cache %}<span class="rv-sr">{{ c.titre }}</span>{% else %}{{ c.titre }}{% endif %}</th>{% endfor %}</tr></thead>
   <tbody>{{ caller() }}</tbody>
 </table></div>{% endmacro %}
 {# Une cellule de montant (centimes → « 4 431,84 € »). #}
@@ -162,3 +163,10 @@
   <div class="rv-totals-row rv-totals-sum"><span>Total TTC</span><span>{{ r.ttc }}</span></div>
   <div class="rv-totals-hors">{{ caller() }}</div>
 </div>{% endmacro %}
+
+{# ── En-tête d'un écran de consultation (étape 3) ─────────────────────────
+   Un seul titre de 30 px, une ligne de contexte, les actions (bloc appelant : au plus deux boutons visibles). #}
+{% macro tete(titre, texte = "", surtitre = "") %}<header class="rv-tete">
+  <div class="rv-tete-texte">{% if !surtitre.is_empty() %}<div class="rv-eyebrow">{{ surtitre }}</div>{% endif %}<h1>{{ titre }}</h1>{% if !texte.is_empty() %}<p>{{ texte }}</p>{% endif %}</div>
+  <div class="rv-actions">{{ caller() }}</div>
+</header>{% endmacro %}

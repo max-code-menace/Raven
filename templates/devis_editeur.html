@@ -4,8 +4,8 @@
 
 {% block title %}{{ barre.titre }} · Raven{% endblock %}
 {% block rail %}rv-side--rail{% endblock %}
-{% block nav_devis %}{% if !avenant %}actif{% endif %}{% endblock %}
-{% block nav_chantiers %}{% if avenant %}actif{% endif %}{% endblock %}
+{% block nav_devis %}{% if !avenant %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if avenant %}aria-current="page"{% endif %}{% endblock %}
 
 {% block entete %}{% include "_devis_entete.html" %}{% endblock %}
 

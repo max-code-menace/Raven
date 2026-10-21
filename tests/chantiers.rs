@@ -161,7 +161,7 @@ async fn la_liste_montre_les_chantiers_en_cours_par_defaut(options: PgPoolOption
     assert!(!page.contains("<html"), "htmx ne reçoit que le tableau");
 
     let page = lire_htmx(&s, "/chantiers?statut=tous").await;
-    assert!(page.contains("C44") && page.contains("PL45") && page.contains("2 chantiers"));
+    assert!(page.contains("C44") && page.contains("PL45") && page.contains("rv-num\">2</span> chantiers"));
 
     let page = lire_htmx(&s, "/chantiers?statut=tous&q=client%20b").await;
     assert!(page.contains("C44") && !page.contains("PL45"));

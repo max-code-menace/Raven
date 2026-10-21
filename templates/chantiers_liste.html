@@ -2,55 +2,33 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}{{ crate::profil::mot("Chantiers") }} · Raven{% endblock %}
-{% block nav_chantiers %}actif{% endblock %}
+{% block nav_chantiers %}aria-current="page"{% endblock %}
+{% block fond %}rv-papier{% endblock %}
 
 {% block entete %}
-<header class="u-top">
-  <div class="u-top-ligne">
-    {% call ui::titre_liste("chantiers", crate::profil::mot("Chantiers")) %}{% endcall %}
-    <div class="u-actions">
-      <span class="u-petit u-muet">Un {{ crate::profil::mot("chantier") }} se crée en acceptant un devis.</span>
-      <details class="u-menu">
-        <summary class="btn u-ib" style="width:36px;height:36px;border-color:#CDD1CD;background:#fff" aria-label="Plus d'options" title="Plus d'options">{% call ui::points() %}{% endcall %}</summary>
-        <div class="u-menu-liste">
-          {% call ui::bientot("Affichage en vignettes", "bientôt") %}{% endcall %}
-          {% call ui::bientot("Exporter la liste (Excel)", "bientôt") %}{% endcall %}
-        </div>
-      </details>
-    </div>
-  </div>
-</header>
+{% call ui::tete(crate::profil::mot("Chantiers"), format!("Un {} se crée en acceptant un devis.", crate::profil::mot("chantier"))) %}{% endcall %}
 {% endblock %}
 
 {% block content %}
-<section class="u-card">
-  {# La recherche rafraîchit le tableau en direct (htmx) ; « Appliquer » recharge la page pour mettre à jour la pastille. #}
-  <form class="u-outils" method="get" action="/chantiers">
-    <label class="u-recherche">
-      {% call ui::icone("recherche", 16) %}{% endcall %}
-      <input class="input input-bordered w-full" type="search" name="q" value="{{ liste.q }}" placeholder="Rechercher (n°, référence, client, adresse)" aria-label="Rechercher" autocomplete="off"
-             hx-get="/chantiers" hx-trigger="input changed delay:300ms, search" hx-target="#liste" hx-include="closest form" hx-push-url="true">
-    </label>
-    <details class="u-menu">
-      <summary class="btn">{% call ui::icone("filtres", 16) %}{% endcall %}Filtres{% call ui::icone("bas", 14) %}{% endcall %}</summary>
-      <div class="u-menu-liste gauche u-menu-form">
-        <label class="form-control w-full">
-          <span class="u-lbl">Statut</span>
-          <select class="select select-bordered w-full" name="statut" aria-label="Statut">
-            {% for s in liste.statuts %}
-            <option value="{{ s.valeur }}"{% if s.choisi %} selected{% endif %}>{{ s.libelle }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <button class="btn btn-primary btn-sm self-end" type="submit">Appliquer</button>
-      </div>
-    </details>
-    {% for s in liste.statuts %}{% if s.choisi && s.valeur != "tous" %}
-    <a class="u-pastille-filtre" href="/chantiers?q={{ liste.q|urlencode }}&statut=tous" title="Retirer le filtre">{{ s.libelle }} <span aria-hidden="true">×</span></a>
-    {% endif %}{% endfor %}
-  </form>
-  <div id="liste">
-    {% include "_chantiers_tableau.html" %}
-  </div>
-</section>
+{# La recherche rafraîchit le tableau en direct (htmx) ; « Appliquer » recharge la page pour mettre à jour la pastille. #}
+<form class="rv-outils" method="get" action="/chantiers">
+  <label class="rv-recherche">
+    {% call ui::icone("recherche", 16) %}{% endcall %}
+    <input class="rv-input" type="search" name="q" value="{{ liste.q }}" placeholder="N°, référence, client, adresse" aria-label="Rechercher" autocomplete="off"
+           hx-get="/chantiers" hx-trigger="input changed delay:300ms, search" hx-target="#liste" hx-include="closest form" hx-push-url="true">
+  </label>
+  <details class="rv-menu-wrap">
+    <summary class="rv-btn rv-btn--ghost">{% call ui::icone("filtres", 16) %}{% endcall %}Filtres{% call ui::icone("bas", 14) %}{% endcall %}</summary>
+    <div class="rv-menu rv-menu--gauche rv-menu--form">
+      {% call ui::champ_liste("filtre-statut", "Statut", "statut", liste.statuts) %}{% endcall %}
+      {% call ui::bouton("Appliquer", "ink sm") %}{% endcall %}
+    </div>
+  </details>
+  {% for s in liste.statuts %}{% if s.choisi && s.valeur != "tous" %}
+  <a class="rv-tag rv-tag--ink rv-filtre" href="/chantiers?q={{ liste.q|urlencode }}&statut=tous" title="Retirer le filtre">{{ s.libelle }} <span aria-hidden="true">×</span></a>
+  {% endif %}{% endfor %}
+</form>
+<div id="liste">
+  {% include "_chantiers_tableau.html" %}
+</div>
 {% endblock %}

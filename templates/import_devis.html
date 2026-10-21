@@ -2,8 +2,8 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}Importer depuis Excel · {{ titre }} · Raven{% endblock %}
-{% block nav_devis %}{% if !avenant %}actif{% endif %}{% endblock %}
-{% block nav_chantiers %}{% if avenant %}actif{% endif %}{% endblock %}
+{% block nav_devis %}{% if !avenant %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if avenant %}aria-current="page"{% endif %}{% endblock %}
 
 {% block entete %}
 <header class="u-top">

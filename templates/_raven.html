@@ -235,8 +235,8 @@
 a.rv-nav:hover, a.rv-tab:hover, a.rv-menu-item:hover, a.rv-btn:hover { color: var(--ink); }
 a.rv-btn--ink:hover { color: var(--on-ink); }
 a.rv-tab { display: inline-flex; align-items: center; text-decoration: none; }
-/* Une entrée de menu allumée par un écran (blocs nav_… de base.html) : comme is-on. */
-.rv-nav.actif { background: var(--soft); font-weight: 600; border-left-color: var(--ink); }
+/* Une entrée de menu allumée par un écran (blocs nav_… de base.html, qui écrivent aria-current) : comme is-on. */
+.rv-nav[aria-current="page"] { background: var(--soft); font-weight: 600; border-left-color: var(--ink); }
 .rv-nav svg { flex: none; }
 .rv-nav form, form.rv-nav-form { margin: 0; }
 
@@ -258,6 +258,67 @@ a.rv-kpi.rv-kpi--plate:hover { background: var(--acc-hover); }
 .rv-table tr.rv-vide td { height: auto; padding: 28px 14px; text-align: center; color: var(--mut); white-space: normal; }
 .rv-totals-hors { margin-top: 12px; color: var(--mut); font-size: 13px; }
 .rv-totals-hors:empty { display: none; }
+/* Écrans de consultation (étape 3) : page blanche, titre de 30 px, zone de travail jusqu'à size-content. */
+body.rv-papier { background: var(--paper); }
+.rv-papier .u-body { padding: 8px 40px 64px; gap: var(--space-6); max-width: calc(var(--size-content) + 80px); }
+.rv-tete { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px 24px;
+  padding: 32px 40px 16px; max-width: var(--size-content); }
+.rv-tete-texte { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rv-tete h1 { margin: 0; font: 700 30px/1.15 var(--font-sans); letter-spacing: -.01em; }
+.rv-tete p { margin: 0; color: var(--mut); }
+.rv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rv-actions form, .rv-outils form { margin: 0; }
+.rv-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rv-section > h2 { margin: 0; font: 700 17px/1.35 var(--font-sans); }
+.rv-deux { display: flex; flex-wrap: wrap; gap: var(--space-6); align-items: flex-start; }
+.rv-deux > * { flex: 1 1 360px; min-width: 0; }
+.rv-tuiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-5); }
+/* Barre d'outils d'une liste : recherche, filtres, pastilles de filtre. */
+.rv-outils { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.rv-recherche { position: relative; flex: 0 1 360px; }
+.rv-recherche svg { position: absolute; left: 13px; top: 14px; color: var(--mut); pointer-events: none; }
+.rv-recherche .rv-input { padding-left: 38px; }
+.rv-filtre { gap: 6px; text-decoration: none; height: 30px; }
+.rv-filtre:hover { color: var(--ink); background: var(--soft); }
+/* Menus « … » et panneau de filtres ouverts par <details> (pas de JavaScript). */
+details.rv-menu-wrap > summary { list-style: none; }
+details.rv-menu-wrap > summary::-webkit-details-marker { display: none; }
+.rv-menu--gauche { left: 0; right: auto; }
+.rv-menu--form { padding: 16px; gap: 14px; min-width: 320px; white-space: normal; }
+.rv-menu form { margin: 0; }
+.rv-coches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.rv-coche { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.rv-coche input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
+.rv-table .rv-statut { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.rv-table .rv-statut small { font: 400 12px/1 var(--font-mono); color: var(--mut); }
+.rv-table td a.rv-lien { color: var(--ink); font-weight: 600; text-decoration: none; }
+.rv-table td a.rv-lien:hover { text-decoration: underline; }
+.rv-table .rv-ligne-actions { display: inline-flex; gap: 2px; }
+/* Tableau de bord : bande de quatre chiffres, alertes, ouvertures. */
+.rv-band-val { font: 500 22px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rv-band-val--bad { color: var(--bad); }
+.rv-band-cell a.rv-hint { color: var(--mut); text-decoration: none; }
+.rv-band-cell a.rv-hint:hover { color: var(--ink); text-decoration: underline; }
+.rv-table td.rv-alerte { white-space: normal; font-weight: 600; padding-top: 10px; padding-bottom: 10px; }
+.rv-ouverture { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 14px; }
+.rv-ouverture:hover { color: var(--ink); background: var(--soft); }
+.rv-ouverture small { color: var(--mut); font-size: 12px; white-space: nowrap; }
+/* Barres du chiffre d'affaires par mois (Statistiques) : en encre, un mois négatif en rouge. */
+.rv-barres { display: flex; align-items: flex-end; gap: 6px; height: 180px; border-bottom: 1px solid var(--ink); }
+.rv-barre { flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.rv-barre i { display: block; width: 100%; max-width: 40px; background: var(--ink); border-radius: 2px 2px 0 0; }
+.rv-barre i.rv-barre--neg { background: var(--bad); }
+.rv-barres-mois { display: flex; gap: 6px; font: 500 11px var(--font-mono); color: var(--mut); }
+.rv-barres-mois span { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* Un menu « … » ouvert dans un tableau défilant ne doit pas être coupé. */
+.rv-table-wrap:has(details[open]) { overflow: visible; }
+/* Texte lu seulement par les lecteurs d'écran. */
+.rv-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Pied d'une liste : nombre, totaux, pages. */
+.rv-pied { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 12px 2px 0; color: var(--mut); font-size: 13.5px; }
+.rv-pied-totaux { display: flex; flex-wrap: wrap; gap: 24px; }
+.rv-pied-totaux b { margin-left: 6px; color: var(--ink); font: 600 14px var(--font-mono); font-variant-numeric: tabular-nums; }
+.rv-pages { display: flex; align-items: center; gap: 6px; }
 /* Onglets d'un espace (Factures, Paiements, Réglages), en haut de l'en-tête. */
 .u-top > .rv-tabs:first-child { margin: -8px 0 14px; }
 

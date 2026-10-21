@@ -118,6 +118,7 @@ pub struct Ligne {
     pub montant_ht: String,
     pub statut: &'static str,
     pub classe_statut: &'static str,
+    pub pastille: crate::composants::Pastille,
     pub date_statut: String,
     /// Le devis attend encore la décision du client : le menu propose Accepter / Refuser.
     pub decidable: bool,
@@ -137,6 +138,7 @@ impl From<LigneBase> for Ligne {
             montant_ht: format_euros(l.montant_ht_cents),
             statut: libelle,
             classe_statut: classe,
+            pastille: crate::composants::pastille_devis(&l.statut),
             // Un brouillon n'a pas de date de statut à montrer.
             date_statut: if l.statut == "brouillon" { String::new() } else { l.statut_date },
         }

@@ -3,8 +3,8 @@
 
 {% block title %}{{ titre }} · Raven{% endblock %}
 {% block rail %}rv-side--rail{% endblock %}
-{% block nav_factures %}{% if genre != "Note de crédit" %}actif{% endif %}{% endblock %}
-{% block nav_notes %}{% if genre == "Note de crédit" %}actif{% endif %}{% endblock %}
+{% block nav_factures %}{% if genre != "Note de crédit" %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_notes %}{% if genre == "Note de crédit" %}aria-current="page"{% endif %}{% endblock %}
 
 {% block entete %}
 <header class="u-top avec-onglets">

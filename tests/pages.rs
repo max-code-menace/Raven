@@ -451,6 +451,10 @@ async fn le_menu_a_huit_espaces_qui_menent_tous_a_un_ecran(options: PgPoolOption
         avant = position;
     }
     assert!(page.contains("rv-eyebrow rv-side-groupe\">Données") && !page.contains("rv-side rv-side--rail"));
+    // L'espace de l'écran est annoncé aux lecteurs d'écran, et lui seul.
+    assert!(page.contains("<a class=\"rv-nav\" aria-current=\"page\" href=\"/\"") && page.matches("aria-current=\"page\" href").count() == 1);
+    let (_, devis) = lire(&s, "/devis").await;
+    assert!(devis.contains("<a class=\"rv-nav\" aria-current=\"page\" href=\"/devis\""));
     for adresse in ["/", "/devis", "/factures", "/factures/rappels", "/chantiers", "/entreprises", "/bibliotheque", "/statistiques", "/donnees/importer", "/exports", "/parametres/societe"] {
         assert!(page.contains(&format!("href=\"{adresse}\"")), "{adresse} absent du menu");
         assert_eq!(lire(&s, adresse).await.0, StatusCode::OK, "{adresse}");

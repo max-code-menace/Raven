@@ -2,7 +2,7 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}{% if id.is_some() %}Modifier un ouvrage{% else %}Nouvel ouvrage{% endif %} · Bibliothèque · Raven{% endblock %}
-{% block nav_bibliotheque %}actif{% endblock %}
+{% block nav_bibliotheque %}aria-current="page"{% endblock %}
 
 {% block entete %}
 <header class="u-top">

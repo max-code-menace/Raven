@@ -172,7 +172,7 @@ async fn les_avenants_ne_sont_pas_dans_la_liste_des_devis(options: PgPoolOptions
     let av = nouvel_avenant(&s, b.chantier).await;
     sqlx::query("UPDATE devis SET reference = 'Travaux non exécutés' WHERE id = $1").bind(av).execute(&pool).await.unwrap();
     let (_, page) = lire(&s, "/devis").await;
-    assert!(page.contains("PL45") && !page.contains("Travaux non exécutés") && page.contains("1 devis"));
+    assert!(page.contains("PL45") && !page.contains("Travaux non exécutés") && page.contains("rv-num\">1</span> devis"));
 }
 
 // ─── L'exemple réel ─────────────────────────────────────────────────────────

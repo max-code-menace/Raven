@@ -89,15 +89,22 @@ pub struct Colonne {
     pub titre: String,
     /// Colonne de nombres : alignée à droite, en mono.
     pub nombre: bool,
+    /// Titre lu par les lecteurs d'écran seulement (colonne des boutons d'une ligne).
+    pub cache: bool,
 }
 
-/// « N°|Client|Montant TTC:n|Statut » → quatre colonnes, la troisième de nombres.
+/// « N°|Client|Montant TTC:n|Statut|Actions:cache » → cinq colonnes, la troisième de nombres, la dernière sans titre visible.
 pub fn colonnes(spec: impl AsRef<str>) -> Vec<Colonne> {
     spec.as_ref()
         .split('|')
-        .map(|c| match c.strip_suffix(":n") {
-            Some(titre) => Colonne { titre: titre.to_string(), nombre: true },
-            None => Colonne { titre: c.to_string(), nombre: false },
+        .map(|c| {
+            if let Some(titre) = c.strip_suffix(":n") {
+                Colonne { titre: titre.to_string(), nombre: true, cache: false }
+            } else if let Some(titre) = c.strip_suffix(":cache") {
+                Colonne { titre: titre.to_string(), nombre: false, cache: true }
+            } else {
+                Colonne { titre: c.to_string(), nombre: false, cache: false }
+            }
         })
         .collect()
 }
@@ -222,8 +229,9 @@ mod tests {
 
     #[test]
     fn colonnes_et_montants() {
-        let c = colonnes("N°|Montant TTC:n");
+        let c = colonnes("N°|Montant TTC:n|Actions:cache");
         assert_eq!((c[0].titre.as_str(), c[0].nombre, c[1].titre.as_str(), c[1].nombre), ("N°", false, "Montant TTC", true));
+        assert!(c[2].cache && c[2].titre == "Actions");
         assert_eq!(euros(443_184), "4\u{a0}431,84\u{a0}€");
         assert_eq!(euros(&-7), "-0,07\u{a0}€");
     }
