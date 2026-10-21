@@ -6,6 +6,7 @@
 
 {% block entete %}
 <header class="u-top">
+  {% call ui::onglets_reglages("equipe") %}{% endcall %}
   <div class="u-top-ligne">
     <div class="u-titre">
       <span class="u-ic">{% call ui::icone("reglages", 20) %}{% endcall %}</span>

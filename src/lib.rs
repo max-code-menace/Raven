@@ -15,6 +15,7 @@ pub mod demarrage;
 pub mod calcul;
 pub mod catalogue;
 pub mod devis;
+pub mod donnees;
 pub mod devis_apercu;
 pub mod devis_copie;
 pub mod devis_editeur;
@@ -155,6 +156,7 @@ fn pages() -> Router<AppState> {
         .merge(rappels::routes())
         .merge(recurrences::routes())
         .merge(exports::routes())
+        .merge(donnees::routes())
         .merge(page_client::routes())
         .merge(comptes::routes())
         .merge(demarrage::routes())

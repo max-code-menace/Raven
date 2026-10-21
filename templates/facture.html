@@ -2,6 +2,7 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}{{ titre }} · Ubifacture{% endblock %}
+{% block rail %}rv-side--rail{% endblock %}
 {% block nav_factures %}{% if genre != "Note de crédit" %}actif{% endif %}{% endblock %}
 {% block nav_notes %}{% if genre == "Note de crédit" %}actif{% endif %}{% endblock %}
 

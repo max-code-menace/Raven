@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ barre.titre }} · Historique · Ubifacture{% endblock %}
+{% block rail %}rv-side--rail{% endblock %}
 {% block nav_devis %}{% if !barre.avenant %}actif{% endif %}{% endblock %}
 {% block nav_chantiers %}{% if barre.avenant %}actif{% endif %}{% endblock %}
 

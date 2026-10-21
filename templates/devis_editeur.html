@@ -3,6 +3,7 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}{{ barre.titre }} · Ubifacture{% endblock %}
+{% block rail %}rv-side--rail{% endblock %}
 {% block nav_devis %}{% if !avenant %}actif{% endif %}{% endblock %}
 {% block nav_chantiers %}{% if avenant %}actif{% endif %}{% endblock %}
 

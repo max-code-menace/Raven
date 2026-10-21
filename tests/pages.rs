@@ -68,7 +68,7 @@ async fn la_page_d_accueil_s_affiche(options: PgPoolOptions, connexion: PgConnec
     assert_eq!(statut, StatusCode::OK);
     assert!(corps.contains("Ubifacture"));
     assert!(corps.contains("href=\"/entreprises\""));
-    assert!(corps.contains("href=\"/contacts\""));
+    assert!(lire(&site(&pool), "/entreprises").await.1.contains("href=\"/contacts\""), "Clients › Contacts");
 }
 
 #[sqlx::test]
@@ -435,4 +435,46 @@ async fn un_contact_inexistant_donne_404(options: PgPoolOptions, connexion: PgCo
     let pool = commun::reserve(options, connexion).await;
     let (statut, _) = lire(&site(&pool), "/contacts/999/modifier").await;
     assert_eq!(statut, StatusCode::NOT_FOUND);
+}
+
+// Refonte du design, étape 1 : le menu à huit espaces, Données et le compte ; chaque entrée mène à un écran qui répond.
+#[sqlx::test]
+async fn le_menu_a_huit_espaces_qui_menent_tous_a_un_ecran(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let s = site(&pool);
+    let (statut, page) = lire(&s, "/").await;
+    assert_eq!(statut, StatusCode::OK);
+    let mut avant = 0;
+    for libelle in ["Accueil", "Devis", "Factures", "Paiements", "Chantiers", "Clients", "Bibliothèque", "Statistiques", "Importer", "Exporter", "Réglages", "Se déconnecter"] {
+        let position = page.find(&format!("<span class=\"rv-nav-txt\">{libelle}</span>")).unwrap_or_else(|| panic!("{libelle} absent du menu"));
+        assert!(position > avant, "{libelle} n'est pas à sa place");
+        avant = position;
+    }
+    assert!(page.contains("rv-eyebrow rv-side-groupe\">Données") && !page.contains("rv-side rv-side--rail"));
+    for adresse in ["/", "/devis", "/factures", "/factures/rappels", "/chantiers", "/entreprises", "/bibliotheque", "/statistiques", "/donnees/importer", "/exports", "/parametres/societe"] {
+        assert!(page.contains(&format!("href=\"{adresse}\"")), "{adresse} absent du menu");
+        assert_eq!(lire(&s, adresse).await.0, StatusCode::OK, "{adresse}");
+    }
+
+    // Données › Importer rassemble les imports qui existent.
+    let (_, page) = lire(&s, "/donnees/importer").await;
+    for adresse in ["/entreprises/import", "/contacts/import", "/bibliotheque/import"] {
+        assert!(page.contains(&format!("href=\"{adresse}\"")), "{adresse}");
+    }
+    assert!(page.contains("action=\"/devis/import\""), "l'import de métrés est allumé pour l'organisation n° 1");
+
+    // Les espaces regroupent les anciens écrans par des onglets.
+    let (_, page) = lire(&s, "/factures/recurrences").await;
+    assert!(page.contains("href=\"/factures?genre=note_credit\">Notes de crédit") && page.contains("is-on\" href=\"/factures/recurrences\""));
+    let (_, page) = lire(&s, "/factures/rappels").await;
+    assert!(page.contains("is-on\" href=\"/factures/rappels\" aria-current=\"page\">À recevoir") && page.contains("href=\"/achats/recues\">À payer"));
+    let (_, page) = lire(&s, "/parametres/emails").await;
+    assert!(page.contains("href=\"/parametres/peppol\">Peppol") && page.contains("is-on\" href=\"/parametres/emails\""));
+    let (_, page) = lire(&s, "/contacts").await;
+    assert!(page.contains("<h1>Clients</h1>") && page.contains("href=\"/entreprises\">Entreprises"));
+
+    // L'éditeur de devis replie le menu en rail.
+    let (_, lieu, _) = poster(&s, "/devis", "").await;
+    let (statut, page) = lire(&s, &lieu.unwrap()).await;
+    assert!(statut == StatusCode::OK && page.contains("rv-side rv-side--rail"));
 }
