@@ -108,13 +108,17 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés. Dossier du proj
 
 Après la V1, seulement si les utilisateurs le demandent : réception Peppol (factures fournisseurs à valider et rattacher), CodaBox (extraits CODA, rapprochement par la communication structurée), statistiques avancées.
 
-## Prochaine session (point de reprise, 19/10/2026)
-**Où on en est** : étapes 0 à 3 de la V1 de Raven faites, branche `claude/stoic-allen-z04f7l` (poussée, arbre propre), 387 tests réussis, 0 avertissement. Migrations jusqu'à `0029`.
+## Prochaine session (point de reprise, 20/10/2026)
+**Où on en est** : étapes 0 à 3 de la V1 de Raven faites, conformité belge fusionnée et audit fait, tout est dans `main` (demande de fusion n° 1). Le dépôt GitHub s'appelle **Raven** (`https://github.com/max-code-menace/Raven`, public) ; le dossier, le code et la base gardent le nom `ubifacture`. 438 tests réussis, 0 avertissement. Migrations jusqu'à `0034`.
 
-**Installé chez Mahx le 19/10/2026** : branche récupérée (`eb8d42b`), `cargo test` sur Windows : 387 réussis, 0 échec ; sauvegarde de la vraie base faite avant la migration (`ubifacture-avant-raven.backup` sur le Bureau, 112 Ko, format `pg_dump -F c`, restauration avec `pg_restore`) ; `cargo run` lancé, migrations 0025 à 0029 appliquées aux données d'Ubique, Mahx a confirmé que tout va bien. `pg_dump` : `C:\Program Files\PostgreSQL\16\bin\pg_dump.exe`. Toujours lancer PowerShell normal (pas administrateur) dans le dossier du projet.
+**Installé chez Mahx le 20/10/2026** : `main` récupéré, `cargo test` réussi sous Windows, `cargo run` a appliqué les migrations 0030 à 0034 aux données d'Ubique. Sauvegarde faite avant : `ubifacture-avant-fusion.backup` sur le Bureau (170 Ko). **Sauvegarder avec le compte `postgres`** (`pg_dump.exe -U postgres -F c -f … ubifacture`, mot de passe de l'installation de PostgreSQL, différent de celui de `.env`) : avec `-U ubifacture`, la sécurité au niveau des lignes (`FORCE`) bloque `pg_dump`. En production : un compte de sauvegarde super-utilisateur ou `BYPASSRLS`, jamais celui de l'application.
+
+**Installé chez Mahx le 19/10/2026** (Raven étapes 1 à 3) : branche récupérée (`eb8d42b`), `cargo test` sur Windows : 387 réussis, 0 échec ; sauvegarde de la vraie base faite avant la migration (`ubifacture-avant-raven.backup` sur le Bureau, 112 Ko, format `pg_dump -F c`, restauration avec `pg_restore`) ; `cargo run` lancé, migrations 0025 à 0029 appliquées aux données d'Ubique, Mahx a confirmé que tout va bien. `pg_dump` : `C:\Program Files\PostgreSQL\16\bin\pg_dump.exe`. Toujours lancer PowerShell normal (pas administrateur) dans le dossier du projet.
 
 **Questions ouvertes à Mahx** :
-- Étape 4, contenu de la bibliothèque par secteur : une liste type préparée par Claude (descriptions et unités, sans prix) ou la bibliothèque d'Ubique (209 ouvrages, `docs/vertuoza/captures/inventaire/bibliotheque-vertuoza.csv`) nettoyée et classée ?
+- **À la prochaine session, en premier** : étape 4, contenu de la bibliothèque par secteur. Trois choix proposés le 20/10/2026 : (1) une liste type préparée par Claude pour chaque métier (descriptions et unités, sans prix) ; (2) la bibliothèque d'Ubique (209 ouvrages, `docs/vertuoza/captures/inventaire/bibliotheque-vertuoza.csv`) nettoyée et classée, bâtiment seulement ; (3) **conseillé par Claude** : les ouvrages d'Ubique pour le bâtiment et une liste type pour les autres métiers. Réponse de Mahx attendue.
+- Mahx doit vérifier à l'œil, sur http://127.0.0.1:3001, que les devis, factures et chantiers d'Ubique sont intacts après les migrations 0030 à 0034.
+- Le dépôt Raven est **public** alors que la marque n'est pas vérifiée : à passer en privé si Mahx le souhaite. Les anciennes branches (`claude/stoic-allen-z04f7l`, `claude/great-gauss-bo8bhb`) peuvent être supprimées.
 - À faire valider : mention de franchise « Régime particulier de franchise des petites entreprises. » (comptable) ; catégorie UBL « E » pour la franchise (prestataire Peppol, étape 5).
 - Choix de Claude à confirmer : un compte = une organisation ; import de métrés Excel éteint par défaut pour les nouvelles organisations (allumé pour Ubique).
 
@@ -124,7 +128,7 @@ Après la V1, seulement si les utilisateurs le demandent : réception Peppol (fa
 - Réserve de connexions limitée à 5 (`db::options`) alors que chaque page garde sa connexion (`base::Base`) jusqu'à la fin, PDF et appel à Brevo compris : la rendre réglable (variable d'environnement) et plus grande.
 - Limiter les essais par adresse IP (inscription, connexion, mot de passe oublié) : aujourd'hui seulement par adresse e-mail et 30 inscriptions par heure sur tout le site.
 - `EMAIL_EXPEDITEUR` (validé chez Brevo) obligatoire en production ; case « J'accepte les conditions générales » à l'inscription (pages légales).
-- Tailwind et DaisyUI par CDN à installer localement ; journaux et alertes ; sauvegardes avec restauration testée ; l'utilisateur de la base ne doit être ni super-utilisateur ni BYPASSRLS (test `l_utilisateur_de_la_base_ne_contourne_pas_les_regles`).
+- Tailwind et DaisyUI par CDN à installer localement ; journaux et alertes ; sauvegardes avec restauration testée, par un compte qui contourne la RLS (sinon `pg_dump` échoue) ; l'utilisateur de la base ne doit être ni super-utilisateur ni BYPASSRLS (test `l_utilisateur_de_la_base_ne_contourne_pas_les_regles`).
 - Les tables de comptes (`membres`, `sessions`, `invitations`) n'ont pas de RLS : chaque écran qui les lit filtre explicitement sur l'organisation, et le test d'isolation le vérifie ; toute nouvelle page qui les lit doit faire de même.
 - Relecture de sécurité par un humain avant d'encaisser le premier client.
 
