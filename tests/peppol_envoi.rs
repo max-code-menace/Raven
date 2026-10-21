@@ -246,7 +246,8 @@ async fn inscription_verification_puis_envoi_livre(options: PgPoolOptions, conne
     assert!(r.corps.contains("inscrite et vérifiée"), "{}", r.corps);
 
     // Envoi : l'UBL émis part vers le client, la facture passe à « Envoyée ».
-    assert!(lire(&s, &format!("/factures/{id}"), &cookie).await.corps.contains("Envoyer par Peppol"));
+    let r = lire(&s, &format!("/factures/{id}"), &cookie).await;
+    assert_eq!(r.corps.matches(&format!("action=\"/factures/{id}/peppol\"")).count(), 2, "bouton dans le bloc et dans la barre du bas");
     let r = poster(&s, &format!("/factures/{id}/peppol"), "", &cookie).await;
     assert_eq!(r.lieu, Some(format!("/factures/{id}?ok=peppol#peppol")));
     let (societe_envoi, corps) = etat.lock().unwrap().envois.iter().find(|(s, _)| *s == societe).cloned().unwrap();
@@ -263,6 +264,44 @@ async fn inscription_verification_puis_envoi_livre(options: PgPoolOptions, conne
     assert!(r.corps.contains("La pièce est partie par Peppol.") && r.corps.contains("Livrée") && r.corps.contains("Par Peppol, à 0208:0987654394"), "{}", r.corps);
     assert!(!r.corps.contains("Envoyer par Peppol") && !r.corps.contains("Renvoyer par Peppol"), "déjà partie");
     assert_eq!(poster(&s, &format!("/factures/{id}/peppol"), "", &cookie).await.statut, StatusCode::CONFLICT, "pas deux fois");
+}
+
+#[sqlx::test]
+async fn valider_et_envoyer_par_peppol_en_un_clic(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let etat = faux();
+    let pool = commun::reserve(options, connexion).await;
+    let s = application(AppState { db: pool.clone() });
+    let cookie = organisation(&pool, &s).await;
+    poster(&s, "/parametres/peppol/inscrire", "", &cookie).await;
+    let societe: String = sqlx::query_scalar("SELECT peppol_societe_id FROM organisations WHERE id = 2").fetch_one(&pool).await.unwrap();
+    verifier(&etat, &societe);
+    lire(&s, "/parametres/peppol", &cookie).await;
+
+    // Un brouillon prêt : le menu « Valider… » propose l'envoi par Peppol.
+    let mut db = Base::ouvrir(&pool, 2).await.unwrap();
+    let client: i64 = sqlx::query_scalar(
+        "INSERT INTO entreprises (nom, profils, numero_tva, rue, numero, code_postal, ville) VALUES ('Client SA', '{client}', 'BE0987654394', 'Rue A', '1', '1000', 'Bruxelles') RETURNING id",
+    )
+    .fetch_one(&mut *db)
+    .await
+    .unwrap();
+    let condition: i64 = sqlx::query_scalar("SELECT id FROM conditions_paiement WHERE \"type\" = 'comptant'").fetch_one(&mut *db).await.unwrap();
+    let taux: i64 = sqlx::query_scalar("SELECT id FROM taux_tva WHERE taux_centiemes = 2100").fetch_one(&mut *db).await.unwrap();
+    let aujourdhui: String = sqlx::query_scalar("SELECT ((now() AT TIME ZONE 'Europe/Brussels')::date)::text").fetch_one(&mut *db).await.unwrap();
+    let lieu = poster(&s, "/factures", "", &cookie).await.lieu.unwrap();
+    let id: i64 = lieu.strip_prefix("/factures/").unwrap().split('?').next().unwrap().parse().unwrap();
+    poster(&s, &format!("/factures/{id}"), &format!("date={aujourdhui}&reference=Travaux&client=e{client}&conditions_paiement_id={condition}"), &cookie).await;
+    poster(&s, &format!("/factures/{id}/lignes"), "genre=poste", &cookie).await;
+    let ligne: i64 = sqlx::query_scalar("SELECT max(id) FROM facture_lignes WHERE facture_id = $1").bind(id).fetch_one(&mut *db).await.unwrap();
+    poster(&s, &format!("/factures/{id}/lignes/{ligne}"), &format!("description=Travaux&quantite=1&prix_unitaire=100&taux_tva_id={taux}"), &cookie).await;
+    let r = lire(&s, &format!("/factures/{id}"), &cookie).await;
+    assert!(r.corps.contains("Valider et envoyer par Peppol") && r.corps.contains("Elle partira par Peppol une fois validée"), "{}", r.corps);
+
+    // Un clic : validée, numérotée et livrée.
+    assert_eq!(poster(&s, &format!("/factures/{id}/valider"), "puis=peppol", &cookie).await.lieu, Some(format!("/factures/{id}?ok=peppol#peppol")));
+    assert_eq!(statut_envoi(&pool, id).await, vec![("livre".to_string(), String::new())]);
+    let statut: String = sqlx::query_scalar("SELECT statut::text FROM factures WHERE id = $1").bind(id).fetch_one(&mut *db).await.unwrap();
+    assert_eq!(statut, "envoyee");
 }
 
 #[sqlx::test]

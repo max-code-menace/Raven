@@ -112,6 +112,8 @@ pub struct Bloc {
     pub reprise: bool,
     /// Ce qui empêche l'envoi (vide : la facture peut partir par Peppol).
     pub problemes: Vec<String>,
+    /// Brouillon : pas encore de numéro, la facture partira après sa validation.
+    pub brouillon: bool,
     /// L'envoi par Peppol est configuré sur ce serveur (clé Recommand).
     pub envoi_actif: bool,
     /// L'organisation est inscrite et vérifiée chez Recommand.
@@ -125,9 +127,14 @@ impl Bloc {
         !self.particulier && !self.reprise && self.problemes.is_empty()
     }
 
-    /// Le bouton « Envoyer par Peppol » : prête, serveur configuré, organisation vérifiée, pas déjà partie.
+    /// La facture pourra partir par Peppol : prête, serveur configuré, organisation vérifiée.
+    pub fn pourra_partir(&self) -> bool {
+        self.prete() && self.envoi_actif && self.organisation_verifiee
+    }
+
+    /// Le bouton « Envoyer par Peppol » : validée, pourra partir, pas déjà partie.
     pub fn peut_envoyer(&self) -> bool {
-        self.prete() && self.envoi_actif && self.organisation_verifiee && !self.envois.iter().any(|e| e.statut != "echec")
+        !self.brouillon && self.pourra_partir() && !self.envois.iter().any(|e| e.statut != "echec")
     }
 
     /// Un envoi attend encore la confirmation de livraison.
@@ -171,11 +178,9 @@ async fn envois(db: &mut PgConnection, facture_id: i64) -> Result<Vec<LigneEnvoi
         .collect())
 }
 
-/// Les contrôles d'une facture (ou note de crédit) validée avant son envoi par Peppol. `None` pour un brouillon.
+/// Les contrôles d'une facture (ou note de crédit) avant son envoi par Peppol, dès le brouillon : on voit ce qu'il
+/// faut corriger avant de valider.
 pub(crate) async fn controler(db: &mut PgConnection, f: &Facture) -> Result<Option<Bloc>, sqlx::Error> {
-    if f.numero.is_none() {
-        return Ok(None);
-    }
     let client: Option<(Option<String>, Option<String>, String)> = match (f.client_entreprise_id, f.client_contact_id) {
         (Some(e), _) => sqlx::query_as("SELECT peppol_id, numero_tva, pays FROM entreprises WHERE id = $1").bind(e).fetch_optional(&mut *db).await?,
         (_, Some(c)) => sqlx::query_as("SELECT peppol_id, numero_tva, pays FROM contacts WHERE id = $1").bind(c).fetch_optional(&mut *db).await?,
@@ -216,6 +221,7 @@ pub(crate) async fn controler(db: &mut PgConnection, f: &Facture) -> Result<Opti
         particulier,
         reprise: f.reprise,
         problemes,
+        brouillon: f.numero.is_none(),
         envoi_actif: envoi_actif(),
         organisation_verifiee: organisation_verifiee.unwrap_or(false),
         envois: envois(&mut *db, f.id).await?,
@@ -398,8 +404,11 @@ fn statut_document(v: &Value) -> (&'static str, String) {
 }
 
 /// Envoie une facture validée par Peppol : l'UBL tel qu'il a été émis (archive légale), adressé au client.
-async fn envoyer_facture(db: &mut PgConnection, f: &Facture) -> Result<bool, Erreur> {
+pub(crate) async fn envoyer_facture(db: &mut PgConnection, f: &Facture) -> Result<bool, Erreur> {
     let bloc = controler(&mut *db, f).await?.ok_or(Erreur::conflit("Seule une facture validée part par Peppol."))?;
+    if bloc.brouillon {
+        return Err(Erreur::conflit("Seule une facture validée part par Peppol : validez-la d'abord."));
+    }
     if bloc.reprise {
         return Err(Erreur::conflit("Une facture reprise d'un autre logiciel n'est pas renvoyée par Peppol."));
     }

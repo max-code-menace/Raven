@@ -191,12 +191,13 @@
       </div>
       <div class="u-card-b">
         {% if a_completer.is_empty() %}
-        <p class="u-petit">Tout est complet. « Valider » donne le numéro définitif ; « Valider et envoyer par e-mail » ouvre aussitôt l'envoi au client.</p>
+        <p class="u-petit">Tout est complet. « Valider » (en bas à droite) donne le numéro définitif, puis peut envoyer la facture par e-mail ou par Peppol.</p>
         {% else %}
         <p class="u-petit font-semibold">À compléter avant de valider :</p>
         {% for m in a_completer %}
         <div class="flex gap-2 items-start text-[13.5px]"><span class="text-[#953A0A] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
         {% endfor %}
+        <p class="u-petit u-muet" style="margin:8px 0 0">Vous avez rempli les informations générales ? Cliquez sur « Enregistrer les informations » pour qu'elles comptent.</p>
         {% endif %}
       </div>
     </section>
@@ -320,6 +321,9 @@
         {% if !p.client.is_empty() %}<p class="u-petit" style="margin:0">Adresse Peppol du client : <span class="mono">{{ p.client }}</span></p>{% endif %}
         {% if p.prete() %}
         {% if p.envois.is_empty() %}<p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Prête pour Peppol</span></p>{% endif %}
+        {% if p.brouillon %}
+        {% if p.pourra_partir() %}<p class="u-petit u-muet" style="margin:0">Elle partira par Peppol une fois validée : menu « Valider… » › « Valider et envoyer par Peppol ».</p>{% endif %}
+        {% endif %}
         {% if p.peut_envoyer() %}
         <form method="post" action="/factures/{{ id }}/peppol" style="margin:0">
           <button class="btn btn-primary btn-sm" type="submit">{% if p.envois.is_empty() %}Envoyer par Peppol{% else %}Renvoyer par Peppol{% endif %}</button>
@@ -341,7 +345,7 @@
         </form>
         {% endif %}
         {% else %}
-        <p class="u-petit" style="margin:0"><strong>À corriger avant l'envoi par Peppol :</strong></p>
+        <p class="u-petit" style="margin:0"><strong>À corriger avant l'envoi par Peppol{% if p.brouillon %} (vous pouvez déjà valider et l'envoyer plus tard){% endif %} :</strong></p>
         <ul class="u-petit" style="margin:0;padding-left:18px;list-style:disc">
           {% for pb in p.problemes %}<li>{{ pb }}</li>{% endfor %}
         </ul>
@@ -367,16 +371,27 @@
   {% endif %}
   <a class="btn" href="/factures">Fermer</a>
   <a class="btn{% if !brouillon && !peut_marquer_envoyee %} btn-primary{% endif %}" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
+  {% if brouillon && !a_completer.is_empty() %}
+  <button class="btn btn-primary" type="button" disabled title="Complétez d'abord les points du bloc « Avant de valider »">Valider…</button>
+  {% endif %}
   {% if brouillon && a_completer.is_empty() %}
   <details class="u-menu">
     <summary class="btn btn-primary">Valider…</summary>
     <form method="post" action="/factures/{{ id }}/valider" class="u-menu-liste u-menu-form">
       <span class="u-petit">La facture reçoit son numéro définitif. Elle ne pourra plus être modifiée ni supprimée : seule une note de crédit pourra la corriger.</span>
+      {% match peppol %}{% when Some with (p) %}{% if p.pourra_partir() %}
+      <button class="btn btn-primary btn-sm" type="submit" name="puis" value="peppol">Valider et envoyer par Peppol</button>
+      {% endif %}{% when None %}{% endmatch %}
       <button class="btn btn-primary btn-sm" type="submit" name="puis" value="email">Valider et envoyer par e-mail</button>
       <button class="btn btn-sm" type="submit">Valider et numéroter seulement</button>
     </form>
   </details>
   {% endif %}
+  {% match peppol %}{% when Some with (p) %}{% if p.peut_envoyer() %}
+  <form method="post" action="/factures/{{ id }}/peppol" style="margin:0">
+    <button class="btn" type="submit">Envoyer par Peppol</button>
+  </form>
+  {% endif %}{% when None %}{% endmatch %}
   {% if !brouillon %}<a class="btn" href="/factures/{{ id }}/email">Envoyer par e-mail</a>{% endif %}
   {% if peut_marquer_envoyee %}
   <form method="post" action="/factures/{{ id }}/envoyee">
