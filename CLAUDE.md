@@ -73,6 +73,11 @@ Mahx dirige le produit, il n'est pas développeur. Claude code.
 - **Règles de lecture seule sur Vertuoza** : ne jamais cliquer sur **Nouveau** (il crée un brouillon vide dès l'ouverture : c'est arrivé), Soumettre, Envoyer, Supprimer, Accepter, ni cocher « Je comprends les risques ». Pour voir un formulaire, ouvrir un élément existant (crayon) et le quitter sans l'enregistrer. Les écrans sont des pages intégrées : ouvrir l'adresse `/web/<société>/...` pour lire leur texte. Ne reprendre aucun nom de client dans les fichiers versionnés.
 - Mettre à jour la section « État du projet » à la fin de chaque étape.
 
+## Branches et migrations (règle du 21/10/2026, après deux collisions)
+- **`main` est la seule référence.** Chaque session de Claude part de `main` à jour (`git fetch origin main` puis fusionner `origin/main` dans sa branche avant de commencer) et finit chaque étape par une **demande de fusion vers `main`** que Mahx valide sur GitHub. Chez Mahx, toujours `git checkout main` puis `git pull` ; jamais une branche `claude/…`.
+- **Avant de créer une migration**, prendre le numéro suivant le plus grand de `origin/main` **et** des autres branches `claude/…` encore ouvertes (`git ls-tree --name-only origin/<branche> migrations/`). Ne jamais renuméroter une migration déjà appliquée chez Mahx.
+- Éviter deux sessions en parallèle sur Raven ; si cela arrive, la seconde fusionne la première avant de demander la fusion dans `main`.
+
 ## Stack imposée
 - Rust, édition 2024. Axum 0.8 (routes en `Router`, `src/lib.rs` assemble les modules), Askama 0.16 (templates dans `templates/`), htmx (pas de JavaScript écrit à la main), Tailwind CSS + DaisyUI (via CDN pour l'instant ; installation locale avant la mise en ligne).
 - PostgreSQL + SQLx 0.9 (migrations numérotées dans `migrations/`, **montants en centimes**, enums Postgres pour les statuts). Requêtes SQLx à l'exécution (pas de `query!`).
@@ -125,15 +130,19 @@ Machine de Mahx : Windows. Build Tools Visual Studio installés. Dossier du proj
 Après la V1, seulement si les utilisateurs le demandent : CodaBox (extraits CODA, rapprochement par la communication structurée), statistiques avancées.
 
 ## Prochaine session (point de reprise, 20/10/2026)
-**Où on en est** : étapes 0 à 4 de la V1 de Raven faites (étape 4 : bibliothèques, corbeille, back office, mises à jour du catalogue), branche `claude/funny-hawking-jda6so`, 448 tests réussis, 0 avertissement. Migrations jusqu'à `0036`.
+**Où on en est (21/10/2026)** : étapes 0 à 4 de la V1 de Raven faites, étape 5 (Peppol) commencée : 5-0 à 5-2 faits (envoi par Recommand), 5-3 (réception) à faire. Tout est réuni dans la branche `claude/ecstatic-darwin-at3ge0` (étape 4 de `claude/funny-hawking-jda6so` et notes de `claude/affectionate-pascal-4hpy31` fusionnées), à fusionner dans `main` par une demande de fusion. 460 tests réussis, 0 avertissement. Migrations jusqu'à `0038`. Le dépôt GitHub s'appelle **Raven** (`https://github.com/max-code-menace/Raven`) ; le dossier, le code et la base gardent le nom `ubifacture`.
 
-**À faire chez Mahx pour l'étape 4** : récupérer la branche, `cargo test`, `cargo run` (migrations 0035 et 0036), puis dans Bibliothèque, menu « ⋯ » › « Vider ma bibliothèque » (case « Je confirme ») pour supprimer la bibliothèque d'Ubique, et cocher ce qui sert dans Réglages › Bibliothèques. Back office : `cargo run -- admin ajouter <e-mail> [nom]` (mot de passe demandé), puis http://127.0.0.1:3001/admin.
+**Chez Mahx (21/10/2026)** : migrations 0035 et 0036 (étape 4) appliquées à sa base ; organisation d'essai n° 2 « Essai Peppol » (compte `essai@exemple.be`) pour essayer Peppol dans le bac à sable sans toucher à la numérotation d'Ubique ; mot de passe de l'utilisateur `ubifacture` changé (nouveau, choisi par Mahx, dans son `.env`) ; clés du bac à sable Recommand dans son `.env`. Pour l'étape 4 : dans Bibliothèque, menu « ⋯ » › « Vider ma bibliothèque » pour supprimer la bibliothèque d'Ubique, puis cocher ce qui sert dans Réglages › Bibliothèques. Back office : `cargo run -- admin ajouter <e-mail> [nom]`, puis http://127.0.0.1:3001/admin.
 
-**Installé chez Mahx le 19/10/2026** : branche récupérée (`eb8d42b`), `cargo test` sur Windows : 387 réussis, 0 échec ; sauvegarde de la vraie base faite avant la migration (`ubifacture-avant-raven.backup` sur le Bureau, 112 Ko, format `pg_dump -F c`, restauration avec `pg_restore`) ; `cargo run` lancé, migrations 0025 à 0029 appliquées aux données d'Ubique, Mahx a confirmé que tout va bien. `pg_dump` : `C:\Program Files\PostgreSQL\16\bin\pg_dump.exe`. Toujours lancer PowerShell normal (pas administrateur) dans le dossier du projet.
+
+**Installé chez Mahx le 20/10/2026** : `main` récupéré, `cargo test` réussi sous Windows, `cargo run` a appliqué les migrations 0030 à 0034 aux données d'Ubique. Sauvegarde faite avant : `ubifacture-avant-fusion.backup` sur le Bureau (170 Ko). **Sauvegarder avec le compte `postgres`** (`pg_dump.exe -U postgres -F c -f … ubifacture`, mot de passe de l'installation de PostgreSQL, différent de celui de `.env`) : avec `-U ubifacture`, la sécurité au niveau des lignes (`FORCE`) bloque `pg_dump`. En production : un compte de sauvegarde super-utilisateur ou `BYPASSRLS`, jamais celui de l'application.
+
+**Installé chez Mahx le 19/10/2026** (Raven étapes 1 à 3) : branche récupérée (`eb8d42b`), `cargo test` sur Windows : 387 réussis, 0 échec ; sauvegarde de la vraie base faite avant la migration (`ubifacture-avant-raven.backup` sur le Bureau, 112 Ko, format `pg_dump -F c`, restauration avec `pg_restore`) ; `cargo run` lancé, migrations 0025 à 0029 appliquées aux données d'Ubique, Mahx a confirmé que tout va bien. `pg_dump` : `C:\Program Files\PostgreSQL\16\bin\pg_dump.exe`. Toujours lancer PowerShell normal (pas administrateur) dans le dossier du projet.
 
 **Questions ouvertes à Mahx** :
 - Étape 4 faite (listes validées par Mahx le 20/10/2026). Feu vert attendu pour l'étape 5 (Peppol : choisir le point d'accès).
 - Choix de Claude à l'étape 4, à confirmer : la corbeille ne se vide qu'avec « Vider ma bibliothèque » (pas de suppression définitive ouvrage par ouvrage) ; un nouvel inscrit reçoit toutes les bibliothèques publiées de son métier, y compris celles ajoutées depuis ; l'ajout des nouveautés est réservé au propriétaire ; on ne crée pas de nouveau métier depuis le back office (il faut aussi l'ajouter à l'assistant de démarrage, par le code).
+- Le dépôt Raven est **public** alors que la marque n'est pas vérifiée : à passer en privé si Mahx le souhaite. Les anciennes branches `claude/…` peuvent être supprimées une fois tout fusionné dans `main`.
 - À faire valider : mention de franchise « Régime particulier de franchise des petites entreprises. » (comptable) ; catégorie UBL « E » pour la franchise (prestataire Peppol, étape 5).
 - Choix de Claude à confirmer : un compte = une organisation ; import de métrés Excel éteint par défaut pour les nouvelles organisations (allumé pour Ubique).
 
@@ -143,7 +152,7 @@ Après la V1, seulement si les utilisateurs le demandent : CodaBox (extraits COD
 - Réserve de connexions limitée à 5 (`db::options`) alors que chaque page garde sa connexion (`base::Base`) jusqu'à la fin, PDF et appel à Brevo compris : la rendre réglable (variable d'environnement) et plus grande.
 - Limiter les essais par adresse IP (inscription, connexion, mot de passe oublié) : aujourd'hui seulement par adresse e-mail et 30 inscriptions par heure sur tout le site.
 - `EMAIL_EXPEDITEUR` (validé chez Brevo) obligatoire en production ; case « J'accepte les conditions générales » à l'inscription (pages légales).
-- Tailwind et DaisyUI par CDN à installer localement ; journaux et alertes ; sauvegardes avec restauration testée ; l'utilisateur de la base ne doit être ni super-utilisateur ni BYPASSRLS (test `l_utilisateur_de_la_base_ne_contourne_pas_les_regles`).
+- Tailwind et DaisyUI par CDN à installer localement ; journaux et alertes ; sauvegardes avec restauration testée, par un compte qui contourne la RLS (sinon `pg_dump` échoue) ; l'utilisateur de la base ne doit être ni super-utilisateur ni BYPASSRLS (test `l_utilisateur_de_la_base_ne_contourne_pas_les_regles`).
 - Les tables de comptes (`membres`, `sessions`, `invitations`) n'ont pas de RLS : chaque écran qui les lit filtre explicitement sur l'organisation, et le test d'isolation le vérifie ; toute nouvelle page qui les lit doit faire de même.
 - Relecture de sécurité par un humain avant d'encaisser le premier client.
 
