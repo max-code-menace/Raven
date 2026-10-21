@@ -1,6 +1,6 @@
 //! Factures et notes de crédit au format **UBL 2.1** (étape 8-4), selon la norme européenne EN 16931 dans sa variante
-//! **Peppol BIS Billing 3.0** : c'est ce que lisent les logiciels comptables belges (et ce qu'il faudra envoyer par
-//! Peppol en phase 2).
+//! **Peppol BIS Billing 3.0** : c'est ce que lisent les logiciels comptables belges, et ce qui part par Peppol
+//! (étape 5). L'adresse Peppol des parties (`EndpointID`) vient de `peppol` : le numéro d'entreprise belge (0208).
 //!
 //! Les lignes sont écrites « 1 × montant » : une ligne d'avancement vaut le montant avancé, pas forcément
 //! quantité × prix ; la quantité et l'unité réelles sont reprises dans la description de l'article.
@@ -26,18 +26,22 @@ pub struct Partie {
     pub tva: String,
     pub email: String,
     pub telephone: String,
+    /// L'adresse Peppol (« 0208:0123456789 ») ; aucune pour un particulier.
+    pub peppol: Option<crate::peppol::Identifiant>,
 }
 
 #[derive(Clone)]
 pub(crate) struct Document {
     pub note_credit: bool,
-    pub numero: i64,
+    /// Le numéro tel qu'il est imprimé (« 2026-125 ») : la numérotation repart à 1 chaque année, le numéro seul ne
+    /// serait pas unique.
+    pub numero: String,
     pub date: NaiveDate,
     pub echeance: Option<NaiveDate>,
     pub reference: String,
     pub remarque: String,
-    /// La facture corrigée (note de crédit).
-    pub facture_corrigee: Option<i64>,
+    /// La facture corrigée (note de crédit), numéro imprimé.
+    pub facture_corrigee: Option<String>,
     pub vendeur: Partie,
     pub acheteur: Partie,
     pub iban: String,
@@ -105,10 +109,8 @@ fn balise(xml: &mut String, nom: &str, valeur: &str) {
 fn partie(xml: &mut String, role: &str, p: &Partie) {
     let _ = write!(xml, "<cac:{role}><cac:Party>");
     let tva = compact(&p.tva);
-    if !tva.is_empty() {
-        // 9925 : numéro de TVA belge dans le réseau Peppol.
-        let schema = if tva.starts_with("BE") { "9925" } else { "9930" };
-        let _ = write!(xml, "<cbc:EndpointID schemeID=\"{schema}\">{}</cbc:EndpointID>", echapper(&tva));
+    if let Some(id) = &p.peppol {
+        let _ = write!(xml, "<cbc:EndpointID schemeID=\"{}\">{}</cbc:EndpointID>", echapper(&id.schema), echapper(&id.numero));
     }
     let _ = write!(xml, "<cac:PartyName><cbc:Name>{}</cbc:Name></cac:PartyName>", echapper(&p.nom));
     xml.push_str("<cac:PostalAddress>");
@@ -124,7 +126,12 @@ fn partie(xml: &mut String, role: &str, p: &Partie) {
             echapper(&tva)
         );
     }
-    let _ = write!(xml, "<cac:PartyLegalEntity><cbc:RegistrationName>{}</cbc:RegistrationName></cac:PartyLegalEntity>", echapper(&p.nom));
+    let _ = write!(xml, "<cac:PartyLegalEntity><cbc:RegistrationName>{}</cbc:RegistrationName>", echapper(&p.nom));
+    // Le numéro d'entreprise belge, identifiant légal de la partie (BT-30 / BT-47).
+    if let Some(id) = p.peppol.as_ref().filter(|i| i.schema == crate::peppol::SCHEMA_BCE) {
+        let _ = write!(xml, "<cbc:CompanyID schemeID=\"{}\">{}</cbc:CompanyID>", id.schema, echapper(&id.numero));
+    }
+    xml.push_str("</cac:PartyLegalEntity>");
     if !p.email.trim().is_empty() || !p.telephone.trim().is_empty() {
         xml.push_str("<cac:Contact>");
         balise(xml, "cbc:Telephone", &p.telephone);
@@ -155,7 +162,7 @@ pub(crate) fn document(d: &Document) -> String {
     );
     xml.push_str("<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:fdc:peppol.eu:2017:poacc:billing:3.0</cbc:CustomizationID>");
     xml.push_str("<cbc:ProfileID>urn:fdc:peppol.eu:2017:poacc:billing:01:1.0</cbc:ProfileID>");
-    let _ = write!(xml, "<cbc:ID>{}</cbc:ID><cbc:IssueDate>{}</cbc:IssueDate>", d.numero, d.date);
+    let _ = write!(xml, "<cbc:ID>{}</cbc:ID><cbc:IssueDate>{}</cbc:IssueDate>", echapper(&d.numero), d.date);
     if let (Some(e), false) = (d.echeance, d.note_credit) {
         let _ = write!(xml, "<cbc:DueDate>{e}</cbc:DueDate>");
     }
@@ -167,17 +174,18 @@ pub(crate) fn document(d: &Document) -> String {
     }
     xml.push_str("<cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>");
     // La référence de l'acheteur est obligatoire chez Peppol : la référence de la pièce, sinon son numéro.
-    let reference = if d.reference.trim().is_empty() { d.numero.to_string() } else { d.reference.clone() };
+    let reference = if d.reference.trim().is_empty() { d.numero.clone() } else { d.reference.clone() };
     balise(&mut xml, "cbc:BuyerReference", &reference);
-    if let Some(n) = d.facture_corrigee {
-        let _ = write!(xml, "<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>{n}</cbc:ID></cac:InvoiceDocumentReference></cac:BillingReference>");
+    if let Some(n) = &d.facture_corrigee {
+        let _ = write!(xml, "<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>{}</cbc:ID></cac:InvoiceDocumentReference></cac:BillingReference>", echapper(n));
     }
     partie(&mut xml, "AccountingSupplierParty", &d.vendeur);
     partie(&mut xml, "AccountingCustomerParty", &d.acheteur);
     if !d.note_credit && !d.iban.trim().is_empty() {
         // 30 : virement.
         xml.push_str("<cac:PaymentMeans><cbc:PaymentMeansCode>30</cbc:PaymentMeansCode>");
-        balise(&mut xml, "cbc:PaymentID", &d.vcs);
+        // La communication structurée en chiffres seuls (« +++000/0000/12629+++ » → « 000000012629 »).
+        balise(&mut xml, "cbc:PaymentID", &d.vcs.chars().filter(char::is_ascii_digit).collect::<String>());
         let _ = write!(xml, "<cac:PayeeFinancialAccount><cbc:ID>{}</cbc:ID></cac:PayeeFinancialAccount></cac:PaymentMeans>", echapper(&compact(&d.iban)));
     }
     if !d.conditions.trim().is_empty() {
@@ -224,7 +232,8 @@ pub(crate) fn document(d: &Document) -> String {
         }
         let mut detail = l.description.trim().to_string();
         if let (Some(q), Some(p)) = (l.quantite_e5, l.prix_unitaire_e5) {
-            let _ = write!(detail, " ({} {} × {} €)", calcul::ecrire_decimal_e5(q), l.unite, calcul::prix_pour_affichage(p));
+            let quantite = [calcul::ecrire_decimal_e5(q), l.unite.trim().to_string()].join(" ");
+            let _ = write!(detail, " ({} × {})", quantite.trim(), calcul::prix_pour_affichage(p));
         }
         let _ = write!(
             xml,
@@ -265,6 +274,7 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
             code_postal,
             ville,
             pays,
+            peppol: crate::peppol::depuis_tva(tva.as_deref().unwrap_or("")),
             tva: tva.unwrap_or_default(),
             email,
             telephone,
@@ -272,8 +282,8 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
         .unwrap_or_default();
     let colonnes = "nom_affiche, trim(concat_ws(' ', COALESCE(facturation_rue, rue), COALESCE(facturation_numero, numero))),
                     COALESCE(facturation_code_postal, code_postal), COALESCE(facturation_ville, ville), COALESCE(facturation_pays, pays),
-                    COALESCE(numero_tva, ''), COALESCE(email, ''), COALESCE(telephone, '')";
-    let acheteur: Option<(String, String, String, String, String, String, String, String)> = if let Some(e) = f.client_entreprise_id {
+                    COALESCE(numero_tva, ''), COALESCE(email, ''), COALESCE(telephone, ''), peppol_id";
+    let acheteur: Option<(String, String, String, String, String, String, String, String, Option<String>)> = if let Some(e) = f.client_entreprise_id {
         sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT {colonnes} FROM (SELECT *, nom AS nom_affiche FROM entreprises) x WHERE id = $1")))
             .bind(e)
             .fetch_optional(&mut *db)
@@ -289,7 +299,17 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
         None
     };
     let acheteur = acheteur
-        .map(|(nom, rue, code_postal, ville, pays, tva, email, telephone)| Partie { nom, rue, code_postal, ville, pays, tva, email, telephone })
+        .map(|(nom, rue, code_postal, ville, pays, tva, email, telephone, peppol_id)| Partie {
+            peppol: crate::peppol::du_client(peppol_id.as_deref(), &tva),
+            nom,
+            rue,
+            code_postal,
+            ville,
+            pays,
+            tva,
+            email,
+            telephone,
+        })
         .unwrap_or_default();
     let iban: Option<String> = sqlx::query_scalar("SELECT iban FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut").fetch_optional(&mut *db).await?;
     let conditions = match f.conditions_paiement_id {
@@ -302,13 +322,17 @@ pub async fn de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<Stri
             .unwrap_or_default(),
         None => String::new(),
     };
-    let facture_corrigee: Option<i64> = match f.facture_origine_id {
-        Some(o) => sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(o).fetch_one(&mut *db).await?,
+    let facture_corrigee: Option<String> = match f.facture_origine_id {
+        Some(o) => {
+            let origine: Option<(Option<i64>, NaiveDate)> =
+                sqlx::query_as("SELECT numero, date_facture FROM factures WHERE id = $1").bind(o).fetch_optional(&mut *db).await?;
+            origine.and_then(|(n, date)| n.map(|n| factures::numero_affiche(date, n)))
+        }
         None => None,
     };
     Ok(Some(document(&Document {
         note_credit: f.genre == "note_credit",
-        numero,
+        numero: factures::numero_affiche(f.date_facture, numero),
         date: f.date_facture,
         echeance: f.date_echeance,
         reference: f.reference.clone(),
@@ -346,13 +370,19 @@ mod tests {
     fn doc(lignes: Vec<LigneBase>, note_credit: bool) -> Document {
         Document {
             note_credit,
-            numero: 126,
+            numero: "2026-126".into(),
             date: NaiveDate::from_ymd_opt(2026, 10, 16).unwrap(),
             echeance: NaiveDate::from_ymd_opt(2026, 10, 23),
             reference: "L63 Toiture & co".into(),
             remarque: String::new(),
-            facture_corrigee: note_credit.then_some(125),
-            vendeur: Partie { nom: "Ubique SRL".into(), tva: "BE 0123.456.789".into(), pays: "BE".into(), ..Default::default() },
+            facture_corrigee: note_credit.then(|| "2026-125".to_string()),
+            vendeur: Partie {
+                nom: "Ubique SRL".into(),
+                tva: "BE 0123.456.749".into(),
+                pays: "BE".into(),
+                peppol: crate::peppol::depuis_tva("BE 0123.456.749"),
+                ..Default::default()
+            },
             acheteur: Partie { nom: "Lambert <Marc>".into(), ..Default::default() },
             iban: "BE68 5390 0754 7034".into(),
             vcs: "+++000/0000/12629+++".into(),
@@ -378,12 +408,15 @@ mod tests {
         let xml = document(&doc(vec![poste("Solde du chantier", 296_930, 600, false)], false));
         for attendu in [
             "<Invoice xmlns=\"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2\"",
-            "<cbc:ID>126</cbc:ID><cbc:IssueDate>2026-10-16</cbc:IssueDate><cbc:DueDate>2026-10-23</cbc:DueDate>",
+            "<cbc:ID>2026-126</cbc:ID><cbc:IssueDate>2026-10-16</cbc:IssueDate><cbc:DueDate>2026-10-23</cbc:DueDate>",
             "<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>",
             "<cbc:BuyerReference>L63 Toiture &amp; co</cbc:BuyerReference>",
-            "<cbc:EndpointID schemeID=\"9925\">BE0123456789</cbc:EndpointID>",
+            "<cbc:EndpointID schemeID=\"0208\">0123456749</cbc:EndpointID>",
+            "<cbc:CompanyID>BE0123456749</cbc:CompanyID>",
+            "<cbc:RegistrationName>Ubique SRL</cbc:RegistrationName><cbc:CompanyID schemeID=\"0208\">0123456749</cbc:CompanyID>",
+            "<cbc:Description>Solde du chantier (1 forfait × 2969,30\u{a0}€)</cbc:Description>",
             "<cbc:Name>Lambert &lt;Marc&gt;</cbc:Name>",
-            "<cbc:PaymentID>+++000/0000/12629+++</cbc:PaymentID><cac:PayeeFinancialAccount><cbc:ID>BE68539007547034</cbc:ID>",
+            "<cbc:PaymentID>000000012629</cbc:PaymentID><cac:PayeeFinancialAccount><cbc:ID>BE68539007547034</cbc:ID>",
             "<cbc:TaxAmount currencyID=\"EUR\">178.16</cbc:TaxAmount>",
             "<cbc:TaxableAmount currencyID=\"EUR\">2969.30</cbc:TaxableAmount>",
             "<cbc:ID>S</cbc:ID><cbc:Percent>6</cbc:Percent>",
@@ -393,7 +426,7 @@ mod tests {
             assert!(xml.contains(attendu), "{attendu}\n{xml}");
         }
         assert!(xml.ends_with("</Invoice>\n"));
-        // Un particulier sans TVA n'a pas d'identifiant Peppol.
+        // Un particulier sans TVA n'a pas d'adresse Peppol.
         assert_eq!(xml.matches("<cbc:EndpointID").count(), 1);
     }
 
@@ -406,7 +439,7 @@ mod tests {
         assert!(xml.contains("<cbc:PayableAmount currencyID=\"EUR\">700.00</cbc:PayableAmount>"));
 
         let nc = document(&doc(vec![poste("Travaux", 100_000, 2100, false)], true));
-        for attendu in ["<CreditNote xmlns", "<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>", "<cac:InvoiceDocumentReference><cbc:ID>125</cbc:ID>", "<cac:CreditNoteLine>", "<cbc:CreditedQuantity unitCode=\"C62\">1</cbc:CreditedQuantity>", "<cbc:PayableAmount currencyID=\"EUR\">1210.00</cbc:PayableAmount>"] {
+        for attendu in ["<CreditNote xmlns", "<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>", "<cac:InvoiceDocumentReference><cbc:ID>2026-125</cbc:ID>", "<cac:CreditNoteLine>", "<cbc:CreditedQuantity unitCode=\"C62\">1</cbc:CreditedQuantity>", "<cbc:PayableAmount currencyID=\"EUR\">1210.00</cbc:PayableAmount>"] {
             assert!(nc.contains(attendu), "{attendu}");
         }
         assert!(!nc.contains("DueDate") && !nc.contains("PaymentMeans"), "une note de crédit ne se paie pas");

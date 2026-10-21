@@ -133,11 +133,11 @@
   {% endif %}
 
   <section class="u-card">
-    <div class="u-card-h"><h2>Main d'œuvre</h2></div>
+    <div class="u-card-h"><h2>{{ crate::profil::categorie("Main d'œuvre") }}</h2></div>
     <div class="u-card-b">
       <span class="u-cle">Heures prévues</span>
       <span class="u-grand">{{ suivi.heures_prevues }}</span>
-      <span class="u-petit u-muet">Lignes de main d'œuvre en heures des devis. Heures pointées : pas de pointage dans Ubifacture.</span>
+      <span class="u-petit u-muet">Lignes {% if crate::profil::actuel().projet %}de prestation{% else %}de main d'œuvre{% endif %} en heures des devis. Heures pointées : pas de pointage dans Ubifacture.</span>
     </div>
   </section>
 </div>

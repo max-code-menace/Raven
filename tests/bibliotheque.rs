@@ -77,7 +77,8 @@ async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: Pg
     // Erreurs : tout est gardé, rien n'est enregistré.
     let (code, _, page) = poster(&s, "/bibliotheque", "description=&genre=fourniture&prix_achat=12").await;
     assert_eq!(code, StatusCode::OK);
-    assert!(page.contains("La description est obligatoire") && page.contains("Indiquez le prix de vente") && page.contains("value=\"12\""));
+    assert!(page.contains("La description est obligatoire") && page.contains("value=\"12\""));
+    assert!(!page.contains("Indiquez le prix de vente"), "un prix vide est permis (« à compléter »)");
     assert_eq!(sqlx::query_scalar::<_, i64>("SELECT count(*) FROM ouvrages").fetch_one(&pool).await.unwrap(), 2);
 
     // Modifier : un prix de vente saisi recalcule la marge.

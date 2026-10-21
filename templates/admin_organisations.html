@@ -1,0 +1,29 @@
+{% extends "admin_base.html" %}
+
+{% block titre %}Organisations{% endblock %}
+{% block nav_organisations %} btn-active{% endblock %}
+
+{% block content %}
+<h1 class="text-xl font-semibold" style="margin:0">Organisations <span class="u-compte">{{ organisations.len() }}</span></h1>
+<p class="u-petit u-muet" style="margin:0">Ce que Raven sait de ses clients, sans jamais ouvrir leurs données (devis, factures, contacts). Formule et paiement : avec les abonnements Mollie (étape 6).</p>
+<section class="u-card">
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th class="n">N°</th><th class="w-full">Nom</th><th>Inscription</th><th>Démarrage</th><th>Métier</th><th class="n">Utilisateurs</th><th>Formule</th></tr></thead>
+      <tbody>
+        {% for o in organisations %}
+        <tr>
+          <td class="n">{{ o.id }}</td>
+          <td>{{ o.nom }}</td>
+          <td class="nw">{{ o.inscrite }}</td>
+          <td class="nw">{% if o.demarree %}fait{% else %}<span class="u-pastille s-brouillon">pas encore</span>{% endif %}</td>
+          <td>{{ o.metier }}</td>
+          <td class="n">{{ o.utilisateurs }}</td>
+          <td class="nw u-muet">—</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

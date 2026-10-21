@@ -130,11 +130,13 @@ async fn un_dossier_d_export_complet(options: PgPoolOptions, connexion: PgConnec
     assert!(csv.contains("Facture simple;125;") && csv.contains(";100,00;21,00;121,00;") && csv.contains("Note de crédit;6;") && csv.contains(";-121,00;"));
     assert!(fichiers[1].1.starts_with(b"%PDF-"));
     let xml = String::from_utf8(fichiers[2].1.clone()).unwrap();
-    for attendu in ["<cbc:ID>125</cbc:ID>", "<cbc:CompanyID>BE0123456789</cbc:CompanyID>", "<cbc:CompanyID>BE0987654321</cbc:CompanyID>", "<cbc:PayableAmount currencyID=\"EUR\">121.00</cbc:PayableAmount>"] {
-        assert!(xml.contains(attendu), "{attendu}");
+    // Le numéro part avec l'année : la numérotation repart à 1 chaque année.
+    let annee = &jour[..4];
+    for attendu in [format!("<cbc:ID>{annee}-125</cbc:ID>"), "<cbc:CompanyID>BE0123456789</cbc:CompanyID>".into(), "<cbc:CompanyID>BE0987654321</cbc:CompanyID>".into(), "<cbc:PayableAmount currencyID=\"EUR\">121.00</cbc:PayableAmount>".into()] {
+        assert!(xml.contains(&attendu), "{attendu}");
     }
     let nc = String::from_utf8(fichiers[6].1.clone()).unwrap();
-    assert!(nc.contains("<CreditNote") && nc.contains("<cac:InvoiceDocumentReference><cbc:ID>125</cbc:ID>"));
+    assert!(nc.contains("<CreditNote") && nc.contains(&format!("<cac:InvoiceDocumentReference><cbc:ID>{annee}-125</cbc:ID>")));
 
     // Tout est déjà exporté : « uniquement non exportées » ne trouve rien.
     let (_, lieu) = poster(&s, "/exports", &format!("debut={jour}&fin={jour}&format=pdf&contenu=non_exportees")).await;

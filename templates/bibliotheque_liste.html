@@ -10,7 +10,18 @@
     {% call ui::titre_liste("bibliotheque", "Bibliothèque") %}{% endcall %}
     <div class="u-actions">
       <span class="u-petit u-muet">Les ouvrages s'insèrent dans un devis depuis l'onglet Encodage.</span>
+      <a class="btn" href="/parametres/bibliotheques">Bibliothèques de Raven</a>
       <a class="btn" href="/bibliotheque/import">Importer (Excel, CSV)</a>
+      {% if tout > 0 %}
+      <details class="u-menu">
+        <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
+        <form method="post" action="/bibliotheque/vider" class="u-menu-liste u-menu-form">
+          <span class="u-petit">Supprimer les {{ tout }} ouvrages de votre bibliothèque (corbeille comprise) et décocher toutes les bibliothèques de Raven ? Les devis gardent leurs lignes. Cette action est définitive.</span>
+          <label class="flex gap-2 items-center u-petit"><input class="checkbox checkbox-sm" type="checkbox" name="confirme" value="oui" required> Je confirme</label>
+          <button class="btn btn-danger btn-sm" type="submit">Vider ma bibliothèque</button>
+        </form>
+      </details>
+      {% endif %}
       <a class="btn btn-primary" href="/bibliotheque/nouveau">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</a>
     </div>
   </div>
@@ -18,6 +29,12 @@
 {% endblock %}
 
 {% block content %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+{% if nouveautes > 0 %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("bibliotheque", 18) %}{% endcall %}<span>{% if nouveautes == 1 %}1 nouvel ouvrage est disponible{% else %}{{ nouveautes }} nouveaux ouvrages sont disponibles{% endif %} dans vos bibliothèques de Raven. <a class="underline font-medium" href="/parametres/bibliotheques">Voir et ajouter</a></span></div>
+{% endif %}
 {% if !message_ok.is_empty() %}
 <div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ crate::profil::adapter(message_ok) }}</span></div>
 {% endif %}
@@ -29,10 +46,18 @@
       <a class="u-mi w-auto 2xl:w-full{% if c.choisie %} font-semibold{% endif %}" href="{{ c.adresse }}"{% if c.choisie %} aria-current="true" style="background:#DDEFF0;color:#084C57"{% endif %}><span class="flex-1 truncate">{{ c.libelle }}</span><small>{{ c.nombre }}</small></a>
       {% endfor %}
     </div>
+    <div class="u-card-h" style="border-top:1px solid #E4E5E1"><h2>Afficher</h2></div>
+    <div class="p-2 flex flex-row flex-wrap 2xl:flex-col gap-0.5">
+      {% for c in liste.vues %}
+      <a class="u-mi w-auto 2xl:w-full{% if c.choisie %} font-semibold{% endif %}" href="{{ c.adresse }}"{% if c.choisie %} aria-current="true" style="background:#DDEFF0;color:#084C57"{% endif %}><span class="flex-1 truncate">{{ c.libelle }}</span><small>{{ c.nombre }}</small></a>
+      {% endfor %}
+      <a class="u-mi w-auto 2xl:w-full" href="/parametres/bibliotheques"><span class="flex-1 truncate">Bibliothèques de Raven</span><small>›</small></a>
+    </div>
   </nav>
   <section class="u-card">
     <form class="u-outils" method="get" action="/bibliotheque">
       <input type="hidden" name="categorie" value="{{ liste.categorie }}">
+      <input type="hidden" name="vue" value="{{ liste.vue }}">
       <label class="u-recherche">
         {% call ui::icone("recherche", 16) %}{% endcall %}
         <input class="input input-bordered w-full" type="search" name="q" value="{{ liste.q }}" placeholder="Rechercher (description, catégorie, fournisseur)" aria-label="Rechercher" autocomplete="off"
@@ -41,7 +66,13 @@
       {% for c in liste.categories %}{% if c.choisie && !liste.categorie.is_empty() %}
       <a class="u-pastille-filtre" href="/bibliotheque?q={{ liste.q|urlencode }}" title="Retirer le filtre">Catégorie : {{ c.libelle }} <span aria-hidden="true">×</span></a>
       {% endif %}{% endfor %}
+      {% for c in liste.vues %}{% if c.choisie %}
+      <a class="u-pastille-filtre" href="/bibliotheque?q={{ liste.q|urlencode }}" title="Retirer le filtre">{{ c.libelle }} <span aria-hidden="true">×</span></a>
+      {% endif %}{% endfor %}
     </form>
+    {% if liste.corbeille() %}
+    <p class="u-petit u-muet" style="margin:0;padding:0 16px 8px">La corbeille : ces ouvrages ne sont plus proposés dans les devis. « Récupérer » les remet dans votre bibliothèque ; rien n'en disparaît tout seul.</p>
+    {% endif %}
     <div id="liste">
       {% include "_bibliotheque_tableau.html" %}
     </div>

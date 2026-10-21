@@ -1,0 +1,28 @@
+{% extends "admin_base.html" %}
+
+{% block titre %}Ouvrage du catalogue{% endblock %}
+{% block nav_catalogue %} btn-active{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center gap-3">
+  <a class="btn btn-sm" href="/admin/catalogue/{{ code }}">← {{ bibliotheque }}</a>
+  <h1 class="text-xl font-semibold" style="margin:0">Corriger un ouvrage du catalogue</h1>
+</div>
+{% if !erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{% if erreur == "genre" %}Choisissez le type.{% else if erreur == "unite" %}L'unité est trop longue (20 caractères au maximum).{% else %}La description est obligatoire (5 000 caractères au maximum).{% endif %}</span></div>
+{% endif %}
+<form class="u-card" method="post" action="/admin/catalogue/ouvrages/{{ id }}">
+  <div class="u-card-b flex flex-col gap-3">
+    <label class="form-control"><span class="u-lbl">Description</span>
+      <textarea class="textarea textarea-bordered" name="description" rows="3" maxlength="5000" required>{{ description }}</textarea></label>
+    <div class="flex flex-row flex-wrap gap-3">
+      <label class="form-control"><span class="u-lbl">Type</span>
+        <select class="select select-bordered" name="genre">{% for g in genres %}<option value="{{ g.valeur }}"{% if g.choisi %} selected{% endif %}>{{ g.libelle }}</option>{% endfor %}</select></label>
+      <label class="form-control w-32"><span class="u-lbl">Unité</span>
+        <input class="input input-bordered" type="text" name="unite" value="{{ unite }}" maxlength="20"></label>
+    </div>
+    <p class="u-petit u-muet" style="margin:0">{% if publie %}La correction vaut pour les prochaines copies ; les organisations qui ont déjà cet ouvrage gardent le leur tel quel.{% else %}Pas encore publié : la correction sera dans la prochaine publication.{% endif %}</p>
+    <div><button class="btn btn-primary" type="submit">Enregistrer</button></div>
+  </div>
+</form>
+{% endblock %}

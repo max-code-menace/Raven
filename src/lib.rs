@@ -1,4 +1,5 @@
 pub mod avancement_calcul;
+pub mod administration;
 pub mod bibliotheque;
 pub mod bibliotheque_import;
 pub mod avancements;
@@ -12,6 +13,7 @@ pub mod contacts_import;
 pub mod db;
 pub mod demarrage;
 pub mod calcul;
+pub mod catalogue;
 pub mod devis;
 pub mod devis_apercu;
 pub mod devis_copie;
@@ -40,6 +42,7 @@ pub mod page_client;
 pub mod paiements;
 pub mod profil;
 pub mod pdf;
+pub mod peppol;
 pub mod rappels;
 pub mod recurrences;
 pub mod archive;
@@ -156,6 +159,8 @@ fn pages() -> Router<AppState> {
         .merge(demarrage::routes())
         .merge(equipe::routes())
         .merge(metier::routes())
+        .merge(peppol::routes())
+        .merge(catalogue::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
         .merge(bibliotheque_import::routes())
@@ -189,6 +194,8 @@ pub fn app(state: AppState) -> Router {
 pub fn application(state: AppState) -> Router {
     pages()
         .merge(connexion::routes())
+        // Le back office de Raven (étape 4-3) : sa propre connexion (`administration::Admin`), aucune organisation.
+        .merge(administration::routes())
         .layer(axum::middleware::from_fn_with_state(state.clone(), connexion::exiger_connexion))
         .with_state(state)
 }

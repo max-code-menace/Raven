@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Bibliothèques · Réglages · Ubifacture{% endblock %}
+{% block nav_reglages_bibliotheques %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("bibliotheque", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Bibliothèques</h1>
+        <div class="u-sous-titre">Réglages · cochez les bibliothèques qui vous servent : leurs ouvrages arrivent dans votre bibliothèque, sans prix</div>
+      </div>
+    </div>
+    <div class="u-actions">
+      <a class="btn" href="/bibliotheque">Voir ma bibliothèque</a>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if nouveautes > 0 %}
+<div role="status" class="u-bandeau ok">
+  {% call ui::icone("bibliotheque", 18) %}{% endcall %}
+  <span class="flex-1">{% if nouveautes == 1 %}1 nouvel ouvrage est disponible{% else %}{{ nouveautes }} nouveaux ouvrages sont disponibles{% endif %} dans les bibliothèques que vous avez cochées. Ils arrivent sans prix ; vos ouvrages actuels ne changent pas.</span>
+  {% if proprietaire %}
+  <form method="post" action="/parametres/bibliotheques/nouveautes"><button class="btn btn-sm btn-primary" type="submit">Ajouter les nouveaux ouvrages</button></form>
+  {% endif %}
+</div>
+{% endif %}
+{% if erreur %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>Seul un propriétaire peut changer les bibliothèques cochées.</span></div>
+{% endif %}
+
+<form id="bibliotheques" method="post" action="/parametres/bibliotheques" style="display:flex;flex-direction:column;gap:12px">
+  {% for m in metiers %}
+  <details class="u-card"{% if m.ouvert %} open{% endif %}>
+    <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>{{ m.nom }}</h2></summary>
+    <div class="u-card-b" style="display:flex;flex-direction:column;gap:10px">
+      {% for b in m.bibliotheques %}
+      <label class="flex gap-3 items-center">
+        <input class="checkbox checkbox-sm" type="checkbox" name="bibliotheque" value="{{ b.code }}"{% if b.cochee %} checked{% endif %}{% if !proprietaire %} disabled{% endif %}>
+        <span><strong>{{ b.nom }}</strong> <span class="u-petit u-muet">· {{ b.nombre }} ouvrages</span>{% if b.nouveaux > 0 %} <span class="u-pastille s-envoye">{% if b.nouveaux == 1 %}1 nouveau{% else %}{{ b.nouveaux }} nouveaux{% endif %}</span>{% endif %}{% if b.retiree %} <span class="u-petit u-muet">· retirée du catalogue de Raven : vous gardez vos ouvrages, mais une fois décochée, elle ne pourra plus être recochée</span>{% endif %}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </details>
+  {% endfor %}
+  <p class="u-petit u-muet" style="margin:0">Les ouvrages copiés sont à vous : changez leurs descriptions, unités et types, et indiquez vos prix (ils restent « à compléter » tant qu'ils sont vides). Si vous décochez une bibliothèque, ses ouvrages sont retirés, sauf ceux que vous avez modifiés. Vos devis ne changent jamais.</p>
+</form>
+{% endblock %}
+
+{% block barre %}
+{% if proprietaire %}
+<div class="u-barre">
+  <a class="btn" href="/bibliotheque">Annuler</a>
+  <button class="btn btn-primary" type="submit" form="bibliotheques">Enregistrer</button>
+</div>
+{% endif %}
+{% endblock %}

@@ -270,7 +270,7 @@ fn vue_rentable(libelle: &str, r: &calcul::Rentable) -> RentableVue {
 
 fn vue_rentabilite(r: &calcul::Rentabilite) -> RentabiliteVue {
     RentabiliteVue {
-        categories: r.categories.iter().map(|(c, v)| vue_rentable(c.libelle(), v)).collect(),
+        categories: r.categories.iter().map(|(c, v)| vue_rentable(crate::profil::categorie(c.libelle()), v)).collect(),
         a_ajustement: r.ajustement_cents != 0,
         ajustement: format_euros(r.ajustement_cents),
         total: vue_rentable("Total", &r.total),
@@ -317,7 +317,7 @@ fn construire_encodage(
     let mut sous_totaux: Vec<(usize, i64)> = Vec::new();
     for (i, l) in lignes.iter().enumerate() {
         let (libelle_genre, genre) = match genre_connu(&l.genre) {
-            Some((v, lib)) => (lib, v),
+            Some((v, lib)) => (crate::profil::type_ligne(lib), v),
             None => ("?", "texte"),
         };
         let est_titre = l.genre == "titre";
@@ -392,7 +392,7 @@ fn construire_encodage(
         lignes: vues,
         totaux: vue_totaux(&t, &entete.ajustement_libelle),
         message,
-        types: GENRES.to_vec(),
+        types: GENRES.iter().map(|&(v, l)| (v, crate::profil::type_ligne(l))).collect(),
         marge_activee: entete.marge_activee,
         // centièmes de pour cent → texte en pour cent : × 1000 pour passer en 1/100 000
         frais_generaux: calcul::ecrire_decimal_e5(entete.frais_generaux_centiemes * 1000),
@@ -555,19 +555,25 @@ async fn ajouter_ouvrage(mut db: Base, Path(id): Path<i64>, Form(f): Form<Ouvrag
     }
     let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
-    let fait = sqlx::query(
+    // Un ouvrage sans prix de vente (« à compléter ») arrive à 0 € : le message le signale pour qu'on le complète.
+    let insere: Option<bool> = sqlx::query_scalar(
         "INSERT INTO devis_lignes (devis_id, position, genre, description, quantite_e5, unite, prix_unitaire_e5, prix_achat_unitaire_e5,
                                    remarque, taux_tva_id)
          SELECT $1, COALESCE((SELECT max(position) FROM devis_lignes WHERE devis_id = $1), 0) + 1,
-                genre, description, 100000, unite, prix_vente_e5, prix_achat_e5, remarque, $3
-         FROM ouvrages WHERE id = $2",
+                genre, description, 100000, unite, COALESCE(prix_vente_e5, 0), prix_achat_e5, remarque, $3
+         FROM ouvrages WHERE id = $2 AND supprime_le IS NULL
+         RETURNING (SELECT prix_vente_e5 IS NULL FROM ouvrages WHERE id = $2)",
     )
     .bind(id)
     .bind(f.ouvrage)
     .bind(entete.taux_par_defaut)
-    .execute(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
-    let message = if fait.rows_affected() == 0 { "Cet ouvrage n'existe plus dans la bibliothèque.".to_string() } else { String::new() };
+    let message = match insere {
+        None => "Cet ouvrage n'existe plus dans la bibliothèque.".to_string(),
+        Some(true) => "Cet ouvrage n'a pas encore de prix dans votre bibliothèque : la ligne est ajoutée à 0 €, indiquez son prix.".to_string(),
+        Some(false) => String::new(),
+    };
     recalculer(&mut tx, id).await?;
     tx.commit().await?;
     let enc = charger_encodage(&mut *db, id, &entete, message).await?;

@@ -308,9 +308,48 @@
       </div>
     </section>
     {% endif %}
-    <section class="u-card">
-      <div class="u-card-h" style="border-bottom:0"><h2 class="u-muet">Facturation électronique</h2><span class="u-bientot-note">phase 2</span></div>
+    {% match peppol %}{% when Some with (p) %}
+    <section class="u-card" id="peppol">
+      <div class="u-card-h"><h2>Facturation électronique</h2></div>
+      <div class="u-card-b">
+        {% if p.reprise %}
+        <p class="u-petit u-muet" style="margin:0">Facture reprise d'un autre logiciel : elle n'est pas renvoyée par Peppol.</p>
+        {% else if p.particulier %}
+        <p class="u-petit u-muet" style="margin:0">Client sans numéro de TVA : un particulier ne reçoit pas de facture par Peppol. Envoyez-la par e-mail.</p>
+        {% else %}
+        {% if !p.client.is_empty() %}<p class="u-petit" style="margin:0">Adresse Peppol du client : <span class="mono">{{ p.client }}</span></p>{% endif %}
+        {% if p.prete() %}
+        {% if p.envois.is_empty() %}<p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Prête pour Peppol</span></p>{% endif %}
+        {% if p.peut_envoyer() %}
+        <form method="post" action="/factures/{{ id }}/peppol" style="margin:0">
+          <button class="btn btn-primary btn-sm" type="submit">{% if p.envois.is_empty() %}Envoyer par Peppol{% else %}Renvoyer par Peppol{% endif %}</button>
+        </form>
+        {% else if !p.envoi_actif %}
+        <p class="u-petit u-muet" style="margin:0">L'envoi par Peppol n'est pas configuré sur ce serveur.</p>
+        {% else if !p.organisation_verifiee %}
+        <p class="u-petit u-muet" style="margin:0">Pour l'envoyer, inscrivez et vérifiez d'abord votre entreprise : <a class="link" href="/parametres/peppol">Réglages › Peppol</a>.</p>
+        {% endif %}
+        {% for e in p.envois %}
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <span class="u-petit"><span class="u-pastille {{ e.classe }}">{{ e.libelle }}</span> {{ e.quand }} · <span class="mono">{{ e.destinataire }}</span></span>
+          {% if !e.erreur.is_empty() %}<small style="color:#8E2B22">{{ e.erreur }}</small>{% endif %}
+        </div>
+        {% endfor %}
+        {% if p.en_attente() %}
+        <form method="post" action="/factures/{{ id }}/peppol/actualiser" style="margin:0">
+          <button class="btn btn-sm" type="submit">Actualiser le statut</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <p class="u-petit" style="margin:0"><strong>À corriger avant l'envoi par Peppol :</strong></p>
+        <ul class="u-petit" style="margin:0;padding-left:18px;list-style:disc">
+          {% for pb in p.problemes %}<li>{{ pb }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% endif %}
+      </div>
     </section>
+    {% when None %}{% endmatch %}
   </aside>
 </div>
 {% endblock %}
