@@ -222,13 +222,13 @@ async fn importer_la_bibliotheque(options: PgPoolOptions, connexion: PgConnectOp
     let csv = "Description;Type;Catégorie;Fournisseur;Unité;Prix d’achat;Marge\n\
                Modification alimentation boiler;Ouvrage;;;fft;197,50000 €;0 %\n\
                Tableau divisionnaire complet;Ouvrage;;;pce;825,00000 €;0 %\n\
-               Sans prix;;;;pce;;\n";
+               Prix illisible;;;;pce;abc;\n";
     let (code, _, page) = televerser(&s, "/bibliotheque/import", "ouvrages.csv", csv.as_bytes()).await;
     assert_eq!(code, StatusCode::OK, "une ligne écartée : le résultat et le détail restent affichés");
     assert!(page.contains("2 ouvrage(s) ajouté(s)") && page.contains("Ligne 4 :"));
-    let (achat, vente): (Option<i64>, i64) =
+    let (achat, vente): (Option<i64>, Option<i64>) =
         sqlx::query_as("SELECT prix_achat_e5, prix_vente_e5 FROM ouvrages WHERE description = 'Modification alimentation boiler'").fetch_one(&pool).await.unwrap();
-    assert_eq!((achat, vente), (Some(19_750_000), 19_750_000), "marge 0 % : vente = achat, comme chez Ubique");
+    assert_eq!((achat, vente), (Some(19_750_000), Some(19_750_000)), "marge 0 % : vente = achat, comme chez Ubique");
 
     // Relancer l'import n'ajoute pas de doublons.
     let propre = "Description;Unité;Prix d’achat;Marge\nModification alimentation boiler;fft;197,5;0\nPlinthes MDF à peindre;ml;12;0\n";

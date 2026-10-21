@@ -1,0 +1,94 @@
+{% extends "admin_base.html" %}
+
+{% block titre %}{{ nom }}{% endblock %}
+{% block nav_catalogue %} btn-active{% endblock %}
+
+{% block content %}
+<div class="flex flex-wrap items-center gap-3">
+  <a class="btn btn-sm" href="/admin/catalogue">← Catalogue</a>
+  <h1 class="text-xl font-semibold" style="margin:0">{{ metier }} › {{ nom }}</h1>
+  <span class="u-pastille {{ classe }}">{{ etat }}</span>
+  <small class="u-muet">{{ code }}</small>
+</div>
+{% if !message.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message }}</span></div>
+{% endif %}
+{% if !erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{% if erreur == "nom" %}Indiquez un nom (100 caractères au maximum).{% else if erreur == "genre" %}Choisissez le type.{% else if erreur == "unite" %}L'unité est trop longue (20 caractères au maximum).{% else %}La description est obligatoire (5 000 caractères au maximum).{% endif %}</span></div>
+{% endif %}
+{% if en_attente > 0 %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("bibliotheque", 18) %}{% endcall %}<span class="flex-1">{{ en_attente }} ajout(s) en attente dans le catalogue.</span>
+  <form method="post" action="/admin/catalogue/publier"><button class="btn btn-sm btn-primary" type="submit">Publier</button></form></div>
+{% endif %}
+
+<div class="u-deux">
+  <form class="u-card" method="post" action="/admin/catalogue/{{ code }}">
+    <div class="u-card-h"><h2>Nom</h2></div>
+    <div class="u-card-b flex flex-row items-end gap-3">
+      <label class="form-control flex-1"><span class="u-lbl">Nom affiché aux organisations</span>
+        <input class="input input-bordered" type="text" name="nom" value="{{ nom }}" maxlength="100" required></label>
+      <button class="btn" type="submit">Renommer</button>
+    </div>
+  </form>
+  <section class="u-card">
+    <div class="u-card-h"><h2>Proposer cette bibliothèque</h2></div>
+    <div class="u-card-b">
+      {% if retiree %}
+      <p class="u-petit" style="margin:0">Retirée : plus proposée aux organisations ; celles qui l'avaient cochée gardent leurs ouvrages.</p>
+      <form method="post" action="/admin/catalogue/{{ code }}/retablir"><button class="btn btn-sm" type="submit">Rétablir</button></form>
+      {% else %}
+      <details class="u-menu">
+        <summary class="btn btn-sm">Retirer du catalogue</summary>
+        <form method="post" action="/admin/catalogue/{{ code }}/retirer" class="u-menu-liste u-menu-form">
+          <span class="u-petit">Ne plus proposer cette bibliothèque ? Les organisations qui l'ont cochée gardent leurs ouvrages.</span>
+          <button class="btn btn-danger btn-sm" type="submit">Retirer</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Ouvrages <span class="u-compte">{{ ouvrages.len() }}</span></h2></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th class="n">N°</th><th class="w-full">Ouvrage</th><th>Type</th><th>Unité</th><th>État</th><th class="n"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for o in ouvrages %}
+        <tr>
+          <td class="n">{{ o.position }}</td>
+          <td>{% if o.retire %}<span class="u-muet">{{ o.description }}</span>{% else %}<a href="/admin/catalogue/ouvrages/{{ o.id }}">{{ o.description }}</a>{% endif %}</td>
+          <td class="nw">{{ o.genre }}</td>
+          <td class="nw">{{ o.unite }}</td>
+          <td class="nw"><span class="u-pastille {{ o.classe }}">{{ o.etat }}</span></td>
+          <td class="n">
+            {% if o.retire %}
+            <form method="post" action="/admin/catalogue/ouvrages/{{ o.id }}/retablir"><button class="btn btn-sm" type="submit">Rétablir</button></form>
+            {% else %}
+            <form method="post" action="/admin/catalogue/ouvrages/{{ o.id }}/retirer"><button class="btn btn-sm" type="submit">{% if o.publie %}Retirer{% else %}Effacer{% endif %}</button></form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="6">Aucun ouvrage : ajoutez le premier ci-dessous.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<form class="u-card" method="post" action="/admin/catalogue/{{ code }}/ouvrages">
+  <div class="u-card-h"><h2>Ajouter un ouvrage</h2></div>
+  <div class="u-card-b flex flex-row flex-wrap items-end gap-3">
+    <label class="form-control flex-1 min-w-[260px]"><span class="u-lbl">Description</span>
+      <input class="input input-bordered" type="text" name="description" maxlength="5000" required></label>
+    <label class="form-control"><span class="u-lbl">Type</span>
+      <select class="select select-bordered" name="genre">{% for g in genres %}<option value="{{ g.valeur }}"{% if g.choisi %} selected{% endif %}>{{ g.libelle }}</option>{% endfor %}</select></label>
+    <label class="form-control w-32"><span class="u-lbl">Unité</span>
+      <input class="input input-bordered" type="text" name="unite" maxlength="20" placeholder="m², h, pièce…"></label>
+    <button class="btn" type="submit">Ajouter</button>
+  </div>
+  <p class="u-petit u-muet" style="margin:0;padding:0 16px 12px">Pas de prix : chaque organisation met les siens. L'ouvrage est copié chez les organisations qui ont coché cette bibliothèque après la publication, quand elles cliquent sur « Ajouter les nouveaux ouvrages ».</p>
+</form>
+{% endblock %}

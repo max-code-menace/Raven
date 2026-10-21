@@ -198,9 +198,11 @@ async fn utilisateur(db: &PgPool, cookies: &CookieJar) -> Result<Option<(i64, i6
         .await
 }
 
-/// Les adresses ouvertes sans connexion.
+/// Les adresses ouvertes sans connexion. Le back office (`/admin…`) n'est pas ouvert pour autant : il a sa propre
+/// connexion (`administration::Admin`), et une session d'organisation ne l'ouvre jamais.
 fn publique(chemin: &str) -> bool {
-    ["/connexion", "/sante", "/inscription", "/mot-de-passe-oublie"].contains(&chemin)
+    ["/connexion", "/sante", "/inscription", "/mot-de-passe-oublie", "/admin"].contains(&chemin)
+        || chemin.starts_with("/admin/")
         || ["/client/", "/inscription/", "/mot-de-passe/", "/invitation/"].iter().any(|debut| chemin.starts_with(debut))
 }
 

@@ -1,0 +1,75 @@
+{% extends "admin_base.html" %}
+
+{% block titre %}Catalogue{% endblock %}
+{% block nav_catalogue %} btn-active{% endblock %}
+
+{% block content %}
+<h1 class="text-xl font-semibold" style="margin:0">Catalogue commun</h1>
+<p class="u-petit u-muet" style="margin:0">Les bibliothèques proposées à toutes les organisations, sans prix. Un ajout attend la publication ; une correction vaut tout de suite pour les prochaines copies ; rien ne change jamais chez une organisation qui a déjà copié un ouvrage.</p>
+{% if !message.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message }}</span></div>
+{% endif %}
+{% if !erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{% if erreur == "nom" %}Indiquez un nom (100 caractères au maximum).{% else %}Choisissez un métier.{% endif %}</span></div>
+{% endif %}
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Publier la mise à jour</h2></div>
+  <div class="u-card-b flex flex-row flex-wrap items-center gap-3">
+    {% if en_attente > 0 %}
+    <span class="flex-1">{{ en_attente }} ajout(s) en attente (ouvrages et bibliothèques).</span>
+    <form method="post" action="/admin/catalogue/publier"><button class="btn btn-primary" type="submit">Publier</button></form>
+    {% else %}
+    <span class="flex-1 u-muet">Rien en attente : tout est publié.</span>
+    {% endif %}
+  </div>
+</section>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Bibliothèques</h2></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>Métier</th><th class="w-full">Bibliothèque</th><th>État</th><th class="n">Publiés</th><th class="n">À publier</th><th class="n">Retirés</th></tr></thead>
+      <tbody>
+        {% for b in bibliotheques %}
+        <tr>
+          <td class="nw">{{ b.metier }}</td>
+          <td><a href="/admin/catalogue/{{ b.code }}">{{ b.nom }}</a> <small class="u-muet">{{ b.code }}</small></td>
+          <td class="nw"><span class="u-pastille {{ b.classe }}">{{ b.etat }}</span></td>
+          <td class="n">{{ b.publies }}</td>
+          <td class="n">{{ b.en_attente }}</td>
+          <td class="n">{{ b.retires }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<form class="u-card" method="post" action="/admin/catalogue/bibliotheques">
+  <div class="u-card-h"><h2>Nouvelle bibliothèque</h2></div>
+  <div class="u-card-b flex flex-row flex-wrap items-end gap-3">
+    <label class="form-control"><span class="u-lbl">Métier</span>
+      <select class="select select-bordered" name="metier">{% for m in metiers %}<option value="{{ m.valeur }}"{% if m.choisi %} selected{% endif %}>{{ m.libelle }}</option>{% endfor %}</select></label>
+    <label class="form-control flex-1"><span class="u-lbl">Nom</span>
+      <input class="input input-bordered" type="text" name="nom" maxlength="100" required placeholder="Isolation, Façade…"></label>
+    <button class="btn" type="submit">Créer</button>
+  </div>
+</form>
+
+<section class="u-card">
+  <div class="u-card-h"><h2>Publications</h2></div>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>Date</th><th class="w-full">Par</th><th class="n">Ouvrages</th><th class="n">Bibliothèques</th></tr></thead>
+      <tbody>
+        {% for p in publications %}
+        <tr><td class="nw">{{ p.quand }}</td><td>{{ p.par }}</td><td class="n">{{ p.ouvrages }}</td><td class="n">{{ p.bibliotheques }}</td></tr>
+        {% else %}
+        <tr class="vide"><td colspan="4">Aucune publication depuis le contenu de départ.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

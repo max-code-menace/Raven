@@ -86,7 +86,7 @@ fn genre(texte: &str) -> &'static str {
     let t = cle(texte);
     if t.contains("fourniture") {
         "fourniture"
-    } else if t.contains("main") {
+    } else if t.contains("main") || t.contains("prestation") {
         "main_oeuvre"
     } else if t.contains("sous") && t.contains("trait") {
         "sous_traitant"
@@ -220,7 +220,7 @@ async fn ajouter(db: &mut PgConnection, ouvrages: &[bibliotheque::Valeurs]) -> R
     let mut tx = db.begin().await?;
     let (mut ajoutes, mut deja) = (0, 0);
     for v in ouvrages {
-        let present: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM ouvrages WHERE lower(description) = lower($1) AND unite = $2)")
+        let present: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM ouvrages WHERE lower(description) = lower($1) AND unite = $2 AND supprime_le IS NULL)")
             .bind(&v.description)
             .bind(&v.unite)
             .fetch_one(&mut *tx)
@@ -318,23 +318,24 @@ mod tests {
                    Main d'œuvre électricien;Main d'œuvre;Électricité;;H;50;20\n\
                    Sans prix;;;;pce;;\n";
         let l = lire_grille(&grille_csv(csv)).unwrap();
-        assert_eq!(l.ouvrages.len(), 3);
-        let d: Vec<(&str, &str, Option<i64>, i64)> =
+        assert_eq!(l.ouvrages.len(), 4);
+        let d: Vec<(&str, &str, Option<i64>, Option<i64>)> =
             l.ouvrages.iter().map(|v| (v.description.as_str(), v.genre, v.prix_achat_e5, v.prix_vente_e5)).collect();
-        assert_eq!(d[0], ("Modification alimentation boiler", "ouvrage", Some(19_750_000), 19_750_000));
-        assert_eq!(d[1], ("Prise double bipolaire + terre; sécurité", "ouvrage", Some(10_780_000), 10_780_000));
+        assert_eq!(d[0], ("Modification alimentation boiler", "ouvrage", Some(19_750_000), Some(19_750_000)));
+        assert_eq!(d[1], ("Prise double bipolaire + terre; sécurité", "ouvrage", Some(10_780_000), Some(10_780_000)));
         // 50 € + 20 % de marge = 60 €.
-        assert_eq!(d[2], ("Main d'œuvre électricien", "main_oeuvre", Some(5_000_000), 6_000_000));
+        assert_eq!(d[2], ("Main d'œuvre électricien", "main_oeuvre", Some(5_000_000), Some(6_000_000)));
         assert_eq!(l.ouvrages[2].categorie, "Électricité");
-        assert_eq!(l.ecartees.len(), 1);
-        assert!(l.ecartees[0].starts_with("Ligne 6 :"), "{:?}", l.ecartees);
+        // Une ligne sans aucun prix est gardée, prix « à compléter ».
+        assert_eq!((l.ouvrages[3].description.as_str(), l.ouvrages[3].prix_vente_e5), ("Sans prix", None));
+        assert!(l.ecartees.is_empty(), "{:?}", l.ecartees);
     }
 
     #[test]
     fn un_fichier_avec_prix_de_vente() {
         let csv = "Désignation,Unité,Prix de vente\nCarrelage,M2,\"83,5\"\n";
         let l = lire_grille(&grille_csv(csv)).unwrap();
-        assert_eq!((l.ouvrages[0].unite.as_str(), l.ouvrages[0].prix_achat_e5, l.ouvrages[0].prix_vente_e5), ("m²", None, 8_350_000));
+        assert_eq!((l.ouvrages[0].unite.as_str(), l.ouvrages[0].prix_achat_e5, l.ouvrages[0].prix_vente_e5), ("m²", None, Some(8_350_000)));
     }
 
     #[test]

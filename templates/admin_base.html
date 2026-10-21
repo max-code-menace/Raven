@@ -1,0 +1,28 @@
+{% import "_ui.html" as ui %}<!DOCTYPE html>
+<html lang="fr" data-theme="ubifacture">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{% block titre %}{% endblock %} · Back office · Raven</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  {% include "_styles.html" %}
+</head>
+<body>
+<header class="flex flex-wrap items-center gap-4 px-6 py-3 text-white" style="background:var(--u-menu)">
+  <span class="font-semibold">Raven · back office</span>
+  <nav class="flex gap-1" aria-label="Back office">
+    <a class="btn btn-sm btn-ghost text-white{% block nav_catalogue %}{% endblock %}" href="/admin/catalogue">Catalogue</a>
+    <a class="btn btn-sm btn-ghost text-white{% block nav_organisations %}{% endblock %}" href="/admin/organisations">Organisations</a>
+  </nav>
+  <form class="ml-auto" method="post" action="/admin/deconnexion"><button class="btn btn-sm" type="submit">Se déconnecter</button></form>
+</header>
+<main class="p-6 flex flex-col gap-4 max-w-6xl">
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

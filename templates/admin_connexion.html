@@ -1,0 +1,18 @@
+{% extends "public_base.html" %}
+
+{% block titre %}Back office{% endblock %}
+
+{% block content %}
+<h2 class="text-lg font-semibold" style="margin:0">Back office de Raven</h2>
+<p class="u-petit u-muet" style="margin:0">Réservé aux administrateurs de Raven. Les organisations clientes se connectent sur <a class="underline" href="/connexion">la page de connexion</a>.</p>
+{% if !erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
+{% endif %}
+<form method="post" action="/admin/connexion" class="flex flex-col gap-3">
+  <label class="form-control"><span class="u-lbl">E-mail</span>
+    <input class="input input-bordered" type="email" name="email" value="{{ email }}" required autocomplete="username"></label>
+  <label class="form-control"><span class="u-lbl">Mot de passe</span>
+    <input class="input input-bordered" type="password" name="mot_de_passe" required autocomplete="current-password"></label>
+  <button class="btn btn-primary" type="submit">Se connecter</button>
+</form>
+{% endblock %}

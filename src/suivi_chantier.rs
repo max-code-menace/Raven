@@ -36,7 +36,7 @@ pub(crate) const CATEGORIES: [(&str, &str); 5] = [
 ];
 
 fn libelle_categorie(code: &str) -> &'static str {
-    CATEGORIES.iter().find(|(c, _)| *c == code).map(|(_, l)| *l).unwrap_or("Autres")
+    crate::profil::categorie(CATEGORIES.iter().find(|(c, _)| *c == code).map(|(_, l)| *l).unwrap_or("Autres"))
 }
 
 pub struct LigneAchat {
@@ -169,7 +169,11 @@ pub async fn charger(db: &mut PgConnection, chantier_id: i64) -> Result<Suivi, s
                 montant: format_euros(montant),
             })
             .collect(),
-        categories: CATEGORIES.iter().enumerate().map(|(i, (v, l))| Choix { valeur: (*v).into(), libelle: (*l).into(), choisi: i == 0 }).collect(),
+        categories: CATEGORIES
+            .iter()
+            .enumerate()
+            .map(|(i, (v, l))| Choix { valeur: (*v).into(), libelle: crate::profil::categorie(l).into(), choisi: i == 0 })
+            .collect(),
         aujourdhui: aujourdhui.to_string(),
     })
 }
@@ -354,7 +358,11 @@ async fn liste_achats(mut db: Base, Query(r): Query<RechercheAchats>) -> Result<
                 choisi: false,
             })
             .collect(),
-        categories: CATEGORIES.iter().enumerate().map(|(i, (v, l))| Choix { valeur: (*v).into(), libelle: (*l).into(), choisi: i == 0 }).collect(),
+        categories: CATEGORIES
+            .iter()
+            .enumerate()
+            .map(|(i, (v, l))| Choix { valeur: (*v).into(), libelle: crate::profil::categorie(l).into(), choisi: i == 0 })
+            .collect(),
         aujourdhui: aujourdhui.to_string(),
         message: if r.ok == "achat" { "L'achat est enregistré sur son chantier." } else { "" },
         erreur: if r.erreur == "achat" { "L'achat n'est pas enregistré : choisissez le chantier, la date et un montant HT (un avoir : « -50 »)." } else { "" },
