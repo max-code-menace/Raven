@@ -31,6 +31,7 @@ pub mod exports;
 pub mod facture_calcul;
 pub mod factures;
 pub mod factures_chantier;
+pub mod factures_recues;
 pub mod facture_pdf;
 pub mod fiches;
 pub mod import_devis;
@@ -160,6 +161,7 @@ fn pages() -> Router<AppState> {
         .merge(equipe::routes())
         .merge(metier::routes())
         .merge(peppol::routes())
+        .merge(factures_recues::routes())
         .merge(catalogue::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())

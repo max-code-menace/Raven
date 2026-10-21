@@ -265,7 +265,7 @@ fn message_erreur(code: u16, v: &Value) -> String {
 }
 
 /// Un appel à l'API de Recommand (authentification « basique » : clé et secret). Rend la réponse, ou l'erreur lisible.
-async fn appel(methode: &'static str, chemin: String, corps: Option<Value>) -> Result<Value, String> {
+pub(crate) async fn appel(methode: &'static str, chemin: String, corps: Option<Value>) -> Result<Value, String> {
     let Some(c) = CONFIG.get() else { return Err("L'envoi par Peppol n'est pas configuré sur ce serveur.".into()) };
     let (adresse, autorisation) =
         (format!("{}{chemin}", c.adresse), format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", c.cle, c.secret))));
@@ -291,25 +291,60 @@ async fn appel(methode: &'static str, chemin: String, corps: Option<Value>) -> R
     .unwrap_or_else(|e| Err(e.to_string()))
 }
 
+/// Un appel qui rend un fichier (le rendu PDF d'un document), ou l'erreur lisible.
+pub(crate) async fn appel_octets(chemin: String) -> Result<Vec<u8>, String> {
+    let Some(c) = CONFIG.get() else { return Err("L'envoi par Peppol n'est pas configuré sur ce serveur.".into()) };
+    let (adresse, autorisation) =
+        (format!("{}{chemin}", c.adresse), format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", c.cle, c.secret))));
+    tokio::task::spawn_blocking(move || match ureq::get(&adresse).set("Authorization", &autorisation).timeout(std::time::Duration::from_secs(60)).call() {
+        Ok(r) => {
+            let mut octets = Vec::new();
+            std::io::Read::read_to_end(&mut std::io::Read::take(r.into_reader(), 20 * 1024 * 1024), &mut octets).map_err(|e| e.to_string())?;
+            Ok(octets)
+        }
+        Err(ureq::Error::Status(code, _)) => Err(format!("Recommand a répondu {code}.")),
+        Err(e) => Err(format!("Recommand injoignable : {e}")),
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()))
+}
+
+static SECRET_WEBHOOK: OnceLock<String> = OnceLock::new();
+
+/// Appelé une seule fois au lancement (`main.rs`) avec `RECOMMAND_WEBHOOK_SECRET` : le secret qui signe les
+/// notifications de Recommand. Sans lui, l'adresse du webhook refuse tout (les factures arrivent par la relève).
+pub fn configurer_webhook(secret: Option<String>) {
+    if let Some(secret) = secret.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()) {
+        let _ = SECRET_WEBHOOK.set(secret);
+    }
+}
+
+pub(crate) fn secret_webhook() -> Option<&'static str> {
+    SECRET_WEBHOOK.get().map(String::as_str)
+}
+
 /// L'inscription de l'organisation chez Recommand.
 pub struct Inscription {
     pub societe_id: Option<String>,
     pub verifiee: bool,
     pub lien: String,
+    /// L'organisation reçoit ses factures fournisseurs par Raven (étape 5-3).
+    pub reception: bool,
 }
 
-async fn inscription(db: &mut PgConnection) -> Result<Inscription, sqlx::Error> {
-    let (societe_id, verifiee, lien): (Option<String>, bool, Option<String>) = sqlx::query_as(
-        "SELECT peppol_societe_id, peppol_verifiee, peppol_lien_verification FROM organisations WHERE id = app_organisation()",
+pub(crate) async fn inscription(db: &mut PgConnection) -> Result<Inscription, sqlx::Error> {
+    let (societe_id, verifiee, lien, reception): (Option<String>, bool, Option<String>, bool) = sqlx::query_as(
+        "SELECT peppol_societe_id, peppol_verifiee, peppol_lien_verification, peppol_reception FROM organisations WHERE id = app_organisation()",
     )
     .fetch_one(&mut *db)
     .await?;
-    Ok(Inscription { societe_id, verifiee, lien: lien.unwrap_or_default() })
+    Ok(Inscription { societe_id, verifiee, lien: lien.unwrap_or_default(), reception })
 }
 
-/// Inscrit l'organisation chez Recommand, en envoi seulement, avec son numéro d'entreprise (Recommand en déduit ses
-/// adresses Peppol 0208 et 9925). Rend le message d'erreur à montrer, s'il y en a un.
-async fn inscrire(db: &mut PgConnection) -> Result<Option<String>, sqlx::Error> {
+/// Inscrit l'organisation chez Recommand avec son numéro d'entreprise (Recommand en déduit ses adresses Peppol 0208 et
+/// 9925) : en envoi seulement, ou aussi en réception si le propriétaire l'a demandé (`recevoir`). Rend le message
+/// d'erreur à montrer, s'il y en a un.
+async fn inscrire(db: &mut PgConnection, recevoir: bool) -> Result<Option<String>, sqlx::Error> {
     if inscription(&mut *db).await?.societe_id.is_some() {
         return Ok(None);
     }
@@ -335,8 +370,9 @@ async fn inscrire(db: &mut PgConnection) -> Result<Option<String>, sqlx::Error> 
         "country": if pays.trim().is_empty() { "BE" } else { pays.trim() },
         "enterpriseNumber": bce.numero,
         "vatNumber": format!("BE{}", bce.numero),
-        // Envoi seulement : la réception reste là où l'entreprise la reçoit aujourd'hui (étape 5-3).
-        "isSmpRecipient": false,
+        // Sans la case « Recevoir aussi mes factures fournisseurs », envoi seulement : la réception reste là où
+        // l'entreprise la reçoit aujourd'hui.
+        "isSmpRecipient": recevoir,
     });
     if crate::commun::email_valide(email.trim()) {
         corps["email"] = json!(email.trim());
@@ -348,11 +384,13 @@ async fn inscrire(db: &mut PgConnection) -> Result<Option<String>, sqlx::Error> 
         Ok(v) => {
             let Some(id) = v["company"]["id"].as_str() else { return Ok(Some("Réponse inattendue de Recommand.".into())) };
             sqlx::query(
-                "UPDATE organisations SET peppol_societe_id = $1, peppol_verifiee = $2, peppol_lien_verification = $3 WHERE id = app_organisation()",
+                "UPDATE organisations SET peppol_societe_id = $1, peppol_verifiee = $2, peppol_lien_verification = $3, peppol_reception = $4
+                 WHERE id = app_organisation()",
             )
             .bind(id)
             .bind(v["company"]["isVerified"].as_bool().unwrap_or(false))
             .bind(v["verificationUrl"].as_str())
+            .bind(recevoir)
             .execute(&mut *db)
             .await?;
             Ok(None)
@@ -365,7 +403,7 @@ async fn inscrire(db: &mut PgConnection) -> Result<Option<String>, sqlx::Error> 
 }
 
 /// Relit chez Recommand si l'organisation est vérifiée ; demande un nouveau lien de vérification s'il manque.
-async fn actualiser_organisation(db: &mut PgConnection) -> Result<Option<String>, sqlx::Error> {
+pub(crate) async fn actualiser_organisation(db: &mut PgConnection) -> Result<Option<String>, sqlx::Error> {
     let i = inscription(&mut *db).await?;
     let Some(id) = i.societe_id else { return Ok(None) };
     let verifiee = match appel("GET", format!("/api/v1/companies/{id}"), None).await {
@@ -509,6 +547,11 @@ struct Reglages {
     inscription: Inscription,
     proprietaire: bool,
     numero_entreprise: String,
+    /// Bâtiment : la case « Recevoir aussi mes factures fournisseurs » est cochée d'avance (décision de Mahx du
+    /// 21/10/2026 : réception allumée par défaut pour le bâtiment ; rien ne part sans le clic du propriétaire).
+    reception_conseillee: bool,
+    /// La dernière relève de la boîte de réception (« 21/10/2026 · 14:05 »), vide s'il n'y en a pas eu.
+    releve_le: String,
     message_erreur: String,
     message_ok: &'static str,
 }
@@ -524,11 +567,18 @@ async fn page_reglages(db: &mut Base, moi: i64, message_erreur: String, message_
     let organisation = db.organisation;
     let tva: Option<Option<String>> =
         sqlx::query_scalar("SELECT numero_tva FROM societe WHERE organisation_id = app_organisation()").fetch_optional(&mut **db).await?;
+    let (metier, releve_le): (String, Option<String>) = sqlx::query_as(
+        "SELECT profil_metier, to_char(peppol_releve_le AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI') FROM organisations WHERE id = app_organisation()",
+    )
+    .fetch_one(&mut **db)
+    .await?;
     let page = Reglages {
         envoi_actif: envoi_actif(),
         inscription: inscription(&mut *db).await?,
         proprietaire: crate::equipe::role(&mut *db, moi, organisation).await?.as_deref() == Some("proprietaire"),
         numero_entreprise: depuis_tva(tva.flatten().as_deref().unwrap_or("")).map(|i| i.to_string()).unwrap_or_default(),
+        reception_conseillee: metier == "batiment",
+        releve_le: releve_le.unwrap_or_default(),
         message_erreur,
         message_ok,
     };
@@ -540,21 +590,39 @@ async fn reglages(mut db: Base, Utilisateur(moi): Utilisateur, Query(r): Query<R
     let erreur = if envoi_actif() && !inscription(&mut db).await?.verifiee { actualiser_organisation(&mut db).await? } else { None };
     let message_ok = match r.ok.as_str() {
         "inscrite" => "Votre entreprise est inscrite chez Recommand. Il reste à vérifier votre identité.",
+        "reception" => "La réception est allumée : vos factures fournisseurs arriveront dans Finances › Factures fournisseurs.",
+        "reception_arretee" => "La réception est arrêtée : vos factures fournisseurs n'arrivent plus dans Raven. Celles déjà reçues restent.",
         _ => "",
     };
-    let erreur = erreur.unwrap_or_else(|| if r.erreur == "droits" { "Seul un propriétaire peut inscrire l'entreprise.".into() } else { String::new() });
+    let erreur = erreur.unwrap_or_else(|| match r.erreur.as_str() {
+        "droits" => "Seul un propriétaire peut changer l'inscription Peppol de l'entreprise.".into(),
+        "confirmation" => "Cochez la case pour confirmer que vous avez lu l'avertissement.".into(),
+        _ => String::new(),
+    });
     page_reglages(&mut db, moi, erreur, message_ok).await
 }
 
-async fn inscrire_page(mut db: Base, Utilisateur(moi): Utilisateur) -> Result<Response, Erreur> {
+/// Le propriétaire de l'organisation (seul à changer l'inscription chez Recommand).
+async fn proprietaire(db: &mut Base, moi: i64) -> Result<bool, sqlx::Error> {
     let organisation = db.organisation;
-    if crate::equipe::role(&mut db, moi, organisation).await?.as_deref() != Some("proprietaire") {
+    Ok(crate::equipe::role(&mut *db, moi, organisation).await?.as_deref() == Some("proprietaire"))
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct DemandeInscription {
+    /// « on » : inscrire aussi l'entreprise en réception.
+    recevoir: String,
+}
+
+async fn inscrire_page(mut db: Base, Utilisateur(moi): Utilisateur, Form(d): Form<DemandeInscription>) -> Result<Response, Erreur> {
+    if !proprietaire(&mut db, moi).await? {
         return Ok(Redirect::to("/parametres/peppol?erreur=droits").into_response());
     }
     if !envoi_actif() {
         return Err(Erreur::conflit("L'envoi par Peppol n'est pas configuré sur ce serveur."));
     }
-    match inscrire(&mut db).await? {
+    match inscrire(&mut db, d.recevoir == "on").await? {
         None => Ok(Redirect::to("/parametres/peppol?ok=inscrite").into_response()),
         Some(e) => Ok(page_reglages(&mut db, moi, e, "").await?.into_response()),
     }
@@ -571,11 +639,102 @@ async fn actualiser_page(mut db: Base, Utilisateur(moi): Utilisateur, Form(_): F
     }
 }
 
+/// Une clé de migration : 8 à 24 caractères, sans espace (Recommand vérifie le reste).
+fn cle_migration_valide(cle: &str) -> bool {
+    (8..=24).contains(&cle.chars().count()) && !cle.chars().any(char::is_whitespace)
+}
+
+/// Remet une clé de migration à Recommand pour l'identifiant 0208 de l'organisation : l'ancien point d'accès lui
+/// cède la réception sans interruption. Rend le message d'erreur, s'il y en a un.
+async fn migrer(societe_id: &str, cle: &str) -> Option<String> {
+    let identifiants = match appel("GET", format!("/api/v1/companies/{societe_id}/identifiers"), None).await {
+        Ok(v) => v,
+        Err(e) => return Some(e),
+    };
+    let Some(identifiant) = identifiants["identifiers"].as_array().into_iter().flatten().find(|i| i["scheme"] == SCHEMA_BCE) else {
+        return Some("Recommand ne connaît pas encore votre numéro d'entreprise (0208) : réessayez dans un instant.".into());
+    };
+    let chemin = format!("/api/v1/companies/{societe_id}/identifiers/{}/migration", identifiant["id"].as_str().unwrap_or_default());
+    match appel("POST", chemin, Some(json!({ "migrationKey": cle }))).await {
+        Ok(v) => match v["migration"]["status"].as_str() {
+            Some("failed") | Some("cancelled") => {
+                Some(format!("La clé de migration est refusée : {}", v["migration"]["errorMessage"].as_str().unwrap_or("sans raison donnée")))
+            }
+            _ => None,
+        },
+        Err(e) => Some(format!("La clé de migration est refusée : {e}")),
+    }
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct DemandeReception {
+    /// « on » : le propriétaire a lu l'avertissement.
+    confirme: String,
+    /// La clé de migration donnée par l'ancien point d'accès (facultative).
+    cle_migration: String,
+}
+
+/// « Recevoir mes factures fournisseurs dans Raven » : l'entreprise est inscrite en réception chez Recommand.
+async fn allumer_reception(mut db: Base, Utilisateur(moi): Utilisateur, Form(d): Form<DemandeReception>) -> Result<Response, Erreur> {
+    if !proprietaire(&mut db, moi).await? {
+        return Ok(Redirect::to("/parametres/peppol?erreur=droits").into_response());
+    }
+    if !envoi_actif() {
+        return Err(Erreur::conflit("Peppol n'est pas configuré sur ce serveur."));
+    }
+    let Some(societe_id) = inscription(&mut db).await?.societe_id else {
+        return Err(Erreur::conflit("Inscrivez d'abord votre entreprise (Réglages › Peppol)."));
+    };
+    if d.confirme != "on" {
+        return Ok(Redirect::to("/parametres/peppol?erreur=confirmation").into_response());
+    }
+    let cle = d.cle_migration.trim();
+    if !cle.is_empty() {
+        if !cle_migration_valide(cle) {
+            let e = "La clé de migration compte 8 à 24 caractères, sans espace : recopiez-la telle que votre ancien point d'accès l'a donnée.";
+            return Ok(page_reglages(&mut db, moi, e.into(), "").await?.into_response());
+        }
+        // La clé d'abord : Recommand la garde et l'utilise dès que l'entreprise peut être publiée en réception.
+        if let Some(e) = migrer(&societe_id, cle).await {
+            return Ok(page_reglages(&mut db, moi, e, "").await?.into_response());
+        }
+    }
+    if let Err(e) = appel("PUT", format!("/api/v1/companies/{societe_id}"), Some(json!({ "isSmpRecipient": true }))).await {
+        eprintln!("Inscription en réception refusée : {e}");
+        let message = format!(
+            "Recommand a refusé l'inscription en réception : {e} Si votre entreprise reçoit déjà ses factures par un autre point d'accès \
+             (votre comptable, un autre logiciel), demandez-lui une clé de migration et collez-la ci-dessous, ou demandez-lui de vous désinscrire."
+        );
+        return Ok(page_reglages(&mut db, moi, message, "").await?.into_response());
+    }
+    sqlx::query("UPDATE organisations SET peppol_reception = true WHERE id = app_organisation()").execute(&mut *db).await?;
+    Ok(Redirect::to("/parametres/peppol?ok=reception").into_response())
+}
+
+/// Arrête la réception : l'entreprise n'est plus inscrite en réception chez Recommand. Les factures reçues restent.
+async fn arreter_reception(mut db: Base, Utilisateur(moi): Utilisateur, Form(d): Form<DemandeReception>) -> Result<Response, Erreur> {
+    if !proprietaire(&mut db, moi).await? {
+        return Ok(Redirect::to("/parametres/peppol?erreur=droits").into_response());
+    }
+    let Some(societe_id) = inscription(&mut db).await?.societe_id else { return Err(Erreur::introuvable()) };
+    if d.confirme != "on" {
+        return Ok(Redirect::to("/parametres/peppol?erreur=confirmation").into_response());
+    }
+    if let Err(e) = appel("PUT", format!("/api/v1/companies/{societe_id}"), Some(json!({ "isSmpRecipient": false }))).await {
+        return Ok(page_reglages(&mut db, moi, format!("Recommand a refusé : {e}"), "").await?.into_response());
+    }
+    sqlx::query("UPDATE organisations SET peppol_reception = false WHERE id = app_organisation()").execute(&mut *db).await?;
+    Ok(Redirect::to("/parametres/peppol?ok=reception_arretee").into_response())
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/parametres/peppol", get(reglages))
         .route("/parametres/peppol/inscrire", post(inscrire_page))
         .route("/parametres/peppol/actualiser", post(actualiser_page))
+        .route("/parametres/peppol/reception", post(allumer_reception))
+        .route("/parametres/peppol/reception/arreter", post(arreter_reception))
         .route("/factures/{id}/peppol", post(envoyer))
         .route("/factures/{id}/peppol/actualiser", post(actualiser))
 }

@@ -11,7 +11,7 @@
       <span class="u-ic">{% call ui::icone("reglages", 20) %}{% endcall %}</span>
       <div>
         <h1>Peppol</h1>
-        <div class="u-sous-titre">Réglages · envoyer vos factures électroniques à vos clients entreprises</div>
+        <div class="u-sous-titre">Réglages · envoyer vos factures électroniques à vos clients entreprises, et recevoir celles de vos fournisseurs</div>
       </div>
     </div>
   </div>
@@ -36,10 +36,11 @@
     {% else %}
     {% match inscription.societe_id %}
     {% when None %}
-    <p class="u-petit" style="margin:0"><strong>Étape 1 : inscrire votre entreprise.</strong> Elle sera inscrite sous votre numéro d'entreprise{% if !numero_entreprise.is_empty() %} (<span class="mono">{{ numero_entreprise }}</span>){% endif %}, pour l'envoi seulement : vos factures reçues continuent d'arriver là où vous les recevez aujourd'hui.</p>
+    <p class="u-petit" style="margin:0"><strong>Étape 1 : inscrire votre entreprise.</strong> Elle sera inscrite sous votre numéro d'entreprise{% if !numero_entreprise.is_empty() %} (<span class="mono">{{ numero_entreprise }}</span>){% endif %} pour envoyer vos factures.</p>
     {% if proprietaire %}
-    <form method="post" action="/parametres/peppol/inscrire" style="margin:0">
-      <button class="btn btn-primary btn-sm" type="submit">Inscrire mon entreprise</button>
+    <form method="post" action="/parametres/peppol/inscrire" style="margin:0;display:flex;flex-direction:column;gap:10px">
+      <label class="flex gap-2 items-start u-petit"><input class="checkbox checkbox-sm" type="checkbox" name="recevoir" value="on"{% if reception_conseillee %} checked{% endif %}> <span><strong>Recevoir aussi mes factures fournisseurs dans Raven.</strong> Attention : une entreprise ne reçoit ses factures que par un seul point d'accès Peppol. Si votre comptable ou un autre logiciel les reçoit aujourd'hui, il ne les recevra plus. Laissez la case vide pour l'envoi seulement (vous pourrez allumer la réception plus tard).</span></label>
+      <div><button class="btn btn-primary btn-sm" type="submit">Inscrire mon entreprise</button></div>
     </form>
     {% else %}
     <p class="u-petit u-muet" style="margin:0">Seul un propriétaire peut inscrire l'entreprise.</p>
@@ -68,4 +69,41 @@
     {% endif %}
   </div>
 </section>
+
+{% if envoi_actif && inscription.societe_id.is_some() %}
+<section class="u-card" id="reception">
+  <div class="u-card-h"><h2>Réception des factures fournisseurs</h2></div>
+  <div class="u-card-b" style="display:flex;flex-direction:column;gap:12px">
+    {% if inscription.reception %}
+    <p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Allumée</span> Vos fournisseurs vous envoient leurs factures par Peppol : elles arrivent dans <a class="underline" href="/achats/recues">Finances › Factures fournisseurs</a>, à rattacher à vos {{ crate::profil::mot("chantiers") }}.{% if !releve_le.is_empty() %} Dernière relève le {{ releve_le }}.{% endif %}</p>
+    {% if !inscription.verifiee %}<p class="u-petit" style="margin:0">Votre entreprise ne sera publiée en réception sur le réseau Peppol qu'une fois votre identité vérifiée (étape 2 ci-dessus).</p>{% endif %}
+    {% if proprietaire %}
+    <details>
+      <summary class="u-petit underline" style="cursor:pointer">Arrêter la réception</summary>
+      <form method="post" action="/parametres/peppol/reception/arreter" style="margin:8px 0 0;display:flex;flex-direction:column;gap:8px">
+        <label class="flex gap-2 items-start u-petit"><input class="checkbox checkbox-sm" type="checkbox" name="confirme" value="on" required> <span>Je comprends que mes fournisseurs ne pourront plus m'envoyer leurs factures par Peppol tant qu'un autre point d'accès ne les reçoit pas. Les factures déjà reçues restent dans Raven.</span></label>
+        <div><button class="btn btn-sm" type="submit">Arrêter la réception</button></div>
+      </form>
+    </details>
+    {% endif %}
+    {% else %}
+    <p class="u-petit" style="margin:0">Raven peut recevoir les factures que vos fournisseurs vous envoient par Peppol : vous les rattachez à vos {{ crate::profil::mot("chantiers") }} (budget et rentabilité à jour) et elles partent dans l'export pour le comptable.{% if reception_conseillee %} <strong>Conseillé pour le bâtiment.</strong>{% endif %}</p>
+    <div role="alert" class="u-bandeau erreur" style="margin:0">{% call ui::icone("attention", 18) %}{% endcall %}<span><strong>Avant d'allumer :</strong> une entreprise ne reçoit ses factures Peppol que par un seul point d'accès. Si votre comptable, votre banque ou un autre logiciel les reçoit aujourd'hui, il ne les recevra plus. Prévenez-le d'abord.</span></div>
+    {% if proprietaire %}
+    <form method="post" action="/parametres/peppol/reception" style="margin:0;display:flex;flex-direction:column;gap:10px">
+      <label class="form-control" style="max-width:420px">
+        <span class="u-lbl">Clé de migration (si vous recevez déjà par un autre point d'accès)</span>
+        <input class="input input-bordered input-sm mono" type="text" name="cle_migration" maxlength="24" autocomplete="off">
+        <span class="u-petit u-muet">Demandez-la à votre fournisseur Peppol actuel : la réception passe chez Raven sans interruption. Sans clé, demandez-lui de vous désinscrire.</span>
+      </label>
+      <label class="flex gap-2 items-start u-petit"><input class="checkbox checkbox-sm" type="checkbox" name="confirme" value="on" required> <span>J'ai lu l'avertissement : mes factures fournisseurs Peppol arriveront désormais dans Raven.</span></label>
+      <div><button class="btn btn-primary btn-sm" type="submit">Recevoir mes factures fournisseurs dans Raven</button></div>
+    </form>
+    {% else %}
+    <p class="u-petit u-muet" style="margin:0">Seul un propriétaire peut allumer la réception.</p>
+    {% endif %}
+    {% endif %}
+  </div>
+</section>
+{% endif %}
 {% endblock %}

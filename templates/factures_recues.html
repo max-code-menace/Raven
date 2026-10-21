@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Factures fournisseurs reçues · Ubifacture{% endblock %}
+{% block nav_achats %}actif{% endblock %}
+{% block nav_recues %}actif{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <span class="u-ic">{% call ui::icone("finances", 20) %}{% endcall %}</span>
+      <div>
+        <h1>Factures fournisseurs</h1>
+        <div class="u-sous-titre">Reçues par Peppol{% if !releve_le.is_empty() %} · dernière relève le {{ releve_le }}{% endif %}</div>
+      </div>
+    </div>
+    <div class="u-actions">
+      {% if reception %}
+      <form method="post" action="/achats/recues/relever" style="margin:0">
+        <button class="btn btn-primary" type="submit">Relever</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  <nav class="u-onglets" aria-label="Factures fournisseurs">
+    <a class="actif" href="/achats/recues">Reçues par Peppol</a>
+    {% if crate::profil::actuel().achats %}<a href="/achats">Achats des {{ crate::profil::mot("chantiers") }}</a>{% endif %}
+  </nav>
+</header>
+{% endblock %}
+
+{% block content %}
+{% if !message_ok.is_empty() %}
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>{{ message_ok }}</span></div>
+{% endif %}
+{% if !message_erreur.is_empty() %}
+<div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ message_erreur }}</span></div>
+{% endif %}
+{% if !reception %}
+<div role="status" class="u-bandeau">{% call ui::icone("attention", 18) %}{% endcall %}<span>La réception par Peppol n'est pas allumée : vos factures fournisseurs n'arrivent pas dans Raven. Un propriétaire peut l'allumer dans <a class="underline font-medium" href="/parametres/peppol">Réglages › Peppol</a>.</span></div>
+{% endif %}
+<section class="u-card">
+  <form class="u-outils" method="get" action="/achats/recues">
+    <input type="hidden" name="vue" value="{{ vue }}">
+    <label class="u-recherche">
+      {% call ui::icone("recherche", 16) %}{% endcall %}
+      <input class="input input-bordered w-full" type="search" name="q" value="{{ q }}" placeholder="Rechercher (fournisseur, numéro)" aria-label="Rechercher">
+    </label>
+    <button class="btn" type="submit">Rechercher</button>
+  </form>
+  <nav class="u-onglets" style="margin:0 16px" aria-label="Afficher">
+    <a {% if vue == "a_traiter" %}class="actif" {% endif %}href="/achats/recues?vue=a_traiter&amp;ok=filtre">À traiter <small>{{ a_traiter }}</small></a>
+    <a {% if vue == "traitees" %}class="actif" {% endif %}href="/achats/recues?vue=traitees&amp;ok=filtre">Traitées <small>{{ traitees }}</small></a>
+    <a {% if vue == "toutes" %}class="actif" {% endif %}href="/achats/recues?vue=toutes&amp;ok=filtre">Toutes <small>{{ toutes }}</small></a>
+  </nav>
+  <div class="overflow-x-auto">
+    <table class="u-table">
+      <thead><tr><th>Reçue le</th><th>Fournisseur</th><th>Pièce</th><th>Date</th><th class="n">Montant HT</th><th class="n">Montant TTC</th><th>Statut</th><th></th></tr></thead>
+      <tbody>
+        {% for f in lignes %}
+        <tr>
+          <td class="nw">{{ f.recue }}</td>
+          <td><a class="font-medium" href="/achats/recues/{{ f.id }}">{{ f.fournisseur }}</a></td>
+          <td class="nw">{{ f.genre }}{% if !f.numero.is_empty() %} n° {{ f.numero }}{% endif %}</td>
+          <td class="nw">{{ f.date }}</td>
+          <td class="n">{{ f.ht }}</td>
+          <td class="n">{{ f.ttc }}</td>
+          <td class="nw">{% if f.a_traiter %}<span class="u-pastille s-a-envoyer">À traiter</span><br><small class="u-muet">reste {{ f.reste }} HT</small>{% else %}<span class="u-pastille s-accepte">Traitée</span>{% endif %}</td>
+          <td class="nw"><a class="btn btn-sm" href="/achats/recues/{{ f.id }}">Ouvrir</a></td>
+        </tr>
+        {% else %}
+        <tr class="vide"><td colspan="8">{% if vue == "a_traiter" %}Aucune facture à traiter.{% else %}Aucune facture reçue.{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="u-pied">
+    <span>{{ lignes.len() }} facture(s){% if lignes.len() >= 200 %} · les 200 plus récentes affichées{% endif %}</span>
+  </div>
+</section>
+{% endblock %}

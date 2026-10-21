@@ -200,6 +200,15 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
             action: "Préparer",
         });
     }
+    let recues = crate::factures_recues::nombre_a_traiter(&mut *db).await?;
+    if recues > 0 {
+        alertes.push(Alerte {
+            couleur: "#0B6371",
+            texte: format!("{recues} facture(s) fournisseur reçue(s) par Peppol à traiter (rattacher à un chantier ou classer)."),
+            lien: "/achats/recues".to_string(),
+            action: "Traiter",
+        });
+    }
     let a_envoyer: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE statut = 'a_envoyer'").fetch_one(&mut *db).await?;
     if a_envoyer > 0 {
         alertes.push(Alerte {

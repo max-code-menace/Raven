@@ -30,7 +30,7 @@
       <a class="u-sous {% block nav_notes %}{% endblock %}" href="/factures?genre=note_credit">Notes de crédit</a>
       <a class="u-sous {% block nav_rappels %}{% endblock %}" href="/factures/rappels">Rappels de paiement</a>
       <a class="u-sous {% block nav_recurrences %}{% endblock %}" href="/factures/recurrences">Factures récurrentes</a>
-      {% if crate::profil::actuel().achats %}<a class="u-sous {% block nav_achats %}{% endblock %}" href="/achats">Factures fournisseurs</a>{% endif %}
+      {% if crate::profil::actuel().achats %}<a class="u-sous {% block nav_achats %}{% endblock %}" href="/achats">Factures fournisseurs</a>{% else if crate::profil::actuel().reception %}<a class="u-sous {% block nav_recues %}{% endblock %}" href="/achats/recues">Factures fournisseurs</a>{% endif %}
       <a class="u-sous {% block nav_exports %}{% endblock %}" href="/exports">Export factures</a>
       <a class="{% block nav_statistiques %}{% endblock %}" href="/statistiques">{% call ui::icone("stats", 18) %}{% endcall %}Statistiques</a>
     </nav>

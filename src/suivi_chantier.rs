@@ -5,8 +5,8 @@
 //! - **Main d'œuvre** : heures prévues dans les devis ;
 //! - **Facturation** : facturé, encaissé, reste à recevoir, reste à facturer.
 //!
-//! Les achats réels se saisissent à la main dans l'onglet Finances (« Achats du chantier ») en attendant la réception
-//! des factures fournisseurs par Peppol (phase 2).
+//! Les achats réels se saisissent à la main dans l'onglet Finances (« Achats du chantier »), ou viennent des factures
+//! fournisseurs reçues par Peppol et rattachées au chantier (étape 5-3, `factures_recues`).
 
 use askama::Template;
 use axum::{
@@ -35,7 +35,7 @@ pub(crate) const CATEGORIES: [(&str, &str); 5] = [
     ("autre", "Autres"),
 ];
 
-fn libelle_categorie(code: &str) -> &'static str {
+pub(crate) fn libelle_categorie(code: &str) -> &'static str {
     crate::profil::categorie(CATEGORIES.iter().find(|(c, _)| *c == code).map(|(_, l)| *l).unwrap_or("Autres"))
 }
 
@@ -295,6 +295,8 @@ struct PageAchats {
     chantiers: Vec<Choix>,
     categories: Vec<Choix>,
     aujourdhui: String,
+    /// Les factures reçues par Peppol qui attendent d'être rattachées (onglet « Reçues par Peppol »).
+    a_traiter: i64,
     message: &'static str,
     erreur: &'static str,
 }
@@ -334,7 +336,9 @@ async fn liste_achats(mut db: Base, Query(r): Query<RechercheAchats>) -> Result<
     .fetch_all(&mut *db)
     .await?;
     let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
+    let a_traiter = crate::factures_recues::nombre_a_traiter(&mut db).await?;
     let page = PageAchats {
+        a_traiter,
         q,
         lignes: lignes
             .into_iter()

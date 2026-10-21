@@ -11,7 +11,7 @@
       <span class="u-ic">{% call ui::icone("finances", 20) %}{% endcall %}</span>
       <div>
         <h1>Factures fournisseurs</h1>
-        <div class="u-sous-titre">Les achats de tous les {{ crate::profil::mot("chantiers") }}, saisis à la main en attendant la réception par Peppol (phase 2). Ils comptent dans le budget d'achat et la rentabilité du {{ crate::profil::mot("chantier") }}.</div>
+        <div class="u-sous-titre">Les achats de tous les {{ crate::profil::mot("chantiers") }} : saisis à la main, ou venus des factures reçues par Peppol. Ils comptent dans le budget d'achat et la rentabilité du {{ crate::profil::mot("chantier") }}.</div>
       </div>
     </div>
     <div class="u-actions">
@@ -55,6 +55,10 @@
       </details>
     </div>
   </div>
+  <nav class="u-onglets" aria-label="Factures fournisseurs">
+    <a href="/achats/recues">Reçues par Peppol{% if a_traiter > 0 %} <small>{{ a_traiter }} à traiter</small>{% endif %}</a>
+    <a class="actif" href="/achats">Achats des {{ crate::profil::mot("chantiers") }}</a>
+  </nav>
 </header>
 {% endblock %}
 

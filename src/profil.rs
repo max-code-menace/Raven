@@ -20,10 +20,12 @@ pub struct Profil {
     pub achats: bool,
     /// Import du modèle Excel de métré (« Depuis Excel »).
     pub import_metres: bool,
+    /// Réception des factures fournisseurs par Peppol (étape 5-3) : la boîte de réception est dans le menu.
+    pub reception: bool,
 }
 
 impl Profil {
-    pub const BATIMENT: Profil = Profil { projet: false, avancements: true, avenants: true, achats: true, import_metres: false };
+    pub const BATIMENT: Profil = Profil { projet: false, avancements: true, avenants: true, achats: true, import_metres: false, reception: false };
 }
 
 tokio::task_local! {
@@ -42,13 +44,14 @@ pub async fn avec<F: std::future::Future>(profil: Profil, page: F) -> F::Output 
 
 /// Le profil d'une organisation.
 pub async fn charger(db: &mut PgConnection, organisation: i64) -> Result<Profil, sqlx::Error> {
-    let (vocabulaire, avancements, avenants, achats, import_metres): (String, bool, bool, bool, bool) = sqlx::query_as(
-        "SELECT vocabulaire, module_avancements, module_avenants, module_achats, module_import_metres FROM organisations WHERE id = $1",
+    let (vocabulaire, avancements, avenants, achats, import_metres, reception): (String, bool, bool, bool, bool, bool) = sqlx::query_as(
+        "SELECT vocabulaire, module_avancements, module_avenants, module_achats, module_import_metres, peppol_reception
+         FROM organisations WHERE id = $1",
     )
     .bind(organisation)
     .fetch_one(db)
     .await?;
-    Ok(Profil { projet: vocabulaire == "projet", avancements, avenants, achats, import_metres })
+    Ok(Profil { projet: vocabulaire == "projet", avancements, avenants, achats, import_metres, reception })
 }
 
 /// L'organisation de la connexion parle-t-elle de « projet » ? Lu dans la base (les PDF s'en servent : ils sont
