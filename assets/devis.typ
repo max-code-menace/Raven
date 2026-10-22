@@ -1,26 +1,40 @@
-// Mise en page du devis (PDF). Typst : https://typst.app/docs
+// Mise en page du devis (PDF), au design de Raven (refonte, étape 5). Typst : https://typst.app/docs
 // Ce fichier est suivi, à la fin, d'un appel `#devis((...))` écrit par le serveur avec les données
 // du devis. Les textes arrivent comme valeurs (jamais comme balisage) : rien de ce que la personne
 // tape ne peut changer la mise en page.
+//
+// Les couleurs et les polices sont celles du design system (templates/_raven.html) : encre sur papier blanc,
+// traits gris clairs, le jaune de Raven pour le total à payer ; Archivo pour le texte, IBM Plex Mono pour les
+// chiffres et les petites étiquettes.
 
-#let accent = rgb("#1f3a5f")
-#let gris = rgb("#5b6470")
-#let clair = rgb("#f1f4f8")
-#let trait = luma(222)
+#let encre = rgb("#111110")
+#let gris = rgb("#6a6a64")
+#let trait = rgb("#e3e3de")
+#let doux = rgb("#f6f6f2")
+#let jaune = rgb("#fef6cc")
+#let jaune-trait = rgb("#cd9100")
+#let sans = "Archivo"
+#let mono = "IBM Plex Mono"
 
 // Un texte sur plusieurs lignes : chaque saut de ligne devient un retour à la ligne.
 #let multi(s) = s.split("\n").join(linebreak())
 
+// Petite étiquette en capitales (comme « rv-eyebrow » à l'écran).
+#let etiquette(t) = text(font: mono, size: 6.5pt, weight: "medium", fill: gris, tracking: 0.06em, upper(t))
+
+// Un chiffre : police à chasse fixe, pour que les colonnes s'alignent (un peu plus petite : elle est plus large).
+#let chiffre(t) = text(font: mono, size: 0.92em, t)
+
 #let bloc-adresse(b) = {
-  text(weight: "bold", b.nom)
+  text(weight: "semibold", b.nom)
   for l in b.adresse { linebreak(); l }
-  if b.tva != "" { linebreak(); text(fill: gris)[TVA ] + b.tva }
+  if b.tva != "" { linebreak(); text(fill: gris)[TVA ] + chiffre(b.tva) }
 }
 
 #let pied(d) = {
-  set text(size: 7pt, fill: gris)
-  line(length: 100%, stroke: 0.4pt + trait)
-  v(2pt)
+  set text(font: mono, size: 6.5pt, fill: gris)
+  line(length: 100%, stroke: 0.5pt + trait)
+  v(3pt)
   grid(
     columns: (1fr, auto),
     {
@@ -46,34 +60,35 @@
       }
     }
     if l.type == "titre" {
-      cellules.push(table.cell(fill: clair)[*#l.numero*])
-      cellules.push(table.cell(fill: clair, colspan: 5)[*#corps*])
-      cellules.push(table.cell(fill: clair, align: right)[*#l.sous_total*])
+      cellules.push(table.cell(fill: doux, stroke: (top: 0.8pt + encre, bottom: 0.5pt + trait), text(font: mono, weight: "semibold", l.numero)))
+      cellules.push(table.cell(fill: doux, stroke: (top: 0.8pt + encre, bottom: 0.5pt + trait), colspan: 6, text(weight: "semibold", corps)))
+      cellules.push(table.cell(fill: doux, stroke: (top: 0.8pt + encre, bottom: 0.5pt + trait), align: right, text(font: mono, weight: "semibold", l.sous_total)))
     } else if l.type == "sous_titre" {
-      cellules.push[#l.numero]
-      cellules.push(table.cell(colspan: 6)[*#corps*])
+      cellules.push(chiffre(l.numero))
+      cellules.push(table.cell(colspan: 7, text(weight: "semibold", corps)))
     } else if l.type == "texte" {
-      cellules.push[#l.numero]
-      cellules.push(table.cell(colspan: 6)[#text(style: "italic", corps)])
+      cellules.push(text(font: mono, fill: gris, l.numero))
+      cellules.push(table.cell(colspan: 7, text(fill: gris, corps)))
     } else {
-      cellules.push[#l.numero]
-      cellules.push[#corps]
-      cellules.push[#l.quantite]
-      cellules.push[#l.unite]
-      cellules.push[#l.prix_unitaire]
-      cellules.push[#l.tva]
-      cellules.push[#l.total]
+      cellules.push(chiffre(l.numero))
+      cellules.push(corps)
+      cellules.push(text(font: mono, size: 7pt, fill: gris, l.type_quantite))
+      cellules.push(chiffre(l.quantite))
+      cellules.push(l.unite)
+      cellules.push(chiffre(l.prix_unitaire))
+      cellules.push(chiffre(l.tva))
+      cellules.push(chiffre(l.total))
     }
   }
   table(
-    columns: (auto, 1fr, auto, auto, auto, auto, auto),
-    stroke: (x: none, y: none, bottom: 0.3pt + trait),
-    inset: (x: 4pt, y: 5pt),
-    align: (left + top, left + top, right + top, left + top, right + top, right + top, right + top),
+    columns: (auto, 1fr, auto, auto, auto, auto, auto, auto),
+    stroke: (x: none, y: none, bottom: 0.5pt + trait),
+    inset: (x: 5pt, y: 5.5pt),
+    align: (left + top, left + top, left + top, right + top, left + top, right + top, right + top, right + top),
     table.header(
-      ..([N°], [Description], [Qté], [Unité], [P.U.], [TVA], [Total]).map(t => table.cell(
-        stroke: (bottom: 0.8pt + accent),
-        text(weight: "bold", fill: accent, t),
+      ..([N°], [Désignation], [Type], [Qté], [Unité], [P.U. HT], [TVA], [Total HT]).map(t => table.cell(
+        stroke: (bottom: 0.8pt + encre),
+        etiquette(t),
       )),
     ),
     ..cellules,
@@ -91,10 +106,10 @@
     footer: pied(d),
     footer-descent: 6pt,
   )
-  set text(font: "Inter", size: 8.5pt, lang: "fr", region: "BE", fill: rgb("#1c2430"))
+  set text(font: sans, size: 8.5pt, lang: "fr", region: "BE", fill: encre)
   set par(leading: 0.62em, spacing: 0.9em)
 
-  // En-tête : la société à gauche, le client à droite.
+  // En-tête : la société à gauche ; le titre, le numéro et les renseignements du devis à droite.
   grid(
     columns: (1fr, 1fr),
     column-gutter: 1.2cm,
@@ -104,42 +119,55 @@
           image(d.societe.logo, height: 1.7cm, fit: "contain")
           v(6pt)
         }
-        text(weight: "bold", size: 10pt, d.societe.nom)
+        text(weight: "semibold", size: 10.5pt, d.societe.nom)
+        set text(fill: gris)
         for l in d.societe.adresse { linebreak(); l }
         if d.societe.telephone != "" { linebreak(); d.societe.telephone }
         if d.societe.email != "" { linebreak(); d.societe.email }
-        if d.societe.tva != "" { linebreak(); text(fill: gris)[TVA ] + d.societe.tva }
+        if d.societe.tva != "" { linebreak(); [TVA ] + chiffre(d.societe.tva) }
       }
     },
     {
-      if d.client != none {
-        block(width: 100%, inset: 10pt, fill: clair, radius: 3pt, bloc-adresse(d.client))
-      } else {
-        text(fill: gris, style: "italic")[Client à compléter]
-      }
-      if d.facturation != none {
-        v(6pt)
-        text(size: 7.5pt, fill: gris)[Facturé à]
-        linebreak()
-        bloc-adresse(d.facturation)
-      }
+      etiquette(d.genre)
+      v(1pt)
+      text(size: 20pt, weight: "bold", tracking: -0.01em)[N° #d.numero]
+      v(8pt)
+      grid(
+        columns: (auto, 1fr),
+        column-gutter: 10pt,
+        row-gutter: 5pt,
+        ..if d.corrige != "" { (etiquette("Corrige"), d.corrige) } else { () },
+        etiquette("Date"), chiffre(d.date),
+        etiquette("Référence"), d.reference,
+        ..if d.responsable != "" { (etiquette("Responsable"), d.responsable) } else { () },
+        ..if d.chantier != "" { (etiquette(d.mot_chantier), d.chantier) } else { () },
+      )
     },
   )
 
-  v(0.9cm)
-  text(size: 17pt, weight: "bold", fill: accent)[#upper(d.genre) N° #d.numero]
-  v(4pt)
+  v(0.8cm)
+  // Le client, et la personne facturée quand ce n'est pas la même.
   grid(
-    columns: (auto, 1fr),
-    column-gutter: 10pt,
-    row-gutter: 4pt,
-    ..if d.corrige != "" { (text(fill: gris)[Corrige], d.corrige) } else { () },
-    text(fill: gris)[Référence], d.reference,
-    text(fill: gris)[Date], d.date,
-    ..if d.responsable != "" { (text(fill: gris)[Responsable], d.responsable) } else { () },
-    ..if d.chantier != "" { (text(fill: gris)[#d.mot_chantier], d.chantier) } else { () },
+    columns: (1fr, 1fr),
+    column-gutter: 1.2cm,
+    {
+      etiquette("Client")
+      v(3pt)
+      if d.client != none {
+        block(width: 100%, inset: (left: 9pt, y: 2pt), stroke: (left: 1.5pt + encre), bloc-adresse(d.client))
+      } else {
+        text(fill: gris, style: "italic")[Client à compléter]
+      }
+    },
+    {
+      if d.facturation != none {
+        etiquette("Facturé à")
+        v(3pt)
+        block(width: 100%, inset: (left: 9pt, y: 2pt), stroke: (left: 1.5pt + trait), bloc-adresse(d.facturation))
+      }
+    },
   )
-  v(0.6cm)
+  v(0.7cm)
 
   // Les lignes. Un « saut de page » du devis coupe le tableau et passe à la page suivante.
   for (i, segment) in d.segments.enumerate() {
@@ -149,31 +177,41 @@
   if d.segments.flatten().len() == 0 {
     align(center, text(fill: gris, style: "italic")[Aucune ligne.])
   }
+  // Ce que veulent dire QF, QP et Fft : seulement les types employés dans ce devis.
+  if d.legende.len() > 0 {
+    v(4pt)
+    text(size: 7pt, fill: gris, d.legende.map(t => text(font: mono, fill: encre, t.sigle) + [ ] + t.texte).join([ · ]))
+  }
 
   v(0.5cm)
   // Les totaux et ce qui les suit restent groupés.
   block(breakable: false, width: 100%)[
     #align(right)[
-      #block(width: 8.2cm)[
-        #grid(
+      #block(width: 8.4cm)[
+        #set text(size: 8.5pt)
+        #block(width: 100%, inset: (x: 9pt))[#grid(
           columns: (1fr, auto),
           align: (left, right),
-          row-gutter: 5pt,
+          row-gutter: 6pt,
           ..if d.totaux.a_ajustement {
             (
-              [Sous-total HT], d.totaux.sous_total,
-              [#d.totaux.libelle_ajustement], d.totaux.ajustement,
+              [Sous-total HT], chiffre(d.totaux.sous_total),
+              [#d.totaux.libelle_ajustement], chiffre(d.totaux.ajustement),
             )
           } else { () },
-          [Total HT], d.totaux.ht,
+          text(weight: "semibold")[Total HT], text(font: mono, size: 0.92em, weight: "semibold", d.totaux.ht),
           ..d.totaux.tva.map(t => (
-            text(fill: gris)[TVA #t.taux (sur #t.base)], text(fill: gris, t.montant),
+            text(fill: gris)[TVA #t.taux (base #t.base)], text(font: mono, size: 0.92em, fill: gris, t.montant),
           )).flatten(),
-        )
-        #v(4pt)
-        #block(width: 100%, inset: (x: 8pt, y: 7pt), fill: accent, radius: 3pt)[
-          #set text(fill: white, weight: "bold", size: 10.5pt)
-          #grid(columns: (1fr, auto), align: (left, right), [Total TTC à payer], d.totaux.ttc)
+        )]
+        #v(6pt)
+        #block(width: 100%, inset: (x: 9pt, y: 8pt), fill: jaune, stroke: (top: 1.2pt + encre, bottom: 0.6pt + jaune-trait))[
+          #grid(
+            columns: (1fr, auto),
+            align: (left + horizon, right + horizon),
+            text(weight: "bold", size: 10pt)[Total TTC à payer],
+            text(font: mono, weight: "semibold", size: 13pt, d.totaux.ttc),
+          )
         ]
       ]
     ]
@@ -181,10 +219,10 @@
 
   v(0.4cm)
   if d.franchise {
-    par(text(weight: "bold")[#d.mention_franchise])
+    par(text(weight: "semibold")[#d.mention_franchise])
   }
   if d.conditions != "" {
-    [#text(fill: gris)[Conditions de paiement :] #d.conditions]
+    [#etiquette("Conditions de paiement") #h(4pt) #d.conditions]
     v(2pt)
   }
   for r in (d.remarque_1, d.remarque_2) {
@@ -193,8 +231,8 @@
 
   v(0.7cm)
   // Le bon pour accord du client.
-  block(breakable: false, width: 100%, inset: 10pt, stroke: 0.6pt + trait, radius: 3pt)[
-    #text(weight: "bold", fill: accent)[Bon pour accord]
+  block(breakable: false, width: 100%, inset: 11pt, stroke: 0.6pt + encre)[
+    #text(weight: "bold", size: 9.5pt)[Bon pour accord]
     #v(2pt)
     #text(size: 7.5pt, fill: gris)[Mention manuscrite : « Lu et approuvé, bon pour accord ». Date et signature du client.]
     #v(1.7cm)
@@ -203,10 +241,10 @@
       column-gutter: 1cm,
       row-gutter: 4pt,
       align: left,
-      line(length: 100%, stroke: 0.4pt + gris),
-      line(length: 100%, stroke: 0.4pt + gris),
-      text(size: 7pt, fill: gris)[Date],
-      text(size: 7pt, fill: gris)[Signature],
+      line(length: 100%, stroke: 0.5pt + gris),
+      line(length: 100%, stroke: 0.5pt + gris),
+      etiquette("Date"),
+      etiquette("Signature"),
     )
   ]
 }

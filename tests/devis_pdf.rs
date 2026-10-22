@@ -302,3 +302,43 @@ async fn la_liste_signale_une_societe_sans_tva_ni_compte(options: PgPoolOptions,
     assert!(html.contains("Le numéro de TVA de votre société") && html.contains("Un compte bancaire par défaut"));
     assert!(!html.contains("Les coordonnées de votre société"));
 }
+
+// ─── Nouveau design (refonte, étape 5) ──────────────────────────────────────
+
+#[sqlx::test]
+async fn le_type_de_quantite_et_sa_legende_vont_dans_le_pdf(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    societe(&pool).await;
+    let d = devis_complet(&pool).await;
+
+    // Une seule ligne, en quantité fixe (par défaut) : son sigle, et la légende de QF seulement.
+    let source = typst(&pool, d).await;
+    assert!(source.contains("type_quantite: \"QF\""), "{source}");
+    let legende = source.split("legende: ").nth(1).unwrap();
+    assert!(legende.starts_with("((sigle: \"QF\", texte: \"quantité fixe\"),)"), "{legende}");
+
+    // Un forfait et une quantité estimée en plus : la légende suit l'ordre QF, QP, Fft.
+    let reduit = taux(&pool, 600).await;
+    for (position, type_quantite) in [(3, "forfait"), (4, "estimee")] {
+        sqlx::query(
+            "INSERT INTO devis_lignes (devis_id, position, genre, description, quantite_e5, unite, prix_unitaire_e5, taux_tva_id, type_quantite)
+             VALUES ($1, $2, 'poste_libre', 'Ligne', 100000, 'fft', 100000, $3, $4::text::type_quantite)",
+        )
+        .bind(d).bind(position).bind(reduit).bind(type_quantite).execute(&pool).await.unwrap();
+    }
+    let source = typst(&pool, d).await;
+    let legende = source.split("legende: ").nth(1).unwrap();
+    let (qf, qp, fft) = (legende.find("\"QF\"").unwrap(), legende.find("\"QP\"").unwrap(), legende.find("\"Fft\"").unwrap());
+    assert!(qf < qp && qp < fft, "{legende}");
+    assert!(legende.contains("quantité estimée, facturée selon le métré réel") && legende.contains("texte: \"forfait\""));
+
+    // Le PDF se compile avec les polices du design (Archivo, IBM Plex Mono).
+    let (statut, _, octets) = reponse(&site(&pool), &format!("/devis/{d}/pdf")).await;
+    assert_eq!(statut, StatusCode::OK);
+    let pdf = String::from_utf8_lossy(&octets);
+    assert!(pdf.contains("Archivo") && pdf.contains("IBMPlexMono"), "polices du design embarquées");
+
+    // Un devis sans ligne chiffrée n'a pas de légende.
+    let vide: i64 = sqlx::query_scalar("INSERT INTO devis (numero) VALUES (2) RETURNING id").fetch_one(&pool).await.unwrap();
+    assert!(typst(&pool, vide).await.contains("legende: ()"));
+}
