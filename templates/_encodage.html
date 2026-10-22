@@ -10,12 +10,13 @@
     <div class="rv-qt-row rv-qt-head" role="row">
       <span></span><span>N°</span><span>Désignation</span><span>Type</span>
       <span class="rv-r">Qté</span><span>Unité</span><span class="rv-r">PU HT</span>
-      {% if enc.marge_activee %}<span class="rv-r">Achat U.</span>{% endif %}
+      {% if enc.marge_activee %}<span class="rv-r">Achat U.</span><span class="rv-r" title="Coefficient de vente : prix de vente ÷ prix d'achat. Tapez-le pour calculer le prix de vente.">Coef.</span>{% endif %}
       <span>TVA</span><span class="rv-r">Total HT</span>
-      {% if enc.marge_activee %}<span class="rv-r">Bénéfice</span>{% endif %}
+      {% if enc.marge_activee %}<span class="rv-r" title="Prix de vente − prix d'achat ; entre parenthèses, en % du prix de vente">Bénéfice (marge)</span>{% endif %}
       <span></span>
     </div>
     {% for l in enc.lignes %}
+    {% let oob = false %}
     <div class="rv-qt-row{% if l.est_titre %} rv-qt-ch{% else if l.est_chiffre %} rv-qt-ln{% else if l.est_saut %} rv-qt-txt{% else if l.genre == "texte" %} rv-qt-txt{% else %} rv-qt-ln rv-qt-sous{% endif %}" role="row"
          {% if enc.modifiable && !l.est_saut %}hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}" hx-trigger="change" hx-include="this" hx-swap="none"{% endif %}>
       <span class="rv-qt-ordre">
@@ -50,9 +51,10 @@
       </span>
       {% endif %}
       <input aria-label="Unité de la ligne {{ l.numero }}" class="rv-cell" type="text" name="unite" value="{{ l.unite }}" list="unites-{{ enc.id }}"{% if !enc.modifiable %} disabled{% endif %}>
-      <input aria-label="Prix unitaire HT de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"{% if !enc.modifiable %} disabled{% endif %}>
+      {% include "_encodage_prix.html" %}
       {% if enc.marge_activee %}
       <input aria-label="Prix d'achat unitaire de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="prix_achat" value="{{ l.prix_achat }}"{% if !enc.modifiable %} disabled{% endif %}>
+      {% include "_encodage_coef.html" %}
       {% endif %}
       <select class="rv-cell rv-cell--tag" name="taux_tva_id" aria-label="Taux de TVA de la ligne {{ l.numero }}"{% if !enc.modifiable %} disabled{% endif %}>
         {% for t in l.taux %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
@@ -93,7 +95,7 @@
       </span>
       <span class="rv-qt-n"><span id="resultat-{{ m.id }}">{{ m.resultat }}</span></span>
       <span>{{ l.unite }}</span>
-      <span></span>{% if enc.marge_activee %}<span></span>{% endif %}<span></span><span></span>{% if enc.marge_activee %}<span></span>{% endif %}
+      <span></span>{% if enc.marge_activee %}<span></span><span></span>{% endif %}<span></span><span></span>{% if enc.marge_activee %}<span></span>{% endif %}
       <span>
         {% if enc.modifiable %}
         <button type="button" class="rv-btn rv-btn--icon" title="Retirer la mesure" aria-label="Retirer la mesure {{ loop.index }} de la ligne {{ l.numero }}"
@@ -113,7 +115,7 @@
       </span>
       <span class="rv-qt-n"><span id="metre-somme-{{ l.id }}">{{ l.quantite }}</span></span>
       <span>{{ l.unite }}</span>
-      <span></span>{% if enc.marge_activee %}<span></span>{% endif %}<span></span><span></span>{% if enc.marge_activee %}<span></span>{% endif %}<span></span>
+      <span></span>{% if enc.marge_activee %}<span></span><span></span>{% endif %}<span></span><span></span>{% if enc.marge_activee %}<span></span>{% endif %}<span></span>
     </div>
     {% endif %}
     {% else %}
@@ -174,11 +176,13 @@
       </div>
       {% if let Some(r) = enc.rentabilite %}
       <div class="rv-totals">
-        <div class="rv-totals-row"><span>Bénéfice</span><span id="marge-totale">{{ r.total.marge }} ({{ r.total.taux_marge }} du coût)</span></div>
+        <div class="rv-totals-row"><span>Bénéfice</span><span id="marge-totale">{{ r.total.marge }}</span></div>
+        <div class="rv-totals-row rv-totals-sub"><span>Marge sur le prix de vente</span><span id="marge-vente">{{ enc.marge_sur_vente }}</span></div>
+        <div class="rv-totals-row rv-totals-sub"><span>Coefficient moyen</span><span id="coefficient-moyen">{{ enc.coefficient_moyen }}</span></div>
       </div>
       {% endif %}
       {% else %}
-      <p class="rv-hint" style="margin:0">Allumez l'option pour saisir vos prix d'achat : le bénéfice de chaque ligne s'affiche, jamais sur le document du client.</p>
+      <p class="rv-hint" style="margin:0">Allumez l'option pour saisir vos prix d'achat : le coefficient et le bénéfice de chaque ligne s'affichent, jamais sur le document du client.</p>
       {% endif %}
     </div>
     <div class="rv-band-cell rv-band-cell--wide">

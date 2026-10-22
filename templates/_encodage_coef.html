@@ -1,0 +1,6 @@
+{# Le coefficient d'une ligne (prix de vente ÷ prix d'achat), jamais enregistré : il se relit depuis les deux prix.
+   Le champ reste vide et montre le coefficient actuel en texte d'aide : renvoyé à htmx (oob) pendant que la personne
+   y entre, un champ vide ne mélange jamais l'ancien coefficient à ce qu'elle tape. Le taper calcule le prix de vente
+   (sa propre adresse ; « consume » : la ligne ne s'enregistre pas en plus). #}
+<input id="coef-{{ l.id }}"{% if oob %} hx-swap-oob="true"{% endif %} aria-label="Coefficient de la ligne {{ l.numero }}{% if !l.coefficient.is_empty() %} (actuellement {{ l.coefficient }}){% endif %}" class="rv-cell rv-cell--num rv-qt-coef" type="text" inputmode="decimal" name="coefficient" value="" placeholder="{% if l.coefficient.is_empty() %}—{% else %}{{ l.coefficient }}{% endif %}"
+       {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/coefficient" hx-trigger="change consume" hx-include="this" hx-swap="none"{% else %}disabled{% endif %}>

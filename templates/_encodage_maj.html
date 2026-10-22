@@ -2,13 +2,17 @@
 <div id="encodage-erreur" hx-swap-oob="true">{% if !enc.message.is_empty() %}<div class="rv-banner rv-banner--bad" role="alert"><span>{{ enc.message }}</span></div>{% endif %}</div>
 {% for l in enc.lignes %}
 {% if l.est_chiffre %}<span id="total-{{ l.id }}" hx-swap-oob="true">{{ l.total }}</span>{% endif %}
-{% if l.est_chiffre && enc.marge_activee %}<span id="marge-{{ l.id }}" hx-swap-oob="true">{{ l.marge }}</span>{% endif %}
+{% if l.est_chiffre && enc.marge_activee %}<span id="marge-{{ l.id }}" hx-swap-oob="true">{{ l.marge }}</span>
+{% let oob = true %}{% include "_encodage_coef.html" %}{% endif %}
+{% if l.est_chiffre && enc.prix_change == Some(*l.id) %}{% let oob = true %}{% include "_encodage_prix.html" %}{% endif %}
 {% if l.a_metre %}<span id="qte-{{ l.id }}" hx-swap-oob="true">{{ l.quantite }}</span>{% endif %}
 {% if l.metre_ouvert %}<span id="metre-somme-{{ l.id }}" hx-swap-oob="true">{{ l.quantite }}</span>
 {% for m in l.mesures %}<span id="resultat-{{ m.id }}" hx-swap-oob="true">{{ m.resultat }}</span>{% endfor %}{% endif %}
 {% if l.est_titre %}<span id="soustotal-{{ l.id }}" hx-swap-oob="true">{{ l.sous_total }}</span>{% endif %}
 {% endfor %}
 {% if let Some(r) = enc.rentabilite %}
-<span id="marge-totale" hx-swap-oob="true">{{ r.total.marge }} ({{ r.total.taux_marge }} du coût)</span>
+<span id="marge-totale" hx-swap-oob="true">{{ r.total.marge }}</span>
+<span id="marge-vente" hx-swap-oob="true">{{ enc.marge_sur_vente }}</span>
+<span id="coefficient-moyen" hx-swap-oob="true">{{ enc.coefficient_moyen }}</span>
 {% endif %}
 <div id="totaux" hx-swap-oob="true">{% include "_encodage_totaux.html" %}</div>

@@ -215,6 +215,24 @@ pub fn taux_de_marge(marge_cents: i64, cout_cents: i64) -> Option<i64> {
     (cout_cents > 0).then(|| diviser_arrondi(i128::from(marge_cents) * 10_000, i128::from(cout_cents)))
 }
 
+/// Marge ÷ prix de vente (« marge sur prix de vente »), en centièmes de pour cent ; `None` sans vente positive.
+/// Vendu 100 €, acheté 80 € : 2 000 (20 %).
+pub fn taux_sur_vente(marge_cents: i64, ventes_cents: i64) -> Option<i64> {
+    (ventes_cents > 0).then(|| diviser_arrondi(i128::from(marge_cents) * 10_000, i128::from(ventes_cents)))
+}
+
+/// Coefficient de vente = prix de vente ÷ prix d'achat, en 1/100 000 arrondi au centième (1,25 → 125 000).
+/// `None` sans prix d'achat positif.
+pub fn coefficient_e5(vente: i64, achat: i64) -> Option<i64> {
+    (achat > 0).then(|| diviser_arrondi(i128::from(vente) * 100, i128::from(achat)) * 1_000)
+}
+
+/// Prix de vente unitaire (1/100 000) = prix d'achat × coefficient, arrondi au centime.
+pub fn prix_par_coefficient_e5(achat_e5: i64, coefficient_e5: i64) -> i64 {
+    // (a / 1e5) × (c / 1e5) euros, arrondi au centime (1 000 en 1/100 000)
+    diviser_arrondi(i128::from(achat_e5) * i128::from(coefficient_e5), 100_000_000) * 1_000
+}
+
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct Rentabilite {
     /// Seulement les catégories qui ont au moins une ligne.
@@ -526,6 +544,21 @@ mod tests {
         assert_eq!(rentabilite(&[], 1_000, 0), Rentabilite::default());
         assert_eq!(taux_de_marge(500, 0), None);
         assert_eq!(taux_de_marge(-500, 2_000), Some(-2_500));
+    }
+
+    #[test]
+    fn coefficient_et_marge_sur_prix_de_vente() {
+        // Acheté 80 €, vendu 100 € : coefficient 1,25 ; marge 20 € = 20 % du prix de vente (25 % du coût).
+        assert_eq!(coefficient_e5(10_000_000, 8_000_000), Some(125_000));
+        assert_eq!(taux_sur_vente(2_000, 10_000), Some(2_000));
+        assert_eq!(taux_de_marge(2_000, 8_000), Some(2_500));
+        // Arrondi au centième : 16,66 ÷ 12,34 = 1,3501… → 1,35.
+        assert_eq!(coefficient_e5(1_666_000, 1_234_000), Some(135_000));
+        assert_eq!(coefficient_e5(100, 0), None);
+        assert_eq!(taux_sur_vente(100, 0), None);
+        // 12,34 € × 1,35 = 16,659 € → 16,66 € ; 80 € × 1,25 = 100 €.
+        assert_eq!(prix_par_coefficient_e5(1_234_000, 135_000), 1_666_000);
+        assert_eq!(prix_par_coefficient_e5(8_000_000, 125_000), 10_000_000);
     }
 
     #[test]
