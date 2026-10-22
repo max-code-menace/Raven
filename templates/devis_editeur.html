@@ -32,7 +32,11 @@
 </div>
 {% endif %}
 
-<form id="devis-infos" method="post" action="/devis/{{ id }}">
+{# Enregistrement automatique : le formulaire part tout seul 0,6 s après la dernière frappe (ou à la sortie d'un champ),
+   une demande à la fois (la dernière gagne). htmx ne reprend de la réponse que la note de la barre du bas et l'en-tête. #}
+<form id="devis-infos" method="post" action="/devis/{{ id }}"
+  {%- if modifiable %} hx-post="/devis/{{ id }}" hx-trigger="input delay:600ms, change" hx-sync="this:queue last"
+  hx-target="#etat-enregistrement" hx-select="#etat-enregistrement" hx-swap="outerHTML" hx-select-oob="#devis-tete"{% endif %}>
   <fieldset class="flex flex-col gap-6" style="gap:16px"{% if !modifiable %} disabled{% endif %}>
 
     <details class="u-card" open>
@@ -202,12 +206,8 @@
 
 {% block barre %}
 <div class="u-barre">
+  {% if modifiable %}{% call ui::enregistrement(enregistrement) %}{% endcall %}{% endif %}
   <a class="btn" href="{{ barre.retour }}">Fermer</a>
-  {% if modifiable %}
-  <a class="btn" href="/devis/{{ id }}/apercu">Aperçu et PDF</a>
-  <button class="btn btn-primary" type="submit" form="devis-infos">Enregistrer</button>
-  {% else %}
   <a class="btn btn-primary" href="/devis/{{ id }}/apercu">Aperçu et PDF</a>
-  {% endif %}
 </div>
 {% endblock %}

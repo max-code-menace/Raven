@@ -152,8 +152,8 @@ async fn un_brouillon_montre_deja_le_bloc_peppol(options: PgPoolOptions, connexi
     let (_, page) = lire(&s, &format!("/factures/{id}")).await;
     assert!(page.contains("id=\"peppol\"") && page.contains("0208:0987654394") && page.contains("Prête pour Peppol"), "{page}");
     assert!(!page.contains(&format!("action=\"/factures/{id}/peppol\"")), "pas d'envoi d'un brouillon");
-    // Incomplet (aucune ligne) : « Valider… » reste visible, grisé, avec la raison ; le rappel d'enregistrer est là.
-    assert!(page.contains("disabled title=\"Complétez d'abord les points du bloc « Avant de valider »\"") && page.contains("Enregistrer les informations » pour qu'elles comptent"), "{page}");
+    // Incomplet (aucune ligne) : « Valider… » reste visible, grisé, avec la raison ; la liste se met à jour toute seule.
+    assert!(page.contains("disabled title=\"Complétez d'abord les points du bloc « Avant de valider »\"") && page.contains("cette liste se met à jour pendant que vous les remplissez"), "{page}");
     // Ce qu'il faut corriger se voit aussi avant la validation.
     sqlx::query("UPDATE entreprises SET numero_tva = 'BE0987654321' WHERE id = $1").bind(c).execute(&pool).await.unwrap();
     let (_, page) = lire(&s, &format!("/factures/{id}")).await;
