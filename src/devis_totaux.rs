@@ -98,8 +98,6 @@ fn valider(f: &AjustementForm, sous_total_cents: i64) -> Result<Valide, String> 
 #[template(path = "devis_totaux.html")]
 struct Page {
     id: i64,
-    statut: &'static str,
-    classe_statut: &'static str,
     onglet: &'static str,
     barre: Barre,
     modifiable: bool,
@@ -116,8 +114,6 @@ async fn construire(db: &mut PgConnection, id: i64, entete: Entete, form: Option
     let form = form.unwrap_or_else(|| AjustementForm::depuis(entete.ajustement, &entete.ajustement_libelle));
     Ok(Page {
         id,
-        statut: entete.statut,
-        classe_statut: entete.classe_statut,
         onglet: "totaux",
         barre: charger_barre(&mut *db, id).await?,
         modifiable: entete.brouillon,

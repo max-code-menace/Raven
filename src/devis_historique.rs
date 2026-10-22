@@ -33,8 +33,6 @@ pub struct Evenement {
 #[template(path = "devis_historique.html")]
 struct Page {
     id: i64,
-    statut: &'static str,
-    classe_statut: &'static str,
     onglet: &'static str,
     barre: Barre,
     evenements: Vec<Evenement>,
@@ -43,7 +41,7 @@ struct Page {
 }
 
 async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
-    let entete = charger_entete(&mut *db, id).await?;
+    charger_entete(&mut *db, id).await?; // 404 si le devis n'existe pas
     let evenements: Vec<EvenementBase> = sqlx::query_as(
         "SELECT genre, detail, to_char(created_at AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI') AS quand
          FROM devis_evenements WHERE devis_id = $1 ORDER BY created_at DESC, id DESC",
@@ -53,8 +51,6 @@ async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Err
     .await?;
     let page = Page {
         id,
-        statut: entete.statut,
-        classe_statut: entete.classe_statut,
         onglet: "historique",
         barre: charger_barre(&mut *db, id).await?,
         dossier: crate::signature::dossier(&mut *db, id).await?,

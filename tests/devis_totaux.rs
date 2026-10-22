@@ -82,7 +82,7 @@ async fn la_page_totaux_montre_les_montants_par_taux(options: PgPoolOptions, con
     assert!(page.contains("Sous-total HT") && page.contains("1\u{a0}000,00\u{a0}€"));
     assert!(page.contains("600,00\u{a0}€") && page.contains("36,00\u{a0}€") && page.contains("84,00\u{a0}€"));
     assert!(page.contains("1\u{a0}120,00\u{a0}€"));
-    assert!(page.contains(&format!("tab tab-active\" href=\"/devis/{d}/totaux\"")));
+    assert!(page.contains(&format!("rv-tab is-on\" href=\"/devis/{d}/totaux\"")));
     assert_eq!(lire(&site(&pool), "/devis/999/totaux").await.0, StatusCode::NOT_FOUND);
 }
 

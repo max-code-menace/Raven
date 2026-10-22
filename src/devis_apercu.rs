@@ -18,8 +18,6 @@ use crate::{AppState, Erreur};
 #[template(path = "devis_apercu.html")]
 struct Page {
     id: i64,
-    statut: &'static str,
-    classe_statut: &'static str,
     onglet: &'static str,
     barre: Barre,
     a_completer: Vec<String>,
@@ -29,11 +27,9 @@ struct Page {
 
 async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Erreur> {
     let donnees = charger_donnees(&mut *db, id).await?;
-    let entete = crate::devis_lignes::charger_entete(&mut *db, id).await?;
+    crate::devis_lignes::charger_entete(&mut *db, id).await?;
     let page = Page {
         id,
-        statut: entete.statut,
-        classe_statut: entete.classe_statut,
         onglet: "visualisation",
         barre: charger_barre(&mut *db, id).await?,
         a_completer: donnees.a_completer(),
