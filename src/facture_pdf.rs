@@ -22,6 +22,8 @@ use crate::fiches::{Genre, Options};
 use crate::{AppState, Erreur, pdf};
 
 const MODELE: &str = include_str!("../assets/facture.typ");
+/// Le nom sous lequel le QR code de paiement est donné à Typst.
+const FICHIER_QR: &str = "qr-paiement.svg";
 
 pub(crate) struct Donnees {
     /// Le type, comme titre (« Facture finale », « Facture », « Note de crédit »), comme dans Vertuoza.
@@ -44,6 +46,9 @@ pub(crate) struct Donnees {
     pub conditions: String,
     pub remarque: String,
     pub vcs: String,
+    /// Le texte du QR code de paiement (format EPC) : total TTC, compte par défaut et communication structurée.
+    /// Jamais sur un brouillon ni une note de crédit, ni sans IBAN.
+    pub qr: Option<String>,
     pub societe: Option<Societe>,
     pub client: Option<Bloc>,
     pub lignes: Vec<LigneBase>,
@@ -91,6 +96,22 @@ pub(crate) async fn charger_donnees(db: &mut PgConnection, f: &Facture) -> Resul
         }
     };
     let note_credit = f.genre == "note_credit";
+    let societe = charger_societe(&mut *db).await?;
+    let vcs = f.vcs.clone().unwrap_or_default();
+    // Le QR code dit le montant de la pièce telle qu'émise (le PDF est figé dans l'archive légale) ; la page client
+    // en ligne, elle, montre le reste à payer du jour.
+    let qr = match (&societe, note_credit || f.brouillon()) {
+        (Some(s), false) => {
+            let ttc: i64 = sqlx::query_scalar("SELECT montant_ttc_cents FROM factures WHERE id = $1").bind(f.id).fetch_one(&mut *db).await?;
+            let compte: Option<(String, Option<String>)> = sqlx::query_as(
+                "SELECT iban, bic FROM societe_comptes_bancaires WHERE organisation_id = app_organisation() AND par_defaut",
+            )
+            .fetch_optional(&mut *db)
+            .await?;
+            compte.and_then(|(iban, bic)| crate::page_client::texte_epc(&s.bloc.nom, &iban, &bic.unwrap_or_default(), ttc, &vcs))
+        }
+        _ => None,
+    };
     Ok(Donnees {
         titre: match f.genre.as_str() {
             "simple" | "recurrente" => "Facture".to_string(),
@@ -110,8 +131,9 @@ pub(crate) async fn charger_donnees(db: &mut PgConnection, f: &Facture) -> Resul
         corrige: corrige.unwrap_or_default(),
         conditions: if note_credit { String::new() } else { conditions },
         remarque: f.remarque.clone(),
-        vcs: f.vcs.clone().unwrap_or_default(),
-        societe: charger_societe(&mut *db).await?,
+        vcs,
+        qr,
+        societe,
         client: charger_bloc(&mut *db, f.client_entreprise_id, f.client_contact_id, true).await?,
         lignes,
     })
@@ -176,7 +198,16 @@ pub(crate) fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         "none".to_string()
     } else {
         let iban = d.societe.as_ref().map(|s| s.iban.clone()).unwrap_or_default();
-        dictionnaire(&[("echeance", litteral(&d.echeance)), ("iban", litteral(&iban)), ("vcs", litteral(&d.vcs))])
+        let qr = d.qr.as_deref().and_then(crate::page_client::qr_svg).map(|svg| {
+            fichiers.insert(FICHIER_QR.to_string(), svg.into_bytes());
+            FICHIER_QR
+        });
+        dictionnaire(&[
+            ("echeance", litteral(&d.echeance)),
+            ("iban", litteral(&iban)),
+            ("vcs", litteral(&d.vcs)),
+            ("qr", option_litteral(qr)),
+        ])
     };
 
     let donnees = dictionnaire(&[
@@ -215,7 +246,7 @@ pub(crate) async fn pdf_de_la_facture(db: &mut PgConnection, f: &Facture) -> Res
         (_, None) => format!("Facture-brouillon-{}.pdf", f.id),
     };
     let (texte, fichiers) = source_typst(&donnees);
-    let avait_un_logo = !fichiers.is_empty();
+    let avait_un_logo = donnees.societe.as_ref().is_some_and(|s| s.logo.is_some());
     let id = f.id;
     let essai = {
         let texte = texte.clone();
@@ -226,8 +257,8 @@ pub(crate) async fn pdf_de_la_facture(db: &mut PgConnection, f: &Facture) -> Res
         // Un logo abîmé ne doit pas empêcher de facturer : on réessaie sans lui.
         Ok(Err(erreur)) if avait_un_logo => {
             eprintln!("PDF de la facture {id} : {erreur} ; nouvel essai sans le logo");
-            let (texte, _) = source_typst(&Donnees { societe: donnees.societe.map(|s| Societe { logo: None, ..s }), ..donnees });
-            tokio::task::spawn_blocking(move || pdf::generer(texte, HashMap::new()))
+            let (texte, fichiers) = source_typst(&Donnees { societe: donnees.societe.map(|s| Societe { logo: None, ..s }), ..donnees });
+            tokio::task::spawn_blocking(move || pdf::generer(texte, fichiers))
                 .await
                 .map_err(|e| Erreur::pdf(&e.to_string()))?
                 .map_err(|e| Erreur::pdf(&e))?
@@ -272,6 +303,12 @@ async fn servir(mut db: Base, Path(id): Path<i64>, Query(o): Query<ParametresPdf
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/factures/{id}/pdf", get(servir))
+}
+
+/// Le texte du QR code de paiement imprimé sur le PDF de la pièce (`None` : pas de QR code). Pour les tests.
+pub async fn qr_de_la_facture(db: &mut PgConnection, id: i64) -> Result<Option<String>, String> {
+    let f = factures::charger(&mut *db, id).await.map_err(|e| e.to_string())?.ok_or("facture introuvable")?;
+    Ok(charger_donnees(&mut *db, &f).await.map_err(|_| "données illisibles".to_string())?.qr)
 }
 
 /// Les pages de la pièce en images PNG, pour vérifier la mise en page à l'œil (voir `tests/notes_credit.rs`).
