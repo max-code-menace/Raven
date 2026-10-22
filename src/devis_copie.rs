@@ -56,9 +56,23 @@ async fn dupliquer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur
 
     sqlx::query(
         "INSERT INTO devis_lignes (devis_id, position, genre, description, quantite_e5, unite, prix_unitaire_e5,
-                prix_achat_unitaire_e5, taux_tva_id, remarque)
-         SELECT $2, position, genre, description, quantite_e5, unite, prix_unitaire_e5, prix_achat_unitaire_e5, taux_tva_id, remarque
+                prix_achat_unitaire_e5, taux_tva_id, remarque, type_quantite)
+         SELECT $2, position, genre, description, quantite_e5, unite, prix_unitaire_e5, prix_achat_unitaire_e5, taux_tva_id, remarque,
+                type_quantite
          FROM devis_lignes WHERE devis_id = $1",
+    )
+    .bind(id)
+    .bind(nouveau)
+    .execute(&mut *tx)
+    .await?;
+    // Le métré suit sa ligne (les lignes de la copie ont les mêmes positions).
+    sqlx::query(
+        "INSERT INTO devis_metres (ligne_id, position, libelle, longueur_e5, largeur_e5, deduction)
+         SELECT n.id, m.position, m.libelle, m.longueur_e5, m.largeur_e5, m.deduction
+         FROM devis_metres m
+         JOIN devis_lignes o ON o.id = m.ligne_id
+         JOIN devis_lignes n ON n.devis_id = $2 AND n.position = o.position
+         WHERE o.devis_id = $1",
     )
     .bind(id)
     .bind(nouveau)

@@ -30,11 +30,26 @@
       {% if l.est_chiffre %}
       <span class="rv-qt-desc">
         <textarea class="rv-cell rv-cell--strong" rows="1" name="description" aria-label="Désignation de la ligne {{ l.numero }}" placeholder="Désignation"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
+        <small class="rv-qt-genre">{{ l.libelle_genre }}</small>
         <input aria-label="Remarque de la ligne {{ l.numero }}" class="rv-cell rv-cell--sub" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Remarque"{% if !enc.modifiable %} disabled{% endif %}>
       </span>
-      <span class="rv-qt-type">{{ l.libelle_genre }}</span>
-      <input aria-label="Quantité de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"{% if !enc.modifiable %} disabled{% endif %}>
-      <input aria-label="Unité de la ligne {{ l.numero }}" class="rv-cell" type="text" name="unite" value="{{ l.unite }}"{% if !enc.modifiable %} disabled{% endif %}>
+      <select class="rv-cell rv-cell--tag" name="type_quantite" aria-label="Type de quantité de la ligne {{ l.numero }}"{% if !enc.modifiable %} disabled{% endif %}>
+        {% for t in enc.types_quantite %}<option value="{{ t.0 }}" title="{{ t.2 }} : {{ t.3 }}"{% if t.0 == l.type_quantite %} selected{% endif %}>{{ t.1 }}</option>{% endfor %}
+      </select>
+      {% if l.a_metre %}
+      {# La quantité vient du métré : le bouton déplie ou replie les mesures sous la ligne. #}
+      <button type="button" class="rv-qt-metre" aria-expanded="{{ l.metre_ouvert }}" aria-label="Métré de la ligne {{ l.numero }}"
+              hx-get="/devis/{{ enc.id }}/encodage{% if !l.metre_ouvert %}?metre={{ l.id }}{% endif %}" hx-target="#encodage" hx-swap="outerHTML">{% call ui::icone("regle", 14) %}{% endcall %}<span id="qte-{{ l.id }}">{{ l.quantite }}</span></button>
+      {% else %}
+      <span class="rv-qt-qte">
+        <input aria-label="Quantité de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"{% if !enc.modifiable %} disabled{% endif %}>
+        {% if enc.modifiable %}
+        <button type="button" class="rv-qt-metre-ajout" title="Calculer la quantité par un métré" aria-label="Métré de la ligne {{ l.numero }}"
+                hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/mesures" hx-target="#encodage" hx-swap="outerHTML">{% call ui::icone("regle", 14) %}{% endcall %}</button>
+        {% endif %}
+      </span>
+      {% endif %}
+      <input aria-label="Unité de la ligne {{ l.numero }}" class="rv-cell" type="text" name="unite" value="{{ l.unite }}" list="unites-{{ enc.id }}"{% if !enc.modifiable %} disabled{% endif %}>
       <input aria-label="Prix unitaire HT de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"{% if !enc.modifiable %} disabled{% endif %}>
       {% if enc.marge_activee %}
       <input aria-label="Prix d'achat unitaire de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="prix_achat" value="{{ l.prix_achat }}"{% if !enc.modifiable %} disabled{% endif %}>
@@ -63,6 +78,44 @@
         {% endif %}
       </span>
     </div>
+    {% if l.metre_ouvert %}
+    {# Le métré de la ligne, déplié juste sous elle : une ligne par mesure, puis la quantité reprise. #}
+    {% for m in l.mesures %}
+    <div class="rv-qt-row rv-qt-msr" role="row"
+         {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/mesures/{{ m.id }}" hx-trigger="change" hx-include="this" hx-swap="none"{% endif %}>
+      <span></span><span></span>
+      <span class="rv-qt-desc rv-qt-mesure">
+        <input id="mesure-{{ m.id }}-libelle" aria-label="Libellé de la mesure {{ loop.index }} de la ligne {{ l.numero }}" class="rv-cell" type="text" name="libelle" value="{{ m.libelle }}" placeholder="Mesure {{ loop.index }} (exemple : mur A)"{% if !enc.modifiable %} disabled{% endif %}>
+        <input id="mesure-{{ m.id }}-longueur" aria-label="Longueur de la mesure {{ loop.index }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="longueur" value="{{ m.longueur }}"{% if !enc.modifiable %} disabled{% endif %}>
+        <span aria-hidden="true">×</span>
+        <input id="mesure-{{ m.id }}-largeur" aria-label="Largeur ou hauteur de la mesure {{ loop.index }} (facultative)" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="largeur" value="{{ m.largeur }}" placeholder="—"{% if !enc.modifiable %} disabled{% endif %}>
+        <label class="rv-coche"><input id="mesure-{{ m.id }}-deduction" type="checkbox" name="deduction" value="on"{% if m.deduction %} checked{% endif %}{% if !enc.modifiable %} disabled{% endif %}>À déduire</label>
+      </span>
+      <span class="rv-qt-n"><span id="resultat-{{ m.id }}">{{ m.resultat }}</span></span>
+      <span>{{ l.unite }}</span>
+      <span></span>{% if enc.marge_activee %}<span></span>{% endif %}<span></span><span></span>{% if enc.marge_activee %}<span></span>{% endif %}
+      <span>
+        {% if enc.modifiable %}
+        <button type="button" class="rv-btn rv-btn--icon" title="Retirer la mesure" aria-label="Retirer la mesure {{ loop.index }} de la ligne {{ l.numero }}"
+                hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/mesures/{{ m.id }}/supprimer" hx-target="#encodage" hx-swap="outerHTML">{% call ui::icone("corbeille", 16) %}{% endcall %}</button>
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+    <div class="rv-qt-row rv-qt-msr rv-qt-msr-sum" role="row">
+      <span></span><span></span>
+      <span class="rv-qt-desc rv-qt-mesure">
+        <span class="rv-qt-mesure-texte">Quantité de la ligne, reprise du métré</span>
+        {% if enc.modifiable %}
+        <button type="button" class="rv-btn rv-btn--sm rv-btn--ghost" hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/mesures" hx-target="#encodage" hx-swap="outerHTML">{% call ui::icone("plus", 16) %}{% endcall %}Mesure</button>
+        {% endif %}
+        <button type="button" class="rv-btn rv-btn--sm rv-btn--ghost" hx-get="/devis/{{ enc.id }}/encodage" hx-target="#encodage" hx-swap="outerHTML">Replier</button>
+      </span>
+      <span class="rv-qt-n"><span id="metre-somme-{{ l.id }}">{{ l.quantite }}</span></span>
+      <span>{{ l.unite }}</span>
+      <span></span>{% if enc.marge_activee %}<span></span>{% endif %}<span></span><span></span>{% if enc.marge_activee %}<span></span>{% endif %}<span></span>
+    </div>
+    {% endif %}
     {% else %}
     <div class="rv-qt-row rv-qt-txt" role="row"><span></span><span></span><span class="rv-qt-desc rv-qt-large" style="padding:18px 6px">Aucune ligne. Ajoutez un titre (lot), puis des lignes chiffrées.</span></div>
     {% endfor %}
@@ -96,6 +149,8 @@
     {% endif %}
   </div>
   </div>
+  <datalist id="unites-{{ enc.id }}">{% for u in enc.unites %}<option value="{{ u }}">{% endfor %}</datalist>
+  <p class="rv-hint" style="margin:-8px 0 0">Type de quantité : {% for t in enc.types_quantite %}<span class="rv-num">{{ t.1 }}</span> {{ t.2|lower }}{% if t.0 == "estimee" %}, facturée selon le métré réel{% endif %}{% if !loop.last %} · {% endif %}{% endfor %}. La règle à côté d'une quantité ouvre son métré (longueur × largeur, déductions).</p>
 
   {# Le pied du devis, sur toute la largeur : rentabilité (visible par vous seul), puis le total sous la colonne Total HT. #}
   <section class="rv-band" aria-label="Pied du devis">

@@ -17,6 +17,17 @@ pub fn total_ligne_cents(quantite_e5: i64, prix_unitaire_e5: i64) -> i64 {
     diviser_arrondi(i128::from(quantite_e5) * i128::from(prix_unitaire_e5), 100_000_000)
 }
 
+/// Résultat d'une mesure du métré (étape 4-2 de la refonte), en 1/100 000 : longueur × largeur arrondi au centième
+/// (2,48 × 2,50 = 6,2 ; 0,60 × 0,58 = 0,348 → 0,35), ou la longueur seule ; une déduction compte en négatif.
+pub fn mesure_e5(longueur_e5: i64, largeur_e5: Option<i64>, deduction: bool) -> i64 {
+    let valeur = match largeur_e5 {
+        // (l / 1e5) × (L / 1e5) = l × L / 1e10 ; au centième : l × L / 1e8 centièmes, puis × 1000 pour revenir en e5.
+        Some(largeur) => diviser_arrondi(i128::from(longueur_e5) * i128::from(largeur), 100_000_000) * 1000,
+        None => longueur_e5,
+    };
+    if deduction { -valeur } else { valeur }
+}
+
 /// TVA d'une base en centimes ; le taux est en centièmes de pour cent (600 = 6 %).
 pub fn tva_cents(base_cents: i64, taux_centiemes: i32) -> i64 {
     diviser_arrondi(i128::from(base_cents) * i128::from(taux_centiemes), 10_000)
@@ -314,6 +325,16 @@ pub fn taux_en_texte(taux_centiemes: i32) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mesures_du_metre() {
+        use super::mesure_e5;
+        assert_eq!(mesure_e5(248_000, Some(250_000), false), 620_000);
+        assert_eq!(mesure_e5(60_000, Some(58_000), true), -35_000);
+        assert_eq!(mesure_e5(1_234_567, None, false), 1_234_567);
+        assert_eq!(mesure_e5(500_000, None, true), -500_000);
+        assert_eq!(mesure_e5(0, Some(250_000), false), 0);
+    }
+
     use super::*;
 
     #[test]

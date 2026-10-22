@@ -106,6 +106,14 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
     let achats = ids(pool, "SELECT id FROM chantier_achats").await;
     let imports = ids(pool, "SELECT id FROM imports_excel").await;
     let recues = ids(pool, "SELECT id FROM factures_recues").await;
+    ids(pool, "SELECT id FROM devis_metres").await;
+    // Les mesures de A, avec leur ligne et leur devis.
+    let mesures: Vec<(i64, i64, i64)> = sqlx::query_as(
+        "SELECT l.devis_id, m.ligne_id, m.id FROM devis_metres m JOIN devis_lignes l ON l.id = m.ligne_id",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap();
     ids(pool, "SELECT id FROM recurrences").await;
     let comptes_a = ids(pool, "SELECT utilisateur_id FROM membres WHERE organisation_id = 1").await;
     let invitations_a = ids(pool, "SELECT id FROM invitations WHERE organisation_id = 1").await;
@@ -125,6 +133,14 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         for &l in &lignes_devis {
             for suite in ["", "/supprimer", "/monter", "/descendre"] {
                 deux("POST", format!("/devis/{d}/lignes/{l}{suite}"));
+            }
+            deux("GET", format!("/devis/{d}/encodage?metre={l}"));
+            deux("POST", format!("/devis/{d}/lignes/{l}/mesures"));
+        }
+        for &(md, l, m) in &mesures {
+            if md == d {
+                deux("POST", format!("/devis/{d}/lignes/{l}/mesures/{m}"));
+                deux("POST", format!("/devis/{d}/lignes/{l}/mesures/{m}/supprimer"));
             }
         }
         for &i in &imports {

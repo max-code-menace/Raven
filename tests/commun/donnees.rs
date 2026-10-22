@@ -181,6 +181,18 @@ pub async fn remplir(pool: &PgPool, s: &Router) -> Donnees {
     sqlx::query("UPDATE devis SET statut_date = date_devis + interval '1 day 10 hours'").execute(pool).await.unwrap();
     sqlx::query("UPDATE compteurs SET valeur = 59, annee = EXTRACT(YEAR FROM now() AT TIME ZONE 'Europe/Brussels')::int WHERE nom = 'devis'").execute(pool).await.unwrap();
     sqlx::query("UPDATE devis SET marge_activee = true, frais_generaux_centiemes = 800 WHERE numero = 59").execute(pool).await.unwrap();
+    // Métré de l'isolation du devis n° 59 (étape 4-2) : 6,25 × 3,2 + 5,8 × 3,2 − 0,7 × 0,8 = 38 m², la quantité de la ligne.
+    sqlx::query(
+        "WITH l AS (UPDATE devis_lignes SET type_quantite = 'estimee'
+                    WHERE position = 3 AND devis_id = (SELECT id FROM devis WHERE numero = 59 AND chantier_id IS NULL) RETURNING id)
+         INSERT INTO devis_metres (ligne_id, position, libelle, longueur_e5, largeur_e5, deduction)
+         SELECT l.id, m.position, m.libelle, m.longueur, m.largeur, m.deduction FROM l,
+                (VALUES (1, 'Versant nord', 625000::bigint, 320000::bigint, false), (2, 'Versant sud', 580000, 320000, false),
+                        (3, 'Fenêtre de toit', 70000, 80000, true)) AS m (position, libelle, longueur, largeur, deduction)",
+    )
+    .execute(pool)
+    .await
+    .unwrap();
     sqlx::query("UPDATE devis SET client_contact_id = $1 WHERE numero = 50").bind(lambert).execute(pool).await.unwrap();
 
     // Le devis 50 est accepté : chantier, avancement facturé, puis un avancement en brouillon.

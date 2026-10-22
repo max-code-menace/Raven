@@ -34,6 +34,13 @@ const GENRES: [(&str, &str); 10] = [
 ];
 /// Les types qui portent une quantité, un prix et une TVA.
 const GENRES_CHIFFRES: [&str; 6] = ["poste_libre", "ouvrage", "fourniture", "equipement", "main_oeuvre", "sous_traitant"];
+/// Types de quantité d'une ligne chiffrée (fiche QuoteTree) : (valeur, sigle, mot entier, explication).
+/// Il ne change aucun calcul : il dit au client comment la quantité sera facturée.
+pub(crate) const TYPES_QUANTITE: [(&str, &str, &str, &str); 3] = [
+    ("fixe", "QF", "Quantité fixe", "La quantité du devis est celle qui sera facturée."),
+    ("estimee", "QP", "Quantité estimée", "Quantité estimée, facturée selon le métré réel."),
+    ("forfait", "Fft", "Forfait", "Un prix global, quelle que soit la quantité."),
+];
 const LONGUEUR_MAX_REMARQUE: usize = 2_000;
 const LONGUEUR_MAX_DESCRIPTION: usize = 5_000;
 const LONGUEUR_MAX_UNITE: usize = 20;
@@ -98,6 +105,7 @@ struct LigneBase {
     remarque: String,
     taux_tva_id: Option<i64>,
     taux_centiemes: Option<i32>,
+    type_quantite: String,
 }
 
 impl LigneBase {
@@ -140,7 +148,7 @@ impl LigneBase {
 
 /// Les colonnes d'une ligne, dans l'ordre de `LigneBase` (avec la TVA jointe sous le nom `t`).
 const COLONNES_LIGNE: &str = "l.id, l.genre::text AS genre, l.description, l.quantite_e5, l.unite, l.prix_unitaire_e5,
-                l.prix_achat_unitaire_e5, l.remarque, l.taux_tva_id";
+                l.prix_achat_unitaire_e5, l.remarque, l.taux_tva_id, l.type_quantite::text AS type_quantite";
 
 async fn charger_lignes<'e>(db: impl sqlx::PgExecutor<'e>, devis_id: i64) -> Result<Vec<LigneBase>, sqlx::Error> {
     sqlx::query_as(sqlx::AssertSqlSafe(format!(
@@ -151,6 +159,46 @@ async fn charger_lignes<'e>(db: impl sqlx::PgExecutor<'e>, devis_id: i64) -> Res
     .bind(devis_id)
     .fetch_all(db)
     .await
+}
+
+/// Une mesure du métré d'une ligne (étape 4-2) : la somme des mesures est la quantité de la ligne.
+#[derive(FromRow)]
+pub(crate) struct Mesure {
+    pub(crate) id: i64,
+    pub(crate) ligne_id: i64,
+    pub(crate) libelle: String,
+    pub(crate) longueur_e5: i64,
+    pub(crate) largeur_e5: Option<i64>,
+    pub(crate) deduction: bool,
+}
+
+impl Mesure {
+    pub(crate) fn resultat_e5(&self) -> i64 {
+        calcul::mesure_e5(self.longueur_e5, self.largeur_e5, self.deduction)
+    }
+}
+
+/// Les mesures de toutes les lignes d'un devis, dans l'ordre.
+async fn charger_mesures<'e>(db: impl sqlx::PgExecutor<'e>, devis_id: i64) -> Result<Vec<Mesure>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT m.id, m.ligne_id, m.libelle, m.longueur_e5, m.largeur_e5, m.deduction
+         FROM devis_metres m JOIN devis_lignes l ON l.id = m.ligne_id
+         WHERE l.devis_id = $1 ORDER BY m.ligne_id, m.position, m.id",
+    )
+    .bind(devis_id)
+    .fetch_all(db)
+    .await
+}
+
+/// Les unités proposées (liste de suggestions, l'unité reste libre) selon le métier de l'organisation.
+pub(crate) fn unites(metier: &str) -> &'static [&'static str] {
+    match metier {
+        "batiment" => &["m²", "m", "m³", "pièce", "h", "jour", "kg", "tonne", "litre", "sac", "forfait"],
+        "espaces_verts" => &["m²", "m", "m³", "pièce", "stère", "tonne", "h", "jour", "forfait"],
+        "peinture" => &["m²", "m", "pièce", "litre", "h", "jour", "forfait"],
+        "graphisme" => &["h", "jour", "page", "pièce", "forfait"],
+        _ => &["h", "jour", "pièce", "m²", "m", "forfait"],
+    }
 }
 
 /// Totaux du devis à partir de ses lignes. Une ligne sans taux de TVA n'est pas comptée
@@ -188,6 +236,25 @@ pub struct LigneVue {
     pub sous_total: String,
     pub premiere: bool,
     pub derniere: bool,
+    /// « fixe », « estimee » ou « forfait » (voir `TYPES_QUANTITE`).
+    pub type_quantite: &'static str,
+    /// Le sigle affiché en lecture (« QF »).
+    pub sigle_quantite: &'static str,
+    /// La quantité vient du métré (au moins une mesure).
+    pub a_metre: bool,
+    /// Le métré est déplié sous la ligne.
+    pub metre_ouvert: bool,
+    pub mesures: Vec<MesureVue>,
+}
+
+pub struct MesureVue {
+    pub id: i64,
+    pub libelle: String,
+    pub longueur: String,
+    pub largeur: String,
+    pub deduction: bool,
+    /// « 6,2 », « -0,35 ».
+    pub resultat: String,
 }
 
 pub struct TvaVue {
@@ -290,10 +357,25 @@ pub struct Encodage {
     pub colonnes_description: usize,
     /// Présente seulement quand l'option marge est allumée.
     pub rentabilite: Option<RentabiliteVue>,
+    /// Les types de quantité (valeur, sigle, mot entier, explication).
+    pub types_quantite: [(&'static str, &'static str, &'static str, &'static str); 3],
+    /// Les unités proposées pour le métier de l'organisation.
+    pub unites: &'static [&'static str],
+}
+
+fn type_quantite_connu(valeur: &str) -> Option<(&'static str, &'static str)> {
+    TYPES_QUANTITE.iter().find(|t| t.0 == valeur).map(|t| (t.0, t.1))
 }
 
 fn genre_connu(genre: &str) -> Option<(&'static str, &'static str)> {
     GENRES.iter().find(|(v, _)| *v == genre).copied()
+}
+
+/// Ce que l'encodage montre en plus des lignes : leurs mesures, la ligne dont le métré est déplié, les unités.
+struct Contexte<'a> {
+    mesures: &'a [Mesure],
+    metre_ouvert: Option<i64>,
+    unites: &'static [&'static str],
 }
 
 fn construire_encodage(
@@ -303,6 +385,7 @@ fn construire_encodage(
     taux: &[(i64, String)],
     entete: &Entete,
     message: String,
+    contexte: Contexte<'_>,
 ) -> Encodage {
     // Numérotation : un titre ouvre un lot (1.0, 2.0…), les lignes suivantes en font partie (1.1, 1.2…).
     // Le sous-total d'un titre est la somme des postes jusqu'au titre suivant.
@@ -340,6 +423,21 @@ fn construire_encodage(
             }
             _ => String::new(),
         };
+        let (type_quantite, sigle_quantite) = type_quantite_connu(&l.type_quantite).unwrap_or(("fixe", "QF"));
+        let mesures: Vec<MesureVue> = contexte
+            .mesures
+            .iter()
+            .filter(|m| m.ligne_id == l.id)
+            .map(|m| MesureVue {
+                id: m.id,
+                libelle: m.libelle.clone(),
+                longueur: calcul::ecrire_decimal_e5(m.longueur_e5),
+                largeur: m.largeur_e5.map(calcul::ecrire_decimal_e5).unwrap_or_default(),
+                deduction: m.deduction,
+                resultat: calcul::ecrire_decimal_e5(m.resultat_e5()),
+            })
+            .collect();
+        let a_metre = l.est_chiffre() && !mesures.is_empty();
         vues.push(LigneVue {
             id: l.id,
             genre,
@@ -369,6 +467,11 @@ fn construire_encodage(
             sous_total: String::new(),
             premiere: i == 0,
             derniere: i + 1 == lignes.len(),
+            type_quantite,
+            sigle_quantite,
+            a_metre,
+            metre_ouvert: l.est_chiffre() && contexte.metre_ouvert == Some(l.id),
+            mesures,
         });
     }
     for (i, somme) in sous_totaux {
@@ -392,13 +495,30 @@ fn construire_encodage(
         frais_generaux: calcul::ecrire_decimal_e5(entete.frais_generaux_centiemes * 1000),
         colonnes_description: if entete.marge_activee { 6 } else { 5 },
         rentabilite,
+        types_quantite: TYPES_QUANTITE,
+        unites: contexte.unites,
     }
 }
 
 pub(crate) async fn charger_encodage(db: &mut PgConnection, id: i64, entete: &Entete, message: String) -> Result<Encodage, Erreur> {
+    charger_encodage_metre(db, id, entete, message, None).await
+}
+
+/// L'encodage avec le métré de la ligne `metre_ouvert` déplié.
+pub(crate) async fn charger_encodage_metre(
+    db: &mut PgConnection,
+    id: i64,
+    entete: &Entete,
+    message: String,
+    metre_ouvert: Option<i64>,
+) -> Result<Encodage, Erreur> {
     let lignes = charger_lignes(&mut *db, id).await?;
+    let mesures = charger_mesures(&mut *db, id).await?;
     let options = Options::charger(&mut *db, Genre::Entreprise).await?;
-    Ok(construire_encodage(id, entete.brouillon, &lignes, &crate::fiches::taux_courts(&options.taux_tva), entete, message))
+    let metier: String =
+        sqlx::query_scalar("SELECT profil_metier FROM organisations WHERE id = app_organisation()").fetch_one(&mut *db).await?;
+    let contexte = Contexte { mesures: &mesures, metre_ouvert, unites: unites(&metier) };
+    Ok(construire_encodage(id, entete.brouillon, &lignes, &crate::fiches::taux_courts(&options.taux_tva), entete, message, contexte))
 }
 
 // ─── Templates ──────────────────────────────────────────────────────────────
@@ -417,21 +537,21 @@ struct Page {
 /// Tout le bloc d'encodage : renvoyé à htmx après un ajout, une suppression ou un déplacement.
 #[derive(Template)]
 #[template(path = "_encodage.html")]
-struct Bloc {
-    enc: Encodage,
+pub(crate) struct Bloc {
+    pub(crate) enc: Encodage,
 }
 
 /// Seulement les totaux et les messages : renvoyé après la modification d'une ligne, pour ne pas
 /// toucher aux champs en cours de saisie.
 #[derive(Template)]
 #[template(path = "_encodage_maj.html")]
-struct Maj {
-    enc: Encodage,
+pub(crate) struct Maj {
+    pub(crate) enc: Encodage,
 }
 
 // ─── Modifications ──────────────────────────────────────────────────────────
 
-fn exiger_brouillon(entete: &Entete) -> Result<(), Erreur> {
+pub(crate) fn exiger_brouillon(entete: &Entete) -> Result<(), Erreur> {
     if entete.brouillon { Ok(()) } else { Err(Erreur::conflit(MESSAGE_NON_MODIFIABLE)) }
 }
 
@@ -468,15 +588,22 @@ pub(crate) async fn recalculer(tx: &mut Transaction<'_, Postgres>, devis_id: i64
 struct RetourEncodage {
     /// Le nombre de lignes importées depuis Excel.
     import: String,
+    /// La ligne dont le métré est déplié.
+    metre: String,
 }
 
 async fn page(
     mut db: Base,
     Path(id): Path<i64>,
+    entetes: axum::http::HeaderMap,
     axum::extract::Query(r): axum::extract::Query<RetourEncodage>,
 ) -> Result<Html<String>, Erreur> {
     let entete = charger_entete(&mut *db, id).await?;
-    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
+    let enc = charger_encodage_metre(&mut *db, id, &entete, String::new(), r.metre.parse().ok()).await?;
+    // Déplier ou replier un métré (htmx) : seulement le bloc d'encodage.
+    if entetes.contains_key("hx-request") && !entetes.contains_key("hx-history-restore-request") {
+        return Ok(Html(Bloc { enc }.render()?));
+    }
     let barre = charger_barre(&mut *db, id).await?;
     let message_ok = match r.import.parse::<u32>() {
         Ok(n) => format!("Import Excel terminé : {n} ligne(s) ajoutée(s). Vérifiez les totaux ci-dessous."),
@@ -582,6 +709,7 @@ struct MajLigne {
     prix_unitaire: Option<String>,
     prix_achat: Option<String>,
     taux_tva_id: Option<String>,
+    type_quantite: Option<String>,
 }
 
 /// Applique les champs reçus à la ligne ; le premier problème rencontré est renvoyé tel quel.
@@ -627,6 +755,9 @@ fn appliquer(l: &mut LigneBase, f: &MajLigne, taux: &[(i64, String)]) -> Result<
         }
         l.unite = u.to_string();
     }
+    if let Some(t) = &f.type_quantite {
+        l.type_quantite = type_quantite_connu(t.trim()).ok_or("Ce type de quantité n'existe pas.")?.0.to_string();
+    }
     if let Some(t) = &f.taux_tva_id {
         let id = t.trim().parse::<i64>().ok().filter(|id| taux.iter().any(|(i, _)| i == id)).ok_or("Ce taux de TVA n'existe pas.")?;
         l.taux_tva_id = Some(id);
@@ -655,12 +786,17 @@ async fn modifier(
     .fetch_optional(&mut *tx)
     .await?;
     let mut ligne = courante.ok_or_else(Erreur::introuvable)?;
+    // Avec un métré, la quantité est la somme des mesures : une quantité tapée à la main n'est pas prise.
+    let a_metre: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM devis_metres WHERE ligne_id = $1)").bind(ligne_id).fetch_one(&mut *tx).await?;
+    let f = if a_metre { MajLigne { quantite: None, ..f } } else { f };
 
     let message = match appliquer(&mut ligne, &f, &options.taux_tva) {
         Ok(()) => {
             sqlx::query(
                 "UPDATE devis_lignes SET description = $1, quantite_e5 = $2, unite = $3, prix_unitaire_e5 = $4,
-                        taux_tva_id = $5, prix_achat_unitaire_e5 = $6, remarque = $7, updated_at = now()
+                        taux_tva_id = $5, prix_achat_unitaire_e5 = $6, remarque = $7,
+                        type_quantite = $9::text::type_quantite, updated_at = now()
                  WHERE id = $8",
             )
             .bind(&ligne.description)
@@ -671,6 +807,7 @@ async fn modifier(
             .bind(ligne.prix_achat_unitaire_e5)
             .bind(&ligne.remarque)
             .bind(ligne_id)
+            .bind(&ligne.type_quantite)
             .execute(&mut *tx)
             .await?;
             recalculer(&mut tx, id).await?;
