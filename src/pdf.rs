@@ -1,6 +1,7 @@
 //! Génération de PDF avec Typst (bibliothèque Rust, sans programme externe).
-//! La police Inter (licence OFL, voir `assets/polices/OFL.txt`) est embarquée dans le programme :
-//! le PDF est identique sur ton PC et chez l'hébergeur.
+//! Les polices sont embarquées dans le programme : le PDF est identique sur ton PC et chez l'hébergeur.
+//! Archivo et IBM Plex Mono (celles du design de Raven, licences `assets/polices/OFL-Archivo.txt` et
+//! `OFL-IBMPlexMono.txt`) pour le devis ; Inter (`assets/polices/OFL.txt`) pour les pièces pas encore refaites.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -14,11 +15,19 @@ use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
 use typst_pdf::PdfOptions;
 
-const POLICES: [&[u8]; 4] = [
+const POLICES: [&[u8]; 12] = [
     include_bytes!("../assets/polices/Inter-Regular.otf"),
     include_bytes!("../assets/polices/Inter-SemiBold.otf"),
     include_bytes!("../assets/polices/Inter-Bold.otf"),
     include_bytes!("../assets/polices/Inter-Italic.otf"),
+    include_bytes!("../assets/polices/Archivo-Regular.ttf"),
+    include_bytes!("../assets/polices/Archivo-Italic.ttf"),
+    include_bytes!("../assets/polices/Archivo-Medium.ttf"),
+    include_bytes!("../assets/polices/Archivo-SemiBold.ttf"),
+    include_bytes!("../assets/polices/Archivo-Bold.ttf"),
+    include_bytes!("../assets/polices/IBMPlexMono-Regular.ttf"),
+    include_bytes!("../assets/polices/IBMPlexMono-Medium.ttf"),
+    include_bytes!("../assets/polices/IBMPlexMono-SemiBold.ttf"),
 ];
 
 /// Un document Typst en mémoire : son texte, et les fichiers (logo…) qu'il peut citer par leur nom.

@@ -370,6 +370,7 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
                 ("numero", litteral(&l.numero)),
                 ("description", litteral(&l.description)),
                 ("remarque", litteral(&l.remarque)),
+                ("type_quantite", litteral(l.sigle_quantite)),
                 ("quantite", litteral(&l.quantite)),
                 ("unite", litteral(&l.unite)),
                 ("prix_unitaire", litteral(&l.prix_affiche)),
@@ -391,6 +392,19 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         }
     }
     let segments: Vec<String> = segments.iter().map(|s| tableau(s)).collect();
+
+    // La légende des types de quantité employés dans le devis, dans l'ordre de l'Encodage.
+    let legende: Vec<String> = crate::devis_lignes::TYPES_QUANTITE
+        .iter()
+        .filter(|(valeur, ..)| d.enc.lignes.iter().any(|l| l.est_chiffre && l.type_quantite == *valeur))
+        .map(|(valeur, sigle, mot, _)| {
+            let texte = match *valeur {
+                "estimee" => format!("{}, facturée selon le métré réel", mot.to_lowercase()),
+                _ => mot.to_lowercase(),
+            };
+            dictionnaire(&[("sigle", litteral(sigle)), ("texte", litteral(&texte))])
+        })
+        .collect();
 
     let t = &d.enc.totaux;
     let tva: Vec<String> = t
@@ -427,6 +441,7 @@ pub fn source_typst(d: &Donnees) -> (String, HashMap<String, Vec<u8>>) {
         ("remarque_1", litteral(&d.remarque_1)),
         ("remarque_2", litteral(&d.remarque_2)),
         ("segments", tableau(&segments)),
+        ("legende", tableau(&legende)),
         ("totaux", totaux),
     ]);
     (format!("{MODELE}\n#devis({donnees})\n"), fichiers)
