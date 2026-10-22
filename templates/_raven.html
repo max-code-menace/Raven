@@ -329,6 +329,23 @@ textarea.rv-cell:focus { resize: vertical; }
 .rv-qt--enc .rv-qt-row .rv-btn--icon { background: transparent; }
 .rv-cell:disabled { color: inherit; cursor: default; opacity: 1; }
 .rv-cell:disabled:hover { border-color: transparent; background: transparent; }
+/* Étape 4-2 : type de quantité, quantité avec son métré, lignes de mesures. */
+.rv-qt-genre { color: var(--mut); font: 400 11.5px/1.3 var(--font-mono); padding: 0 6px; }
+.rv-qt-qte { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.rv-qt-qte .rv-cell { flex: 1; min-width: 0; }
+.rv-qt-metre-ajout { flex: none; display: grid; place-items: center; width: 20px; height: 26px; padding: 0; border: 0; background: none; color: var(--mut); cursor: pointer; opacity: 0; }
+.rv-qt--enc .rv-qt-row:hover .rv-qt-metre-ajout, .rv-qt-metre-ajout:focus-visible { opacity: 1; }
+.rv-qt-metre-ajout:hover { color: var(--ink); }
+.rv-qt--enc .rv-qt-metre { border-style: dashed; border-color: var(--line-field); }
+.rv-qt--enc .rv-qt-msr { align-items: center; padding-top: 2px; padding-bottom: 2px; }
+.rv-qt--enc .rv-qt-msr .rv-qt-n { padding-top: 0; }
+.rv-qt--enc .rv-qt-mesure { grid-column: 3 / 5; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.rv-qt-mesure > .rv-cell:first-child { flex: 1 1 100%; min-width: 0; height: 28px; }
+.rv-qt-mesure-texte { flex: 1; min-width: 0; }
+.rv-qt-mesure .rv-btn { flex: none; }
+.rv-qt-mesure .rv-coche { flex: none; white-space: nowrap; }
+.rv-qt-mesure .rv-cell--num { width: 76px; height: 28px; }
+.rv-qt-mesure .rv-coche { font-size: 13px; }
 .rv-qt-ordre { display: flex; flex-direction: column; align-items: center; padding-top: 4px; }
 .rv-qt-ordre button { width: 22px; height: 15px; padding: 0; border: 0; background: none; color: var(--mut); font-size: 10px; line-height: 1; cursor: pointer; }
 .rv-qt-ordre button:hover { color: var(--ink); }

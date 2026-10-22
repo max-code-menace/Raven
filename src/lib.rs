@@ -22,6 +22,7 @@ pub mod devis_copie;
 pub mod devis_editeur;
 pub mod devis_historique;
 pub mod devis_lignes;
+pub mod devis_metre;
 pub mod devis_pdf;
 pub mod devis_statut;
 pub mod devis_totaux;
@@ -138,6 +139,7 @@ fn pages() -> Router<AppState> {
         .merge(devis::routes())
         .merge(devis_editeur::routes())
         .merge(devis_lignes::routes())
+        .merge(devis_metre::routes())
         .merge(devis_totaux::routes())
         .merge(devis_apercu::routes())
         .merge(devis_pdf::routes())
