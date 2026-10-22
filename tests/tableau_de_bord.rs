@@ -78,7 +78,7 @@ async fn devis(pool: &PgPool, s: &Router, statut: &str, montant: i64) -> i64 {
 async fn un_tableau_de_bord_vide(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
     let page = lire(&site(&pool), "/").await;
-    for attendu in ["Mes devis", "Mes factures", "Mes chantiers", "Mes notes de crédit", "À surveiller", "Ce mois-ci", "Rien à signaler"] {
+    for attendu in ["En retard", "Reste à encaisser", "Reste à facturer", "Devis en attente de réponse", "À surveiller", "Vos pièces", "Ce mois-ci", "Rien à signaler"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     assert!(!page.contains("arriveront avec les paiements"), "plus de bandeau « bientôt »");
@@ -100,17 +100,18 @@ async fn les_blocs_et_ce_qui_est_a_surveiller(options: PgPoolOptions, connexion:
     let page = lire(&s, "/").await;
     for attendu in [
         &format!("5\u{a0}000,00{E}"),                        // en attente : 1 500 + 500 + 3 000
-        "En attente de réponse</span> <span class=\"u-petit u-muet\">(3)</span>",
-        &format!("Brouillons (1)</a><span>800,00{E}"),
-        "En retard</span> <span class=\"u-petit u-muet\">(1)</span>",
-        &format!("À envoyer (2)</a><span>242,00{E}"),
-        &format!("Reste à encaisser (2)</a><span>242,00{E}"),
+        "rv-num\">3</span> devis envoyé(s) ou signé(s)",
+        &format!("Devis en brouillon</a></td><td class=\"rv-r rv-num\">1</td><td class=\"rv-r rv-num\">800,00{E}"),
+        "rv-num\">1</span> facture(s) TTC · voir les rappels",
+        &format!("Factures à envoyer</a></td><td class=\"rv-r rv-num\">2</td><td class=\"rv-r rv-num\">242,00{E}"),
+        &format!("<b class=\"rv-band-val\">242,00{E}</b>"),
+        "rv-num\">2</span> facture(s) pas encore soldée(s)",
         "1 facture(s) en retard à relancer aujourd",
         "est signé en ligne par Anne Claes : il reste à l",
         "est envoyé depuis 25 jours, sans réponse.",
         "2 pièce(s) validée(s) pas encore envoyée(s) au client.",
         "href=\"/factures/rappels\"",
-        &format!("Facturé HT</span><b>200,00{E}"),
+        &format!("Facturé HT</span><span>200,00{E}"),
     ] {
         assert!(page.contains(attendu) || page.contains(&attendu.replace("'", "&#39;")), "{attendu}");
     }

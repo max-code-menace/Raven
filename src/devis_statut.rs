@@ -79,6 +79,10 @@ pub struct Barre {
     pub reference: String,
     pub brouillon: bool,
     pub avenant: bool,
+    /// La pastille du statut (design de Raven).
+    pub pastille: crate::composants::Pastille,
+    /// Le nom du client, sous le titre (vide s'il n'est pas encore choisi).
+    pub client: String,
 }
 
 fn date_belge(d: NaiveDate) -> String {
@@ -116,6 +120,14 @@ pub async fn charger_barre(db: &mut PgConnection, id: i64) -> Result<Barre, Erre
     let (numero, annee, chantier_avenant, reference): (i64, i32, Option<i64>, String) =
         sqlx::query_as("SELECT numero, extract(year FROM date_devis)::int, chantier_id, reference FROM devis WHERE id = $1").bind(id).fetch_one(&mut *db).await?;
     let avenant = chantier_avenant.is_some();
+    let client: String = sqlx::query_scalar(
+        "SELECT COALESCE(e.nom, NULLIF(trim(concat_ws(' ', c.prenom, c.nom)), ''), '')
+         FROM devis d LEFT JOIN entreprises e ON e.id = d.client_entreprise_id LEFT JOIN contacts c ON c.id = d.client_contact_id
+         WHERE d.id = $1",
+    )
+    .bind(id)
+    .fetch_one(&mut *db)
+    .await?;
     let chantier: Option<(i64, i64)> = sqlx::query_as("SELECT id, numero FROM chantiers WHERE devis_id = $1 OR id = $2")
         .bind(id)
         .bind(chantier_avenant)
@@ -137,6 +149,8 @@ pub async fn charger_barre(db: &mut PgConnection, id: i64) -> Result<Barre, Erre
         chantier,
         brouillon: statut_devis == "brouillon",
         avenant,
+        pastille: crate::composants::pastille_devis(&statut_devis),
+        client,
         reference,
         titre,
         retour,

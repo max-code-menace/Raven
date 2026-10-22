@@ -108,7 +108,7 @@ async fn statistiques_de_la_periode(options: PgPoolOptions, connexion: PgConnect
     }
     // Une autre période : rien de facturé l'an passé.
     let page = lire(&s, "/statistiques?periode=annee_passee").await;
-    assert!(page.contains(&format!("<span class=\"u-grand\">0,00{E}</span>")) && page.contains("0 accepté(s) sur 0 devis émis"));
+    assert!(page.contains(&format!("affaires HT</small><b>0,00{E}</b>")) && page.contains("0 accepté(s) sur 0 devis émis"));
     // Période personnalisée à l'envers : retombe sur cette année.
     let page = lire(&s, "/statistiques?periode=perso&du=2026-12-31&au=2026-01-01").await;
     assert!(page.contains("<option value=\"annee\" selected>"));

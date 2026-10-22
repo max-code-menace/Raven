@@ -273,7 +273,7 @@ async fn l_onglet_montre_le_pdf_et_les_boutons(options: PgPoolOptions, connexion
     assert_eq!(statut, StatusCode::OK);
     assert!(html.contains(&format!("<iframe class=\"w-full rounded-box bg-white shadow\" style=\"height: 80vh\" src=\"/devis/{d}/pdf\"")));
     assert!(html.contains(&format!("href=\"/devis/{d}/pdf?telecharger=1\"")) && html.contains("Télécharger le PDF"));
-    assert!(html.contains(&format!("tab tab-active\" href=\"/devis/{d}/apercu\"")));
+    assert!(html.contains(&format!("rv-tab is-on\" href=\"/devis/{d}/apercu\"")));
     assert_eq!(page(&site(&pool), "/devis/999/apercu").await.0, StatusCode::NOT_FOUND);
 }
 

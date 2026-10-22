@@ -16,7 +16,6 @@ use sqlx::{FromRow, PgConnection};
 
 use crate::base::Base;
 use crate::commun::{Choix, PAYS, choix_fixes, vide_en_none};
-use crate::devis::statut;
 use crate::devis_statut::{Barre, charger_barre};
 use crate::fiches::{Genre, Options, choix_base};
 use crate::{AppState, Erreur};
@@ -399,8 +398,6 @@ async fn enregistrer_en_base(db: &mut PgConnection, id: i64, v: &Valeurs) -> Res
 struct Page {
     id: i64,
     numero: String,
-    statut: &'static str,
-    classe_statut: &'static str,
     onglet: &'static str,
     /// Un avenant montre en plus ses jours ouvrables supplémentaires.
     avenant: bool,
@@ -476,14 +473,11 @@ async fn charger_acomptes(db: &mut PgConnection, devis_id: i64, avenant: bool) -
 }
 
 fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, retour: &Retour, barre: Barre, r: &Referentiel) -> Page {
-    let (libelle, classe) = statut(&d.statut);
     let contacts: Vec<(i64, String)> = r.contacts.clone();
     let pays = if form.chantier_pays.is_empty() { "BE".to_string() } else { form.chantier_pays.clone() };
     Page {
         id,
         numero: crate::devis_lignes::numero_affiche(d.annee, d.numero, d.chantier_id.is_some()),
-        statut: libelle,
-        classe_statut: classe,
         onglet: "informations",
         avenant: d.chantier_id.is_some(),
         modifiable: d.statut == "brouillon",

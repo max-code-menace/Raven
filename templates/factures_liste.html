@@ -2,8 +2,8 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}{% if liste.notes_credit %}Notes de crédit{% else %}Factures clients{% endif %} · Raven{% endblock %}
-{% block nav_factures %}{% if !liste.notes_credit %}actif{% endif %}{% endblock %}
-{% block nav_notes %}{% if liste.notes_credit %}actif{% endif %}{% endblock %}
+{% block nav_factures %}{% if !liste.notes_credit %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_notes %}{% if liste.notes_credit %}aria-current="page"{% endif %}{% endblock %}
 
 {% block entete %}
 <header class="u-top">

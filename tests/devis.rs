@@ -96,7 +96,7 @@ async fn la_liste_est_vide_au_depart(options: PgPoolOptions, connexion: PgConnec
     let pool = commun::reserve(options, connexion).await;
     let page = lire(&site(&pool), "/devis").await;
     assert!(page.contains("Aucun devis trouvé."));
-    assert!(page.contains("0 devis"));
+    assert!(page.contains("rv-num\">0</span> devis"));
     assert!(page.contains("0,00\u{a0}€"));
     assert!(page.contains("href=\"/devis\""));
 }
@@ -119,9 +119,9 @@ async fn nouveau_cree_un_brouillon_numero_un(options: PgPoolOptions, connexion: 
     assert_eq!(lieu, Some(format!("/devis/{id}")));
 
     let page = lire(&s, "/devis").await;
-    assert!(page.contains(&format!("whitespace-nowrap\">{annee}-1</td>")));
+    assert!(page.contains(&format!("\">{annee}-1</a></td>")));
     assert!(page.contains("Brouillon"));
-    assert!(page.contains("1 devis"));
+    assert!(page.contains("rv-num\">1</span> devis"));
     // Un brouillon n'affiche pas de date de statut.
     assert!(!page.contains("text-xs opacity-70"));
 }
@@ -211,14 +211,14 @@ async fn la_liste_montre_client_montant_statut_et_date(options: PgPoolOptions, c
     assert!(page.contains("4\u{a0}431,84\u{a0}€") && page.contains("3\u{a0}731,26\u{a0}€"));
     assert!(page.contains("14/10/2026") && page.contains("15/10/2026"));
     assert!(page.contains("Accepté") && page.contains("Envoyé"));
-    assert!(page.contains("2026-1</td>") && page.contains("2026-2</td>"));
+    assert!(page.contains("2026-1</a></td>") && page.contains("2026-2</a></td>"));
 
     // Sous le statut : la date du changement de statut (aujourd'hui, puisqu'on vient de l'insérer).
     let aujourdhui: String = sqlx::query_scalar("SELECT to_char(now() AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY')")
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert!(page.contains(&format!("<span class=\"text-xs opacity-70\">{aujourdhui}</span>")));
+    assert!(page.contains(&format!("<small>{aujourdhui}</small>")));
 }
 
 #[sqlx::test]
@@ -252,14 +252,14 @@ async fn les_totaux_suivent_les_filtres(options: PgPoolOptions, connexion: PgCon
     let s = site(&pool);
 
     let tout = lire(&s, "/devis").await;
-    assert!(tout.contains("<strong>3\u{a0}000,00\u{a0}€</strong>"));
-    assert!(tout.contains("<strong>3\u{a0}480,00\u{a0}€</strong>"));
-    assert!(tout.contains("2 devis"));
+    assert!(tout.contains("<b>3\u{a0}000,00\u{a0}€</b>"));
+    assert!(tout.contains("<b>3\u{a0}480,00\u{a0}€</b>"));
+    assert!(tout.contains("rv-num\">2</span> devis"));
 
     let acceptes = lire(&s, "/devis?statut=accepte").await;
-    assert!(acceptes.contains("<strong>1\u{a0}000,00\u{a0}€</strong>"));
-    assert!(acceptes.contains("<strong>1\u{a0}060,00\u{a0}€</strong>"));
-    assert!(acceptes.contains("1 devis"));
+    assert!(acceptes.contains("<b>1\u{a0}000,00\u{a0}€</b>"));
+    assert!(acceptes.contains("<b>1\u{a0}060,00\u{a0}€</b>"));
+    assert!(acceptes.contains("rv-num\">1</span> devis"));
 }
 
 // ─── Filtres et recherche ───────────────────────────────────────────────────
@@ -361,21 +361,21 @@ async fn pagination_vingt_par_page_et_totaux_sur_tout_le_filtre(options: PgPoolO
     let pool = commun::reserve(options, connexion).await;
     vingt_cinq_devis(&pool).await;
     let s = site(&pool);
-    let cellule = |n: i64| format!("whitespace-nowrap\">2026-{n}</td>");
+    let cellule = |n: i64| format!("\">2026-{n}</a></td>");
 
     let p1 = lire(&s, "/devis").await;
     assert!(p1.contains(&cellule(25)) && p1.contains(&cellule(6)) && !p1.contains(&cellule(5)));
-    assert!(p1.contains("25 devis") && p1.contains("Page 1 / 2"));
+    assert!(p1.contains("rv-num\">25</span> devis") && p1.contains("Page <span class=\"rv-num\">1 / 2</span>"));
     // Les totaux couvrent les 25 devis, pas seulement la page affichée.
-    assert!(p1.contains("<strong>25\u{a0}000,00\u{a0}€</strong>") && p1.contains("<strong>30\u{a0}250,00\u{a0}€</strong>"));
+    assert!(p1.contains("<b>25\u{a0}000,00\u{a0}€</b>") && p1.contains("<b>30\u{a0}250,00\u{a0}€</b>"));
 
     let p2 = lire(&s, "/devis?page=2").await;
     assert!(p2.contains(&cellule(5)) && p2.contains(&cellule(1)) && !p2.contains(&cellule(6)));
-    assert!(p2.contains("Page 2 / 2"));
+    assert!(p2.contains("Page <span class=\"rv-num\">2 / 2</span>"));
 
-    assert!(lire(&s, "/devis?page=99").await.contains("Page 2 / 2"));
-    assert!(lire(&s, "/devis?page=0").await.contains("Page 1 / 2"));
-    assert!(lire(&s, "/devis?page=abc").await.contains("Page 1 / 2"));
+    assert!(lire(&s, "/devis?page=99").await.contains("Page <span class=\"rv-num\">2 / 2</span>"));
+    assert!(lire(&s, "/devis?page=0").await.contains("Page <span class=\"rv-num\">1 / 2</span>"));
+    assert!(lire(&s, "/devis?page=abc").await.contains("Page <span class=\"rv-num\">1 / 2</span>"));
 }
 
 #[sqlx::test]

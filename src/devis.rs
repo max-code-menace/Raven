@@ -20,7 +20,7 @@ use crate::{AppState, Erreur};
 const PAR_PAGE: i64 = 20;
 
 /// Valeur en base, libellé affiché, couleur du badge.
-const STATUTS: [(&str, &str, &str); 8] = [
+pub(crate) const STATUTS: [(&str, &str, &str); 8] = [
     ("brouillon", "Brouillon", "s-brouillon"),
     ("a_envoyer", "À envoyer", "s-a-envoyer"),
     ("envoi_en_cours", "Envoi en cours", "s-envoye"),
@@ -118,6 +118,7 @@ pub struct Ligne {
     pub montant_ht: String,
     pub statut: &'static str,
     pub classe_statut: &'static str,
+    pub pastille: crate::composants::Pastille,
     pub date_statut: String,
     /// Le devis attend encore la décision du client : le menu propose Accepter / Refuser.
     pub decidable: bool,
@@ -137,6 +138,7 @@ impl From<LigneBase> for Ligne {
             montant_ht: format_euros(l.montant_ht_cents),
             statut: libelle,
             classe_statut: classe,
+            pastille: crate::composants::pastille_devis(&l.statut),
             // Un brouillon n'a pas de date de statut à montrer.
             date_statut: if l.statut == "brouillon" { String::new() } else { l.statut_date },
         }

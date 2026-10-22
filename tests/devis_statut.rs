@@ -111,7 +111,7 @@ async fn accepter_enregistre_la_date_et_verrouille(options: PgPoolOptions, conne
     assert!(page.contains("Le devis est accepté et son chantier est créé.") && page.contains("Accepté le 05/10/2026"));
     assert!(page.contains("Chantier n° 1"));
     // Plus aucune décision possible ; seulement dupliquer.
-    for absent in ["Marquer comme envoyé</button>", "Accepter le devis…", "Refuser…", "Remettre en brouillon"] {
+    for absent in ["Marquer comme envoyé</button>", "Accepter le devis…", "Refuser le devis…", "Remettre en brouillon"] {
         assert!(!page.contains(absent), "{absent}");
     }
     assert!(page.contains("Dupliquer"));
@@ -235,7 +235,7 @@ async fn les_boutons_d_un_brouillon(options: PgPoolOptions, connexion: PgConnect
     let pool = commun::reserve(options, connexion).await;
     let d = devis(&pool, 1, "brouillon").await;
     let (_, page) = lire(&site(&pool), &format!("/devis/{d}")).await;
-    for present in ["Marquer comme envoyé", "Accepter le devis…", "Refuser…", "Dupliquer"] {
+    for present in ["Marquer comme envoyé", "Accepter le devis…", "Refuser le devis…", "Dupliquer"] {
         assert!(page.contains(present), "{present}");
     }
     assert!(!page.contains("Remettre en brouillon"));
@@ -397,7 +397,7 @@ async fn la_page_historique_montre_les_evenements_du_plus_recent_au_plus_ancien(
     // Les dates sont celles de Belgique, au format belge.
     assert!(page.contains("02/10/2026 · 14:30") && page.contains("01/10/2026 · 09:00"));
     assert!(page.find("Brouillon → Envoyé").unwrap() < page.find("Devis créé").unwrap());
-    assert!(page.contains(&format!("tab tab-active\" href=\"/devis/{d}/historique\"")));
+    assert!(page.contains(&format!("rv-tab is-on\" href=\"/devis/{d}/historique\"")));
 }
 
 #[sqlx::test]

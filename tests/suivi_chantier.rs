@@ -168,5 +168,5 @@ async fn facture_encaisse_et_benefice_actuel(options: PgPoolOptions, connexion: 
     }
     // La liste des chantiers totalise le reste à facturer et le reste à recevoir.
     let liste = lire(&s, "/chantiers").await;
-    assert!(liste.contains(&format!("Reste à facturer HT</small><strong>1\u{a0}695,00{E}")) && liste.contains(&format!("560,00{E}")));
+    assert!(liste.contains(&format!("Reste à facturer HT<b>1\u{a0}695,00{E}")) && liste.contains(&format!("560,00{E}")));
 }

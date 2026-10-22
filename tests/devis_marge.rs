@@ -105,8 +105,8 @@ async fn le_menu_propose_tous_les_types_et_le_saut_de_page_n_a_pas_de_numero(opt
         assert!(page.contains(&format!("\"genre\": \"{valeur}\"")), "{valeur}");
     }
     // Numérotation : 1.0 (titre), 1.1 (fourniture), pas de numéro pour le saut, 1.2 (main d'œuvre).
-    assert!(page.contains("whitespace-nowrap\">1.0</td>") && page.contains("whitespace-nowrap\">1.1</td>") && page.contains("whitespace-nowrap\">1.2</td>"));
-    assert!(!page.contains("whitespace-nowrap\">1.3</td>"));
+    assert!(page.contains("rv-qt-ref\">1.0</span>") && page.contains("rv-qt-ref\">1.1</span>") && page.contains("rv-qt-ref\">1.2</span>"));
+    assert!(!page.contains("rv-qt-ref\">1.3</span>"));
     assert!(page.contains("— Saut de page —"));
 }
 
@@ -210,7 +210,7 @@ async fn le_prix_d_achat_s_enregistre_et_la_marge_de_la_ligne_est_renvoyee(optio
 
     // Un prix d'achat invalide est expliqué et refusé.
     let maj = remplir(&s, d, l, "prix_achat=douze").await;
-    assert!(maj.contains("alert-warning") && maj.contains("douze"));
+    assert!(maj.contains("rv-banner--bad") && maj.contains("douze"));
 }
 
 #[sqlx::test]
@@ -232,7 +232,7 @@ async fn l_interrupteur_montre_ou_cache_les_colonnes_sans_perdre_les_prix_d_acha
     let (statut, bloc) = poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
     assert_eq!(statut, StatusCode::OK);
     assert!(bloc.contains("id=\"encodage\"") && bloc.contains("Achat U.") && bloc.contains("name=\"prix_achat\" value=\"80\""));
-    assert!(bloc.contains("Frais généraux (% des achats)") && bloc.contains("Marge bénéficiaire"));
+    assert!(bloc.contains("Frais généraux (% des achats)") && bloc.contains("Bénéfice"));
     let (actif,): (bool,) = sqlx::query_as("SELECT marge_activee FROM devis WHERE id = $1").bind(d).fetch_one(&pool).await.unwrap();
     assert!(actif);
     assert!(lire(&s, &format!("/devis/{d}/totaux")).await.1.contains("Rentabilité"));
@@ -269,7 +269,7 @@ async fn les_frais_generaux_s_enregistrent_au_centieme_pres(options: PgPoolOptio
 
     for (corps, message) in [("frais_generaux=100,01", "100 %"), ("frais_generaux=abc", "pourcentage"), ("frais_generaux=-5", "pourcentage"), ("frais_generaux=1,234", "2 décimales")] {
         let (_, bloc) = poster(&s, &format!("/devis/{d}/frais-generaux"), corps).await;
-        assert!(bloc.contains("alert-warning") && bloc.contains(message), "{corps}");
+        assert!(bloc.contains("rv-banner--bad") && bloc.contains(message), "{corps}");
     }
     let (f,): (i32,) = sqlx::query_as("SELECT frais_generaux_centiemes FROM devis WHERE id = $1").bind(d).fetch_one(&pool).await.unwrap();
     assert_eq!(f, 10_000, "les valeurs refusées ne changent rien");

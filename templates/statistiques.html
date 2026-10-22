@@ -2,97 +2,58 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}Statistiques · Raven{% endblock %}
-{% block nav_statistiques %}actif{% endblock %}
+{% block nav_statistiques %}aria-current="page"{% endblock %}
+{% block fond %}rv-papier{% endblock %}
 
 {% block entete %}
-<header class="u-top">
-  <div class="u-top-ligne">
-    <div class="u-titre">
-      <span class="u-ic">{% call ui::icone("stats", 20) %}{% endcall %}</span>
-      <div>
-        <h1>Statistiques</h1>
-        <div class="u-sous-titre">Période {{ periode_texte }} · montants HT sauf mention</div>
-      </div>
-    </div>
-    <form class="u-actions" method="get" action="/statistiques">
-      <select class="select select-bordered select-sm" name="periode" aria-label="Période">
-        {% for p in periodes %}<option value="{{ p.valeur }}"{% if p.choisi %} selected{% endif %}>{{ p.libelle }}</option>{% endfor %}
-      </select>
-      <input class="input input-bordered input-sm" type="date" name="du" value="{{ du }}" aria-label="Du">
-      <input class="input input-bordered input-sm" type="date" name="au" value="{{ au }}" aria-label="Au">
-      <button class="btn btn-sm" type="submit">Appliquer</button>
-    </form>
-  </div>
-</header>
+{% call ui::tete("Statistiques", "Période {} · montants HT sauf mention"|format(periode_texte)) %}
+  <form class="rv-actions" method="get" action="/statistiques">
+    <select class="rv-input rv-input--sm" name="periode" aria-label="Période" style="width:auto">
+      {% for p in periodes %}<option value="{{ p.valeur }}"{% if p.choisi %} selected{% endif %}>{{ p.libelle }}</option>{% endfor %}
+    </select>
+    <input class="rv-input rv-input--sm rv-num" type="date" name="du" value="{{ du }}" aria-label="Du" title="Compte seulement avec « Autre période »" style="width:auto">
+    <input class="rv-input rv-input--sm rv-num" type="date" name="au" value="{{ au }}" aria-label="Au" title="Compte seulement avec « Autre période »" style="width:auto">
+    {% call ui::bouton("Appliquer", "sm") %}{% endcall %}
+  </form>
+{% endcall %}
 {% endblock %}
 
 {% block content %}
-<p class="u-petit u-muet" style="margin:0">Les dates ne comptent qu'avec « Autre période ».</p>
-<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Chiffre d'affaires</h2></div>
-    <div class="u-card-b">
-      <span class="u-grand">{{ ca_ht }}</span>
-      <span class="u-petit u-muet">{{ ca_ttc }} TTC · {{ nombre_factures }} facture(s), notes de crédit déduites</span>
-    </div>
-  </section>
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("ok", 17) %}{% endcall %}Encaissé</h2></div>
-    <div class="u-card-b">
-      <span class="u-grand">{{ encaisse }}</span>
-      <span class="u-petit u-muet">TTC, paiements reçus dans la période</span>
-    </div>
-  </section>
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("attention", 17) %}{% endcall %}Impayés</h2><span class="u-petit u-muet">aujourd'hui</span></div>
-    <div class="u-card-b">
-      <span class="u-grand" style="color:#953A0A">{{ en_retard }}</span>
-      <a class="u-petit" href="/factures?statut=en_retard">En retard : {{ nombre_en_retard }} facture(s), TTC</a>
-      <span class="u-petit u-muet">Pas encore échues : {{ a_payer }} ({{ nombre_a_payer }})</span>
-    </div>
-  </section>
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("devis", 17) %}{% endcall %}Conversion des devis</h2></div>
-    <div class="u-card-b">
-      <span class="u-grand">{{ taux_conversion }}</span>
-      <span class="u-petit u-muet">{{ devis_acceptes }} accepté(s) sur {{ devis_emis }} devis émis · perte {{ taux_perte }}</span>
-    </div>
-  </section>
+<div class="rv-tuiles">
+  {% call ui::tuile("Chiffre d'affaires HT", ca_ht, "{} TTC · {} facture(s), notes de crédit déduites"|format(ca_ttc, nombre_factures)) %}{% endcall %}
+  {% call ui::tuile("Encaissé TTC", encaisse, "Paiements reçus dans la période") %}{% endcall %}
+  {% call ui::tuile("En retard aujourd'hui", en_retard, "En retard : {} facture(s), TTC · pas encore échues : {} ({})"|format(nombre_en_retard, a_payer, nombre_a_payer), "/factures?statut=en_retard") %}{% endcall %}
+  {% call ui::tuile("Conversion des devis", taux_conversion, "{} accepté(s) sur {} devis émis · perte {}"|format(devis_acceptes, devis_emis, taux_perte)) %}{% endcall %}
 </div>
 
-<div class="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("stats", 17) %}{% endcall %}Chiffre d'affaires par mois</h2><span class="u-petit u-muet">HT</span></div>
-    <div class="px-[18px] pt-5 pb-3">
-      <div class="flex items-end gap-[2px]" style="height:180px;border-bottom:1px solid #CDD1CD" role="img" aria-label="Chiffre d'affaires HT par mois, détail dans le tableau ci-dessous">
-        {% for m in mois %}
-        <div class="flex-1 h-full flex items-end justify-center group" title="{{ m.libelle }} : {{ m.montant }}">
-          <div class="w-full max-w-[36px] rounded-t-[4px] group-hover:opacity-80" style="height:{{ m.hauteur }}%;background:{% if m.negatif %}#953A0A{% else %}#0B6371{% endif %}"></div>
-        </div>
-        {% endfor %}
-      </div>
-      <div class="flex gap-[2px] pt-1.5">
-        {% for m in mois %}<span class="flex-1 text-center text-[11px] u-muet truncate">{{ m.libelle }}</span>{% endfor %}
-      </div>
+<div class="rv-deux">
+  <section class="rv-card rv-section" style="flex-grow:2">
+    <div class="rv-eyebrow">Chiffre d'affaires par mois, HT</div>
+    <div class="rv-barres" role="img" aria-label="Chiffre d'affaires HT par mois, détail dans le tableau ci-dessous">
+      {% for m in mois %}
+      <div class="rv-barre" title="{{ m.libelle }} : {{ m.montant }}"><i class="{% if m.negatif %}rv-barre--neg{% endif %}" style="height:{{ m.hauteur }}%"></i></div>
+      {% endfor %}
     </div>
-    <details class="border-t border-[#E9EBE7]">
-      <summary class="px-[18px] py-2.5 cursor-pointer u-petit">Voir le tableau</summary>
-      <table class="u-table">
-        <thead><tr><th>Mois</th><th class="n">Chiffre d'affaires HT</th></tr></thead>
-        <tbody>{% for m in mois %}<tr><td>{{ m.libelle }}</td><td class="n">{{ m.montant }}</td></tr>{% endfor %}</tbody>
-      </table>
+    <div class="rv-barres-mois">{% for m in mois %}<span>{{ m.libelle }}</span>{% endfor %}</div>
+    <details>
+      <summary class="rv-hint" style="cursor:pointer">Voir le tableau</summary>
+      {% call ui::tableau("Mois|Chiffre d'affaires HT:n") %}
+        {% for m in mois %}<tr><td>{{ m.libelle }}</td><td class="rv-r rv-num">{{ m.montant }}</td></tr>{% endfor %}
+      {% endcall %}
     </details>
   </section>
 
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("devis", 17) %}{% endcall %}Devis de la période</h2></div>
-    <div class="u-ligne-montant"><span>Émis</span><span>{{ devis_emis }} · {{ devis_emis_montant }}</span></div>
-    <div class="u-ligne-montant"><span>En cours (envoyés, signés)</span><span>{{ devis_en_cours }} · {{ devis_en_cours_montant }}</span></div>
-    <div class="u-ligne-montant"><span>Acceptés</span><span>{{ devis_acceptes }} · {{ devis_acceptes_montant }}</span></div>
-    <div class="u-ligne-montant"><span>Refusés</span><span>{{ devis_refuses }}</span></div>
-    <div class="u-ligne-montant font-semibold"><span>Taux de conversion</span><span>{{ taux_conversion }}</span></div>
-    <div class="u-ligne-montant"><span>Taux de perte</span><span>{{ taux_perte }}</span></div>
-    <div class="u-ligne-montant"><span>Panier moyen (accepté)</span><span>{{ panier_moyen }}</span></div>
+  <section class="rv-card rv-section">
+    <div class="rv-eyebrow">Devis de la période</div>
+    <div class="rv-totals">
+      <div class="rv-totals-row"><span>Émis</span><span>{{ devis_emis }} · {{ devis_emis_montant }}</span></div>
+      <div class="rv-totals-row"><span>En cours (envoyés, signés)</span><span>{{ devis_en_cours }} · {{ devis_en_cours_montant }}</span></div>
+      <div class="rv-totals-row"><span>Acceptés</span><span>{{ devis_acceptes }} · {{ devis_acceptes_montant }}</span></div>
+      <div class="rv-totals-row"><span>Refusés</span><span>{{ devis_refuses }}</span></div>
+      <div class="rv-totals-row"><span>Taux de perte</span><span>{{ taux_perte }}</span></div>
+      <div class="rv-totals-row"><span>Panier moyen (accepté)</span><span>{{ panier_moyen }}</span></div>
+      <div class="rv-totals-row rv-totals-sum"><span>Taux de conversion</span><span>{{ taux_conversion }}</span></div>
+    </div>
   </section>
 </div>
 {% endblock %}

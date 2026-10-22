@@ -71,9 +71,9 @@ async fn la_page_est_vide_au_depart(options: PgPoolOptions, connexion: PgConnect
     let d = brouillon(&pool).await;
     let (statut, page) = lire(&site(&pool), &format!("/devis/{d}/encodage")).await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(page.contains("Aucune ligne.") && page.contains("+ Poste libre") && page.contains("Total TTC"));
+    assert!(page.contains("Aucune ligne.") && page.contains("Poste libre</button>") && page.contains("Total TTC"));
     // L'onglet Encodage est actif et l'onglet Informations y renvoie.
-    assert!(page.contains(&format!("tab tab-active\" href=\"/devis/{d}/encodage\"")));
+    assert!(page.contains(&format!("rv-tab is-on\" href=\"/devis/{d}/encodage\"")));
     assert!(page.contains(&format!("href=\"/devis/{d}\">Informations")));
     assert_eq!(lire(&site(&pool), "/devis/999/encodage").await.0, StatusCode::NOT_FOUND);
 }
@@ -88,7 +88,7 @@ async fn ajouter_des_lignes_les_numerote_par_lot(options: PgPoolOptions, connexi
     }
     let (_, page) = lire(&s, &format!("/devis/{d}/encodage")).await;
     for numero in ["1.0", "1.1", "1.2", "2.0", "2.1"] {
-        assert!(page.contains(&format!("whitespace-nowrap\">{numero}</td>")), "{numero}");
+        assert!(page.contains(&format!("rv-qt-ref\">{numero}</span>")), "{numero}");
     }
     // Un poste libre naît avec la quantité 1 et la TVA par défaut du devis.
     let (q, tva): (Option<i64>, Option<i64>) = sqlx::query_as("SELECT quantite_e5, taux_tva_id FROM devis_lignes WHERE genre = 'poste_libre' LIMIT 1")
@@ -151,7 +151,7 @@ async fn modifier_une_ligne_recalcule_les_totaux_du_devis(options: PgPoolOptions
     // La réponse met à jour la ligne, le sous-total du lot et les totaux, sans toucher aux champs.
     assert!(maj.contains(&format!("id=\"total-{ligne}\"")) && maj.contains("800,00\u{a0}€"));
     assert!(maj.contains("id=\"soustotal-") && maj.contains("id=\"totaux\""));
-    assert!(maj.contains("848,00\u{a0}€") && maj.contains("TVA 6 % (sur 800,00\u{a0}€)"));
+    assert!(maj.contains("848,00\u{a0}€") && maj.contains("Base 6 %</span><span>800,00\u{a0}€"));
     assert!(!maj.contains("<textarea"));
 
     let (description, q, unite, p): (String, Option<i64>, String, Option<i64>) =
@@ -197,7 +197,7 @@ async fn plusieurs_taux_de_tva_et_montant_negatif(options: PgPoolOptions, connex
     // 10 384,13 − 3 780,36 = 6 603,77 à 6 % → 396,23 ; 49,975 → 49,98 à 21 % → 10,50
     assert_eq!(montants(&pool, d).await, (660_377 + 4_998, 660_377 + 39_623 + 4_998 + 1_050));
     let (_, page) = lire(&s, &format!("/devis/{d}/encodage")).await;
-    assert!(page.contains("TVA 6 % (sur 6\u{a0}603,77\u{a0}€)") && page.contains("TVA 21 % (sur 49,98\u{a0}€)"));
+    assert!(page.contains("Base 6 %</span><span>6\u{a0}603,77\u{a0}€") && page.contains("Base 21 %</span><span>49,98\u{a0}€"));
     let _ = reduit;
 }
 
@@ -212,7 +212,7 @@ async fn un_nombre_invalide_n_enregistre_rien_et_explique(options: PgPoolOptions
 
     let (statut, maj) = poster(&s, &format!("/devis/{d}/lignes/{ligne}"), "quantite=2&prix_unitaire=dix+euros").await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(maj.contains("alert-warning") && maj.contains("dix euros"));
+    assert!(maj.contains("rv-banner--bad") && maj.contains("dix euros"));
     let (p,): (Option<i64>,) = sqlx::query_as("SELECT prix_unitaire_e5 FROM devis_lignes WHERE id = $1").bind(ligne).fetch_one(&pool).await.unwrap();
     assert_eq!(p, Some(1_000_000));
     assert_eq!(montants(&pool, d).await.0, 2_000);
@@ -220,7 +220,7 @@ async fn un_nombre_invalide_n_enregistre_rien_et_explique(options: PgPoolOptions
     // Six décimales, trop de caractères et taux inconnu sont refusés aussi.
     for corps in ["quantite=1,000001".to_string(), format!("unite={}", "x".repeat(21)), "taux_tva_id=99999".to_string()] {
         let (_, maj) = poster(&s, &format!("/devis/{d}/lignes/{ligne}"), &corps).await;
-        assert!(maj.contains("alert-warning"), "{corps}");
+        assert!(maj.contains("rv-banner--bad"), "{corps}");
     }
     // Un champ vidé remet la valeur à « vide » : le total repasse à zéro.
     poster(&s, &format!("/devis/{d}/lignes/{ligne}"), "prix_unitaire=").await;
@@ -364,7 +364,7 @@ async fn un_devis_envoye_est_en_lecture_seule(options: PgPoolOptions, connexion:
 
     let (_, page) = lire(&s, &format!("/devis/{d}/encodage")).await;
     assert!(page.contains("Ce devis n'est plus un brouillon"));
-    assert!(!page.contains("+ Poste libre") && !page.contains("hx-post"));
+    assert!(!page.contains("Poste libre</button>") && !page.contains("hx-post"));
     assert!(page.contains("name=\"quantite\" value=\"1\" disabled"));
 }
 

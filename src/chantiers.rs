@@ -21,9 +21,9 @@ use crate::{AppState, Erreur};
 const PAR_PAGE: i64 = 20;
 
 /// Valeur en base, libellé affiché, couleur du badge.
-const STATUTS: [(&str, &str, &str); 2] = [("en_cours", "En cours", "s-chantier"), ("termine", "Terminé", "s-termine")];
+pub(crate) const STATUTS: [(&str, &str, &str); 2] = [("en_cours", "En cours", "s-chantier"), ("termine", "Terminé", "s-termine")];
 
-fn statut(valeur: &str) -> (&'static str, &'static str) {
+pub(crate) fn statut(valeur: &str) -> (&'static str, &'static str) {
     STATUTS.iter().find(|(v, _, _)| *v == valeur).map(|(_, l, c)| (*l, *c)).unwrap_or(("Inconnu", "s-brouillon"))
 }
 
@@ -112,6 +112,7 @@ pub struct Ligne {
     pub montant_ht: String,
     pub statut: &'static str,
     pub classe_statut: &'static str,
+    pub pastille: crate::composants::Pastille,
 }
 
 pub struct Liste {
@@ -206,6 +207,7 @@ async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> 
                     montant_ht: format_euros(l.montant_ht_cents),
                     statut: libelle,
                     classe_statut: classe,
+                    pastille: crate::composants::pastille_chantier(&l.statut),
                 }
             })
             .collect(),

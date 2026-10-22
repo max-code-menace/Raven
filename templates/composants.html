@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Composants · Raven{% endblock %}
+
+{% block entete %}
+<header class="u-top">
+  <div class="u-top-ligne">
+    <div class="u-titre">
+      <div>
+        <h1>Composants</h1>
+        <div class="u-sous-titre">Les composants partagés du design de Raven (macros de _ui.html), avec des données fictives. Cette page n'est pas dans le menu.</div>
+      </div>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="rv-demo">
+
+<section class="rv-card rv-demo-bloc">
+  <div class="rv-eyebrow">Boutons</div>
+  <form class="rv-demo-ligne" method="get" action="/composants">
+    {% call ui::bouton("Envoyer le devis", "acc", "plus") %}{% endcall %}
+    {% call ui::bouton("Aperçu") %}{% endcall %}
+    {% call ui::bouton("Ajouter l'avenant", "ink") %}{% endcall %}
+    {% call ui::bouton("Relancer", "ghost sm") %}{% endcall %}
+    {% call ui::lien_bouton("/composants", "Retour aux composants", "", "gauche") %}{% endcall %}
+    {% call ui::bouton_icone("corbeille", "Supprimer le brouillon", "ghost") %}{% endcall %}
+    {% call ui::bouton("Valider la facture", "ink", "", true, "Choisissez d'abord un client.") %}{% endcall %}
+  </form>
+</section>
+
+<section class="rv-card rv-demo-bloc">
+  <div class="rv-eyebrow">Pastilles de statut</div>
+  <div class="rv-demo-groupe"><span class="rv-label">Devis</span><div class="rv-demo-ligne">{% for p in devis %}{% call ui::pastille(p) %}{% endcall %}{% endfor %}</div></div>
+  <div class="rv-demo-groupe"><span class="rv-label">Factures</span><div class="rv-demo-ligne">{% for p in factures %}{% call ui::pastille(p) %}{% endcall %}{% endfor %}</div></div>
+  <div class="rv-demo-groupe"><span class="rv-label">{{ crate::profil::mot("Chantiers") }}</span><div class="rv-demo-ligne">{% for p in chantiers %}{% call ui::pastille(p) %}{% endcall %}{% endfor %}</div></div>
+</section>
+
+<section class="rv-card rv-demo-bloc">
+  <div class="rv-eyebrow">Champs</div>
+  <div class="rv-demo-grille">
+    {% call ui::champ("demo-titre", "Référence du devis", "reference", "Rénovation salle de bain", "Visible par le client.") %}{% endcall %}
+    {% call ui::champ_montant("demo-acompte", "Acompte (%)", "acompte", "30", "Pourcentage du total du devis.") %}{% endcall %}
+    {% call ui::champ("demo-tva", "N° de TVA", "tva", "BE 456 789", "", "Le numéro doit commencer par BE0 ou BE1.") %}{% endcall %}
+    {% call ui::champ_liste("demo-taux", "Taux de TVA par défaut", "taux", choix_tva, "Proposé sur chaque nouvelle ligne.") %}{% endcall %}
+  </div>
+  <div class="rv-demo-dense">
+    {% call ui::champ_montant("demo-qte", "Quantité", "quantite", "24,50", "", "", true) %}{% endcall %}
+    {% call ui::champ("demo-unite", "Unité", "unite", "m²", "", "", "text", true) %}{% endcall %}
+    {% call ui::champ_montant("demo-prix", "Prix unitaire HT", "prix", "28,00", "", "", true) %}{% endcall %}
+  </div>
+</section>
+
+<section class="rv-card rv-demo-bloc">
+  <div class="rv-eyebrow">Tableau</div>
+  {% call ui::tableau("N°|Client|Libellé|Échéance|Montant TTC:n|Statut") %}
+    {% for f in exemples %}
+    <tr class="is-link"><td class="rv-num"><a href="/composants">{{ f.numero }}</a></td><td>{{ f.client }}</td><td>{{ f.libelle }}</td><td class="rv-num rv-mut">{{ f.echeance }}</td>{% call ui::cellule_montant(f.ttc_cents) %}{% endcall %}<td>{% call ui::pastille(crate::composants::pastille_facture(f.etat)) %}{% endcall %}</td></tr>
+    {% endfor %}
+  {% endcall %}
+  {% call ui::tableau("N°|Client|Montant TTC:n|Statut") %}
+    {% call ui::ligne_vide(4, "Aucun devis envoyé. Envoyez votre premier devis depuis un brouillon.") %}{% endcall %}
+  {% endcall %}
+</section>
+
+<section class="rv-card rv-demo-bloc">
+  <div class="rv-eyebrow">Bandeaux</div>
+  {% call ui::bandeau("", "Voir les factures", "/composants") %}<b><span class="rv-num">2</span> factures fournisseurs</b> reçues par Peppol attendent d'être rattachées.{% endcall %}
+  {% call ui::bandeau("bad", "Voir les rappels", "/composants") %}<b><span class="rv-num">1</span> facture en retard</b> de <span class="rv-num">24</span> jours : <span class="rv-num">3 417,76 €</span> à recevoir.{% endcall %}
+  {% call ui::bandeau("ok") %}<b><span class="rv-num">142</span> ouvrages importés</b> dans votre bibliothèque.{% endcall %}
+</section>
+
+<section class="rv-card rv-demo-bloc">
+  <div class="rv-eyebrow">Onglets</div>
+  {% call ui::onglets("Statuts des devis") %}
+    {% call ui::onglet("/composants", "Tous", true, "8") %}{% endcall %}
+    {% call ui::onglet("/composants?vue=brouillons", "Brouillons", false, "2") %}{% endcall %}
+    {% call ui::onglet("/composants?vue=envoyes", "Envoyés", false, "3") %}{% endcall %}
+    {% call ui::onglet("/composants?vue=acceptes", "Acceptés", false) %}{% endcall %}
+  {% endcall %}
+</section>
+
+<section class="rv-card rv-demo-bloc">
+  <div class="rv-eyebrow">Tuiles chiffrées</div>
+  <div class="rv-demo-tuiles">
+    {% call ui::tuile("Contrat HT", crate::composants::euros(1_324_643), "Devis + avenants acceptés") %}{% endcall %}
+    {% call ui::tuile("Facturé HT", crate::composants::euros(763_568), "58 % du contrat", "/composants") %}{% endcall %}
+    {% call ui::tuile("Reste à facturer", crate::composants::euros(561_075), "2 avancements possibles", "/composants", true) %}{% endcall %}
+    {% call ui::tuile("Devis en attente", "3", "Sans réponse depuis 21 jours : 1") %}{% endcall %}
+  </div>
+</section>
+
+<section class="rv-card rv-demo-bloc">
+  <div class="rv-eyebrow">Totaux</div>
+  <div class="rv-demo-totaux">
+    <div>{% call ui::totaux(recap) %}{% endcall %}</div>
+    <div>{% call ui::totaux(recap_remise) %}Taux de 6 % : le client fait sa déclaration sur la facture.{% endcall %}</div>
+  </div>
+</section>
+
+</div>
+<style>
+.rv-demo { display: flex; flex-direction: column; gap: var(--space-5); max-width: var(--size-content); }
+.rv-demo-bloc { display: flex; flex-direction: column; gap: var(--space-4); }
+.rv-demo-groupe { display: flex; flex-direction: column; gap: var(--space-2); }
+.rv-demo-ligne { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0; }
+.rv-demo-grille { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
+.rv-demo-dense { display: grid; grid-template-columns: 120px 100px 160px; gap: 6px; }
+.rv-demo-tuiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-5); }
+.rv-demo-totaux { display: grid; grid-template-columns: repeat(2, minmax(0, 340px)); gap: var(--space-8); }
+</style>
+{% endblock %}

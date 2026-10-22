@@ -2,90 +2,91 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}Tableau de bord · Raven{% endblock %}
-{% block nav_tableau %}actif{% endblock %}
+{% block nav_tableau %}aria-current="page"{% endblock %}
+{% block fond %}rv-papier{% endblock %}
 
 {% block entete %}
-<header class="u-top">
-  <div class="u-top-ligne">
-    {% call ui::titre_liste("tableau", "Tableau de bord") %}{% endcall %}
-    <div class="u-actions">
-      <a class="btn" href="/statistiques">{% call ui::icone("stats", 16) %}{% endcall %}Statistiques</a>
-    </div>
-  </div>
-</header>
+{% call ui::tete("Tableau de bord", resume, jour_texte) %}
+  {% call ui::lien_bouton("/statistiques", "Statistiques", "", "statistiques") %}{% endcall %}
+  <form method="post" action="/devis">
+    {% call ui::bouton("Nouveau devis", "acc", "plus") %}{% endcall %}
+  </form>
+{% endcall %}
 {% endblock %}
 
 {% block content %}
-<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("devis", 17) %}{% endcall %}Mes devis</h2></div>
-    <div class="u-card-b">
-      <div><span class="u-pastille s-envoye">En attente de réponse</span> <span class="u-petit u-muet">({{ devis_attente.nombre }})</span></div>
-      <a class="u-grand no-underline text-[#17191C] hover:text-[#0B6371]" href="/devis?statut=envoye&statut=envoi_en_cours&statut=signe">{{ devis_attente.montant }}</a>
-      <div class="u-ligne-montant px-0"><a href="/devis?statut=a_envoyer&statut=echec_envoi">À envoyer ({{ devis_a_envoyer.nombre }})</a><span>{{ devis_a_envoyer.montant }}</span></div>
-      <div class="u-ligne-montant px-0"><a href="/devis?statut=brouillon">Brouillons ({{ devis_brouillons.nombre }})</a><span>{{ devis_brouillons.montant }}</span></div>
-    </div>
-  </section>
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Mes factures</h2></div>
-    <div class="u-card-b">
-      <div><span class="u-pastille s-retard">En retard</span> <span class="u-petit u-muet">({{ factures_retard.nombre }})</span></div>
-      <a class="u-grand no-underline hover:text-[#0B6371]" style="color:#953A0A" href="/factures?statut=en_retard">{{ factures_retard.montant }}</a>
-      <div class="u-ligne-montant px-0"><a href="/factures?statut=a_envoyer">À envoyer ({{ factures_a_envoyer.nombre }})</a><span>{{ factures_a_envoyer.montant }}</span></div>
-      <div class="u-ligne-montant px-0"><a href="/factures">Reste à encaisser ({{ factures_a_encaisser.nombre }})</a><span>{{ factures_a_encaisser.montant }}</span></div>
-    </div>
-  </section>
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("chantiers", 17) %}{% endcall %}Mes {{ crate::profil::mot("chantiers") }}</h2></div>
-    <div class="u-card-b">
-      <div><span class="u-pastille s-chantier">En cours</span> <span class="u-petit u-muet">({{ chantiers_en_cours }})</span></div>
-      <a class="u-grand no-underline text-[#17191C] hover:text-[#0B6371]" href="/chantiers">{{ chantiers_reste_a_facturer }}</a>
-      <div class="u-ligne-montant px-0"><span class="u-muet">Reste à facturer HT</span><span></span></div>
-      <div class="u-ligne-montant px-0"><span>Avancements en brouillon ({{ avancements_brouillons.nombre }})</span><span>{{ avancements_brouillons.montant }}</span></div>
-    </div>
-  </section>
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}Mes notes de crédit</h2></div>
-    <div class="u-card-b">
-      <div><span class="u-pastille s-brouillon">Brouillon</span> <span class="u-petit u-muet">({{ notes_brouillons.nombre }})</span></div>
-      <a class="u-grand no-underline text-[#17191C] hover:text-[#0B6371]" href="/factures?genre=note_credit&statut=brouillon">{{ notes_brouillons.montant }}</a>
-      <div class="u-ligne-montant px-0"><a href="/factures?genre=note_credit">Émises en {{ annee }} ({{ notes_annee.nombre }})</a><span>{{ notes_annee.montant }}</span></div>
-    </div>
-  </section>
-</div>
+{# Votre activité en quatre chiffres, chacun mène à sa liste. #}
+<section class="rv-band rv-band--strip" aria-label="Votre activité">
+  <div class="rv-band-cell">
+    <div class="rv-eyebrow">En retard</div>
+    <b class="rv-band-val{% if factures_retard.nombre > 0 %} rv-band-val--bad{% endif %}">{{ factures_retard.montant }}</b>
+    <a class="rv-hint" href="/factures/rappels"><span class="rv-num">{{ factures_retard.nombre }}</span> facture(s) TTC · voir les rappels</a>
+  </div>
+  <div class="rv-band-cell">
+    <div class="rv-eyebrow">Reste à encaisser</div>
+    <b class="rv-band-val">{{ factures_a_encaisser.montant }}</b>
+    <a class="rv-hint" href="/factures"><span class="rv-num">{{ factures_a_encaisser.nombre }}</span> facture(s) pas encore soldée(s), TTC</a>
+  </div>
+  <div class="rv-band-cell">
+    <div class="rv-eyebrow">Reste à facturer</div>
+    <b class="rv-band-val">{{ chantiers_reste_a_facturer }}</b>
+    <a class="rv-hint" href="/chantiers">HT · <span class="rv-num">{{ chantiers_en_cours }}</span> {{ crate::profil::mot("chantier") }}(s) en cours</a>
+  </div>
+  <div class="rv-band-cell">
+    <div class="rv-eyebrow">Devis en attente de réponse</div>
+    <b class="rv-band-val">{{ devis_attente.montant }}</b>
+    <a class="rv-hint" href="/devis?statut=envoye&statut=envoi_en_cours&statut=signe">HT · <span class="rv-num">{{ devis_attente.nombre }}</span> devis envoyé(s) ou signé(s)</a>
+  </div>
+</section>
 
-<div class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] items-start">
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("cloche", 17) %}{% endcall %}À surveiller <span class="u-compte">{{ alertes.len() }}</span></h2></div>
+<section class="rv-section" aria-label="À surveiller">
+  <h2>À surveiller</h2>
+  {% call ui::tableau("État|Ce qui se passe|Action:cache") %}
     {% for a in alertes %}
-    <div class="flex gap-3 items-start px-[18px] py-3 border-b border-[#EEEFEC]">
-      <i class="w-2 h-2 rounded-full mt-[7px] flex-none" style="background:{{ a.couleur }}" aria-hidden="true"></i>
-      <span class="flex-1 text-[13.5px]">{{ a.texte }}</span>
-      <a class="btn btn-sm" href="{{ a.lien }}">{{ a.action }}</a>
-    </div>
+    <tr>
+      <td style="width:150px"><span class="{{ a.classe }}">{{ a.etiquette }}</span></td>
+      <td class="rv-alerte">{{ a.texte }}</td>
+      <td class="rv-r"><a class="rv-btn rv-btn--sm{% if !loop.first %} rv-btn--ghost{% endif %}" href="{{ a.lien }}">{{ a.action }}</a></td>
+    </tr>
     {% else %}
-    <div class="px-[18px] py-6 text-center u-muet text-[13.5px]">Rien à signaler : aucune facture à relancer, aucun devis en attente d'action.</div>
+    {% call ui::ligne_vide(3, "Rien à signaler : aucune facture à relancer, aucun devis en attente d'action.") %}{% endcall %}
     {% endfor %}
+  {% endcall %}
+</section>
+
+<div class="rv-deux">
+  <section class="rv-section" aria-label="Vos pièces">
+    <h2>Vos pièces</h2>
+    {% call ui::tableau("Pièces|Nombre:n|Montant:n") %}
+      <tr><td><a class="rv-lien" href="/devis?statut=a_envoyer&statut=echec_envoi">Devis à envoyer</a></td><td class="rv-r rv-num">{{ devis_a_envoyer.nombre }}</td><td class="rv-r rv-num">{{ devis_a_envoyer.montant }}</td></tr>
+      <tr><td><a class="rv-lien" href="/devis?statut=brouillon">Devis en brouillon</a></td><td class="rv-r rv-num">{{ devis_brouillons.nombre }}</td><td class="rv-r rv-num">{{ devis_brouillons.montant }}</td></tr>
+      <tr><td><a class="rv-lien" href="/factures?statut=a_envoyer">Factures à envoyer</a></td><td class="rv-r rv-num">{{ factures_a_envoyer.nombre }}</td><td class="rv-r rv-num">{{ factures_a_envoyer.montant }}</td></tr>
+      {% if crate::profil::actuel().avancements %}
+      <tr><td><a class="rv-lien" href="/chantiers">Avancements en brouillon</a></td><td class="rv-r rv-num">{{ avancements_brouillons.nombre }}</td><td class="rv-r rv-num">{{ avancements_brouillons.montant }}</td></tr>
+      {% endif %}
+      <tr><td><a class="rv-lien" href="/factures?genre=note_credit&statut=brouillon">Notes de crédit en brouillon</a></td><td class="rv-r rv-num">{{ notes_brouillons.nombre }}</td><td class="rv-r rv-num">{{ notes_brouillons.montant }}</td></tr>
+      <tr><td><a class="rv-lien" href="/factures?genre=note_credit">Notes de crédit émises en {{ annee }}</a></td><td class="rv-r rv-num">{{ notes_annee.nombre }}</td><td class="rv-r rv-num">{{ notes_annee.montant }}</td></tr>
+    {% endcall %}
   </section>
-  <div class="flex flex-col gap-4 min-w-0">
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("stats", 17) %}{% endcall %}Ce mois-ci</h2><span class="u-petit u-muet">{{ mois_texte }}</span></div>
-    <div class="u-ligne-montant"><span>Facturé HT</span><b>{{ mois_facture }}</b></div>
-    <div class="u-ligne-montant"><span>Encaissé</span><b>{{ mois_encaisse }}</b></div>
-    <div class="u-ligne-montant"><span>Devis envoyés</span><b>{{ mois_devis_envoyes }}</b></div>
-    <div class="u-ligne-montant"><span>Devis acceptés</span><b>{{ mois_devis_acceptes }} · {{ mois_conversion }}</b></div>
-  </section>
-  <section class="u-card">
-    <div class="u-card-h"><h2>{% call ui::icone("oeil", 17) %}{% endcall %}Ouvertures par vos clients</h2><span class="u-petit u-muet">30 derniers jours</span></div>
-    {% for o in ouvertures %}
-    <a class="flex gap-3 items-start px-[18px] py-2.5 border-b border-[#EEEFEC] no-underline text-[#17191C] hover:bg-[#F7F8F6]" href="{{ o.lien }}">
-      <span class="flex-1 text-[13.5px]">{{ o.texte }}</span>
-      <span class="u-petit u-muet nw">{{ o.quand }}</span>
-    </a>
-    {% else %}
-    <div class="px-[18px] py-5 text-center u-muet text-[13.5px]">Aucun devis ni aucune facture ouverts en ligne par un client.</div>
-    {% endfor %}
-  </section>
+
+  <div class="rv-section">
+    <section class="rv-card rv-section" aria-label="Ce mois-ci">
+      <div class="rv-eyebrow">Ce mois-ci · {{ mois_texte }}</div>
+      <div class="rv-totals">
+        <div class="rv-totals-row"><span>Facturé HT</span><span>{{ mois_facture }}</span></div>
+        <div class="rv-totals-row"><span>Encaissé</span><span>{{ mois_encaisse }}</span></div>
+        <div class="rv-totals-row"><span>Devis envoyés</span><span>{{ mois_devis_envoyes }}</span></div>
+        <div class="rv-totals-row"><span>Devis acceptés</span><span>{{ mois_devis_acceptes }} · {{ mois_conversion }}</span></div>
+      </div>
+    </section>
+    <section class="rv-card rv-section" aria-label="Ouvertures par vos clients">
+      <div class="rv-eyebrow">Ouvertures par vos clients · 30 derniers jours</div>
+      {% for o in ouvertures %}
+      <a class="rv-ouverture" href="{{ o.lien }}"><span>{{ o.texte }}</span><small class="rv-num">{{ o.quand }}</small></a>
+      {% else %}
+      <p class="rv-hint" style="margin:0">Aucun devis ni aucune facture ouverts en ligne par un client.</p>
+      {% endfor %}
+    </section>
   </div>
 </div>
 {% endblock %}

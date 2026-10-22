@@ -2,11 +2,11 @@
 {% import "_ui.html" as ui %}
 
 {% block title %}{{ titre }} · Raven{% endblock %}
-{% block nav_devis %}{% if nav == "devis" %}actif{% endif %}{% endblock %}
-{% block nav_chantiers %}{% if nav == "chantiers" %}actif{% endif %}{% endblock %}
-{% block nav_factures %}{% if nav == "factures" %}actif{% endif %}{% endblock %}
-{% block nav_notes %}{% if nav == "notes" %}actif{% endif %}{% endblock %}
-{% block nav_rappels %}{% if nav == "rappels" %}actif{% endif %}{% endblock %}
+{% block nav_devis %}{% if nav == "devis" %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_chantiers %}{% if nav == "chantiers" %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_factures %}{% if nav == "factures" %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_notes %}{% if nav == "notes" %}aria-current="page"{% endif %}{% endblock %}
+{% block nav_rappels %}{% if nav == "rappels" %}aria-current="page"{% endif %}{% endblock %}
 
 {% block entete %}
 <header class="u-top">

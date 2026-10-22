@@ -15,7 +15,6 @@ use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 use crate::base::Base;
 use crate::calcul::{self, Ajustement, Totaux};
 use crate::commun::{Choix, format_euros};
-use crate::devis::statut;
 use crate::devis_statut::{Barre, charger_barre};
 use crate::fiches::{Genre, Options};
 use crate::{AppState, Erreur};
@@ -48,8 +47,6 @@ pub(crate) struct Entete {
     pub(crate) numero: String,
     /// « Devis » ou « Avenant ».
     pub(crate) genre: &'static str,
-    pub(crate) statut: &'static str,
-    pub(crate) classe_statut: &'static str,
     pub(crate) brouillon: bool,
     pub(crate) taux_par_defaut: Option<i64>,
     pub(crate) ajustement: Ajustement,
@@ -77,12 +74,9 @@ pub(crate) async fn charger_entete(db: &mut PgConnection, id: i64) -> Result<Ent
     .await?;
     let (numero, annee, statut_devis, taux_par_defaut, ajustement_libelle, mode, valeur, marge_activee, frais, avenant) =
         ligne.ok_or_else(Erreur::introuvable)?;
-    let (libelle, classe) = statut(&statut_devis);
     Ok(Entete {
         numero: numero_affiche(annee, numero, avenant),
         genre: if avenant { "Avenant" } else { "Devis" },
-        statut: libelle,
-        classe_statut: classe,
         brouillon: statut_devis == "brouillon",
         taux_par_defaut,
         ajustement: Ajustement::depuis_base(&mode, valeur),
@@ -413,8 +407,6 @@ pub(crate) async fn charger_encodage(db: &mut PgConnection, id: i64, entete: &En
 #[template(path = "devis_encodage.html")]
 struct Page {
     id: i64,
-    statut: &'static str,
-    classe_statut: &'static str,
     onglet: &'static str,
     barre: Barre,
     enc: Encodage,
@@ -490,7 +482,7 @@ async fn page(
         Ok(n) => format!("Import Excel terminé : {n} ligne(s) ajoutée(s). Vérifiez les totaux ci-dessous."),
         Err(_) => String::new(),
     };
-    let page = Page { id, statut: entete.statut, classe_statut: entete.classe_statut, onglet: "encodage", barre, enc, message_ok };
+    let page = Page { id, onglet: "encodage", barre, enc, message_ok };
     Ok(Html(page.render()?))
 }
 

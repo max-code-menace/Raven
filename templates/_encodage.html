@@ -1,140 +1,134 @@
 {% import "_ui.html" as ui %}
-{# L'encodage d'un devis : une carte avec le tableau des lignes, l'ajout de lignes et les totaux.
-   Chaque champ s'enregistre quand on le quitte ; le serveur renvoie les totaux (voir _encodage_maj.html). #}
-<div id="encodage" class="flex flex-col gap-4">
-  <div id="encodage-erreur">{% if !enc.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ enc.message }}</span></div>{% endif %}</div>
+{# Les lignes d'un devis en arbre (fiche QuoteTree du design de Raven) : titres (lots), sous-titres, textes, lignes chiffrées.
+   Chaque champ s'enregistre quand on le quitte ; le serveur renvoie les totaux (voir _encodage_maj.html).
+   Sous les lignes, le pied du devis en bande : rentabilité (visible par vous seul) et total. #}
+<div id="encodage" class="rv-section" style="gap:var(--space-5)">
+  <div id="encodage-erreur">{% if !enc.message.is_empty() %}<div class="rv-banner rv-banner--bad" role="alert"><span>{{ enc.message }}</span></div>{% endif %}</div>
 
-  <section class="u-card">
-    <div class="u-outils" style="justify-content:space-between">
-      <span class="u-petit u-muet">{% if enc.modifiable %}Chaque champ s'enregistre quand vous le quittez.{% else %}Lecture seule.{% endif %}</span>
-      {# L'option est enregistrée dans le devis ; éteinte, les prix d'achat déjà encodés sont gardés. #}
-      <label class="flex items-center gap-2 u-petit">
-        <input type="checkbox" class="toggle toggle-sm" name="marge_activee" value="on"{% if enc.marge_activee %} checked{% endif %}
-               {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/marge" hx-target="#encodage" hx-swap="outerHTML"{% else %} disabled{% endif %}>
-        <span>Prix d'achat, marge et frais généraux</span>
-      </label>
+  <div class="rv-table-wrap" style="border:0">
+  <div class="rv-qt rv-qt--enc{% if enc.marge_activee %} rv-qt--marge{% endif %}" role="treegrid" aria-label="Lignes du devis">
+    <div class="rv-qt-row rv-qt-head" role="row">
+      <span></span><span>N°</span><span>Désignation</span><span>Type</span>
+      <span class="rv-r">Qté</span><span>Unité</span><span class="rv-r">PU HT</span>
+      {% if enc.marge_activee %}<span class="rv-r">Achat U.</span>{% endif %}
+      <span>TVA</span><span class="rv-r">Total HT</span>
+      {% if enc.marge_activee %}<span class="rv-r">Bénéfice</span>{% endif %}
+      <span></span>
     </div>
-    <div class="overflow-x-auto">
-      <table class="u-table u-encodage">
-        <thead>
-          <tr>
-            {% if enc.modifiable %}<th><span class="sr-only">Ordre</span></th>{% endif %}
-            <th>N°</th>
-            <th>Type</th>
-            <th class="w-full">Description <i class="not-italic text-[#B4471C]">*</i></th>
-            <th class="n">Quantité</th>
-            <th>Unité</th>
-            <th class="n">Prix U. (€)</th>
-            {% if enc.marge_activee %}<th class="n u-achat">Achat U. (€)</th>{% endif %}
-            <th>TVA</th>
-            <th class="n">Total HT</th>
-            {% if enc.marge_activee %}<th class="n u-achat">Marge</th>{% endif %}
-            {% if enc.modifiable %}<th><span class="sr-only">Actions</span></th>{% endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for l in enc.lignes %}
-          <tr class="align-top{% if l.est_titre %} lot{% endif %}"
-              {% if enc.modifiable && !l.est_saut %}hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}" hx-trigger="change" hx-include="this" hx-swap="none"{% endif %}>
-            {% if enc.modifiable %}
-            <td class="u-ordre">
-              <button type="button" title="Monter" aria-label="Monter"{% if l.premiere %} disabled{% endif %}
-                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/monter" hx-target="#encodage" hx-swap="outerHTML">▲</button>
-              <button type="button" title="Descendre" aria-label="Descendre"{% if l.derniere %} disabled{% endif %}
-                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/descendre" hx-target="#encodage" hx-swap="outerHTML">▼</button>
-            </td>
-            {% endif %}
-            <td class="whitespace-nowrap">{{ l.numero }}</td>
-            <td class="whitespace-nowrap"><span class="u-type u-type-{{ l.genre }}">{{ l.libelle_genre }}</span></td>
-            {% if l.est_chiffre %}
-            <td>
-              <textarea class="textarea textarea-bordered textarea-sm w-full min-w-48" rows="1" name="description"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
-              <input class="input input-bordered input-xs w-full mt-1 u-remarque" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Entrer une remarque"{% if !enc.modifiable %} disabled{% endif %}>
-            </td>
-            <td><input class="input input-bordered input-sm w-20 text-right" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"{% if !enc.modifiable %} disabled{% endif %}></td>
-            <td><input class="input input-bordered input-sm w-16" type="text" name="unite" value="{{ l.unite }}"{% if !enc.modifiable %} disabled{% endif %}></td>
-            <td><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"{% if !enc.modifiable %} disabled{% endif %}></td>
-            {% if enc.marge_activee %}
-            <td class="u-achat"><input class="input input-bordered input-sm w-24 text-right" type="text" inputmode="decimal" name="prix_achat" value="{{ l.prix_achat }}"{% if !enc.modifiable %} disabled{% endif %}></td>
-            {% endif %}
-            <td>
-              <select class="select select-bordered select-sm w-32" name="taux_tva_id"{% if !enc.modifiable %} disabled{% endif %}>
-                {% for t in l.taux %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
-              </select>
-            </td>
-            <td class="n"><span id="total-{{ l.id }}">{{ l.total }}</span></td>
-            {% if enc.marge_activee %}<td class="text-right u-achat u-petit leading-tight min-w-[84px]"><span id="marge-{{ l.id }}">{{ l.marge }}</span></td>{% endif %}
-            {% else if l.est_saut %}
-            <td colspan="{{ enc.colonnes_description + 1 }}" class="text-center text-sm italic opacity-60">— Saut de page —</td>
-            {% if enc.marge_activee %}<td></td>{% endif %}
-            {% else %}
-            <td colspan="{{ enc.colonnes_description }}">
-              <textarea class="textarea textarea-bordered textarea-sm w-full" rows="1" name="description"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
-              <input class="input input-bordered input-xs w-full mt-1 u-remarque" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Entrer une remarque"{% if !enc.modifiable %} disabled{% endif %}>
-            </td>
-            <td class="n">{% if l.est_titre %}<span id="soustotal-{{ l.id }}">{{ l.sous_total }}</span>{% endif %}</td>
-            {% if enc.marge_activee %}<td></td>{% endif %}
-            {% endif %}
-            {% if enc.modifiable %}
-            <td class="whitespace-nowrap">
-              <button type="button" class="btn u-ib" title="Supprimer" aria-label="Supprimer"
-                      hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/supprimer" hx-target="#encodage" hx-swap="outerHTML"
-                      hx-confirm="Supprimer cette ligne ?">✕</button>
-            </td>
-            {% endif %}
-          </tr>
-          {% else %}
-          <tr class="vide">
-            <td colspan="13">Aucune ligne. Ajoutez un titre (lot), puis des lignes chiffrées.</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="u-pied" style="align-items:flex-start">
-      <div class="flex flex-wrap items-center gap-2">
+    {% for l in enc.lignes %}
+    <div class="rv-qt-row{% if l.est_titre %} rv-qt-ch{% else if l.est_chiffre %} rv-qt-ln{% else if l.est_saut %} rv-qt-txt{% else if l.genre == "texte" %} rv-qt-txt{% else %} rv-qt-ln rv-qt-sous{% endif %}" role="row"
+         {% if enc.modifiable && !l.est_saut %}hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}" hx-trigger="change" hx-include="this" hx-swap="none"{% endif %}>
+      <span class="rv-qt-ordre">
         {% if enc.modifiable %}
-        <details class="u-menu">
-          <summary class="btn">+ Ajouter ▾</summary>
-          <div class="u-menu-liste gauche" style="top:auto;bottom:calc(100% + 4px)">
-            {% for t in enc.types %}
-            <button type="button" class="u-mi" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "{{ t.0 }}"}' hx-target="#encodage" hx-swap="outerHTML"><span class="u-type u-type-{{ t.0 }}">{{ t.1 }}</span></button>
-            {% endfor %}
-          </div>
-        </details>
-        {% if crate::profil::actuel().import_metres %}<a class="btn btn-sm btn-ghost" href="/devis/{{ enc.id }}/import">{% call ui::icone("pdf", 14) %}{% endcall %}Importer depuis Excel</a>{% endif %}
-        <details class="u-menu">
-          <summary class="btn btn-sm btn-ghost">{% call ui::icone("bibliotheque", 14) %}{% endcall %}Depuis la bibliothèque</summary>
-          <div class="u-menu-liste gauche u-menu-form" style="top:auto;bottom:calc(100% + 4px);min-width:420px">
-            <label class="u-recherche" style="flex:none">
-              {% call ui::icone("recherche", 16) %}{% endcall %}
-              <input class="input input-bordered input-sm w-full" type="search" name="q" placeholder="Rechercher un ouvrage" aria-label="Rechercher un ouvrage" autocomplete="off"
-                     hx-get="/bibliotheque/choisir?devis={{ enc.id }}" hx-trigger="load, input changed delay:300ms, search" hx-target="next .u-choix" hx-swap="innerHTML">
-            </label>
-            <div class="u-choix max-h-72 overflow-y-auto"></div>
-          </div>
-        </details>
-        <button type="button" class="btn btn-sm btn-ghost" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "poste_libre"}' hx-target="#encodage" hx-swap="outerHTML">+ Poste libre</button>
-        <button type="button" class="btn btn-sm btn-ghost" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "titre"}' hx-target="#encodage" hx-swap="outerHTML">+ Titre</button>
+        <button type="button" title="Monter" aria-label="Monter la ligne {{ l.numero }}"{% if l.premiere %} disabled{% endif %}
+                hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/monter" hx-target="#encodage" hx-swap="outerHTML">▲</button>
+        <button type="button" title="Descendre" aria-label="Descendre la ligne {{ l.numero }}"{% if l.derniere %} disabled{% endif %}
+                hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/descendre" hx-target="#encodage" hx-swap="outerHTML">▼</button>
         {% endif %}
-      </div>
-      <div class="flex flex-wrap items-start gap-8">
-        {% if enc.marge_activee %}
-        <label class="form-control">
-          <span class="u-lbl">Frais généraux (% des achats)</span>
-          <input class="input input-bordered input-sm w-28 text-right" type="text" inputmode="decimal" name="frais_generaux" value="{{ enc.frais_generaux }}"
-                 {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/frais-generaux" hx-trigger="change" hx-target="#encodage" hx-swap="outerHTML"{% else %} disabled{% endif %}>
-        </label>
-        {% if let Some(r) = enc.rentabilite %}
-        <div class="text-right">
-          <div class="u-petit u-muet">Marge bénéficiaire</div>
-          <div class="font-semibold text-[#1C6B3C]"><span id="marge-totale">{{ r.total.marge }} ({{ r.total.taux_marge }})</span></div>
+      </span>
+      <span class="rv-qt-ref">{{ l.numero }}</span>
+      {% if l.est_chiffre %}
+      <span class="rv-qt-desc">
+        <textarea class="rv-cell rv-cell--strong" rows="1" name="description" aria-label="Désignation de la ligne {{ l.numero }}" placeholder="Désignation"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
+        <input aria-label="Remarque de la ligne {{ l.numero }}" class="rv-cell rv-cell--sub" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Remarque"{% if !enc.modifiable %} disabled{% endif %}>
+      </span>
+      <span class="rv-qt-type">{{ l.libelle_genre }}</span>
+      <input aria-label="Quantité de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="quantite" value="{{ l.quantite }}"{% if !enc.modifiable %} disabled{% endif %}>
+      <input aria-label="Unité de la ligne {{ l.numero }}" class="rv-cell" type="text" name="unite" value="{{ l.unite }}"{% if !enc.modifiable %} disabled{% endif %}>
+      <input aria-label="Prix unitaire HT de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"{% if !enc.modifiable %} disabled{% endif %}>
+      {% if enc.marge_activee %}
+      <input aria-label="Prix d'achat unitaire de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="prix_achat" value="{{ l.prix_achat }}"{% if !enc.modifiable %} disabled{% endif %}>
+      {% endif %}
+      <select class="rv-cell rv-cell--tag" name="taux_tva_id" aria-label="Taux de TVA de la ligne {{ l.numero }}"{% if !enc.modifiable %} disabled{% endif %}>
+        {% for t in l.taux %}<option value="{{ t.valeur }}"{% if t.choisi %} selected{% endif %}>{{ t.libelle }}</option>{% endfor %}
+      </select>
+      <span class="rv-qt-n"><span id="total-{{ l.id }}">{{ l.total }}</span></span>
+      {% if enc.marge_activee %}<span class="rv-qt-n rv-qt-benef"><span id="marge-{{ l.id }}">{{ l.marge }}</span></span>{% endif %}
+      {% else if l.est_saut %}
+      <span class="rv-qt-desc rv-qt-large">— Saut de page —</span>
+      <span></span>{% if enc.marge_activee %}<span></span>{% endif %}
+      {% else %}
+      <span class="rv-qt-desc rv-qt-large">
+        <textarea class="rv-cell{% if l.est_titre %} rv-cell--strong{% endif %}" rows="1" name="description" aria-label="{{ l.libelle_genre }} {{ l.numero }}" placeholder="{{ l.libelle_genre }}"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
+        <input aria-label="Remarque de la ligne {{ l.numero }}" class="rv-cell rv-cell--sub" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Remarque"{% if !enc.modifiable %} disabled{% endif %}>
+      </span>
+      <span class="rv-qt-n">{% if l.est_titre %}<span id="soustotal-{{ l.id }}">{{ l.sous_total }}</span>{% endif %}</span>
+      {% if enc.marge_activee %}<span></span>{% endif %}
+      {% endif %}
+      <span>
+        {% if enc.modifiable %}
+        <button type="button" class="rv-btn rv-btn--icon" title="Supprimer la ligne" aria-label="Supprimer la ligne {{ l.numero }}"
+                hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}/supprimer" hx-target="#encodage" hx-swap="outerHTML"
+                hx-confirm="Supprimer cette ligne ?">{% call ui::icone("corbeille", 16) %}{% endcall %}</button>
+        {% endif %}
+      </span>
+    </div>
+    {% else %}
+    <div class="rv-qt-row rv-qt-txt" role="row"><span></span><span></span><span class="rv-qt-desc rv-qt-large" style="padding:18px 6px">Aucune ligne. Ajoutez un titre (lot), puis des lignes chiffrées.</span></div>
+    {% endfor %}
+
+    {% if enc.modifiable %}
+    <div class="rv-qt-add">
+      <button type="button" class="rv-btn rv-btn--sm rv-btn--ghost" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "poste_libre"}' hx-target="#encodage" hx-swap="outerHTML">{% call ui::icone("plus", 16) %}{% endcall %}Poste libre</button>
+      <button type="button" class="rv-btn rv-btn--sm rv-btn--ghost" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "titre"}' hx-target="#encodage" hx-swap="outerHTML">{% call ui::icone("plus", 16) %}{% endcall %}Titre</button>
+      <details class="rv-menu-wrap">
+        <summary class="rv-btn rv-btn--sm rv-btn--ghost">{% call ui::icone("plus", 16) %}{% endcall %}Autre ligne{% call ui::icone("bas", 14) %}{% endcall %}</summary>
+        <div class="rv-menu rv-menu--gauche">
+          {% for t in enc.types %}
+          <button type="button" class="rv-menu-item" hx-post="/devis/{{ enc.id }}/lignes" hx-vals='{"genre": "{{ t.0 }}"}' hx-target="#encodage" hx-swap="outerHTML">{{ t.1 }}</button>
+          {% endfor %}
         </div>
+      </details>
+      <details class="rv-menu-wrap">
+        <summary class="rv-btn rv-btn--sm rv-btn--ghost">{% call ui::icone("bibliotheque", 16) %}{% endcall %}Depuis la bibliothèque</summary>
+        <div class="rv-menu rv-menu--gauche rv-menu--form" style="min-width:440px">
+          <label class="rv-recherche" style="flex:none">
+            {% call ui::icone("recherche", 16) %}{% endcall %}
+            <input class="rv-input rv-input--sm" type="search" name="q" placeholder="Rechercher un ouvrage" aria-label="Rechercher un ouvrage" autocomplete="off"
+                   hx-get="/bibliotheque/choisir?devis={{ enc.id }}" hx-trigger="load, input changed delay:300ms, search" hx-target="next .u-choix" hx-swap="innerHTML">
+          </label>
+          <div class="u-choix" style="max-height:18rem;overflow-y:auto"></div>
+        </div>
+      </details>
+      {% if crate::profil::actuel().import_metres %}{% call ui::lien_bouton("/devis/{}/import"|format(enc.id), "Importer depuis Excel", "ghost sm", "importer") %}{% endcall %}{% endif %}
+      <span class="rv-hint" style="margin-left:auto;align-self:center">Chaque champ s'enregistre quand vous le quittez.</span>
+    </div>
+    {% endif %}
+  </div>
+  </div>
+
+  {# Le pied du devis, sur toute la largeur : rentabilité (visible par vous seul), puis le total sous la colonne Total HT. #}
+  <section class="rv-band" aria-label="Pied du devis">
+    <div class="rv-band-cell">
+      <div class="rv-pied-tete"><span class="rv-eyebrow">Rentabilité</span><span class="rv-hint">Visible par vous seul</span></div>
+      {# L'option est enregistrée dans le devis ; éteinte, les prix d'achat déjà encodés sont gardés. #}
+      <label class="rv-coche">
+        <input type="checkbox" name="marge_activee" value="on"{% if enc.marge_activee %} checked{% endif %}
+               {% if enc.modifiable %}hx-post="/devis/{{ enc.id }}/marge" hx-target="#encodage" hx-swap="outerHTML"{% else %} disabled{% endif %}>
+        Prix d'achat, bénéfice et frais généraux
+      </label>
+      {% if enc.marge_activee %}
+      <div class="rv-pied-champ">
+        {% if enc.modifiable %}
+        <input class="rv-cell rv-cell--num" id="frais-generaux" type="text" inputmode="decimal" name="frais_generaux" value="{{ enc.frais_generaux }}" style="width:90px"
+               hx-post="/devis/{{ enc.id }}/frais-generaux" hx-trigger="change" hx-target="#encodage" hx-swap="outerHTML">
+        {% else %}
+        <input class="rv-cell rv-cell--num" id="frais-generaux" type="text" name="frais_generaux" value="{{ enc.frais_generaux }}" style="width:90px" disabled>
         {% endif %}
-        {% endif %}
-        <div id="totaux">{% include "_encodage_totaux.html" %}</div>
+        <label class="rv-hint" for="frais-generaux">Frais généraux (% des achats)</label>
       </div>
+      {% if let Some(r) = enc.rentabilite %}
+      <div class="rv-totals">
+        <div class="rv-totals-row"><span>Bénéfice</span><span id="marge-totale">{{ r.total.marge }} ({{ r.total.taux_marge }} du coût)</span></div>
+      </div>
+      {% endif %}
+      {% else %}
+      <p class="rv-hint" style="margin:0">Allumez l'option pour saisir vos prix d'achat : le bénéfice de chaque ligne s'affiche, jamais sur le document du client.</p>
+      {% endif %}
+    </div>
+    <div class="rv-band-cell rv-band-cell--wide">
+      <div class="rv-eyebrow">Total du devis</div>
+      <div id="totaux">{% include "_encodage_totaux.html" %}</div>
     </div>
   </section>
 </div>

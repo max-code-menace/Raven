@@ -1,83 +1,76 @@
 {% import "_ui.html" as ui %}
-{# En-tête commun aux onglets d'un devis ou d'un avenant : retour, titre « Modifier un devis - {référence} »,
-   statut, numéro, menu Actions (chaque décision est enregistrée dans l'historique), onglets. #}
-<header class="u-top avec-onglets">
-  <div class="u-top-ligne">
-    <div class="u-titre">
-      <a class="u-retour" href="{{ barre.retour }}" aria-label="Retour" title="Retour">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
-      <div>
-        <h1>{% if barre.brouillon %}Modifier un {% if barre.avenant %}avenant{% else %}devis{% endif %}{% else %}{% if barre.avenant %}Avenant{% else %}Devis{% endif %}{% endif %} - {% if barre.reference.is_empty() %}{{ barre.titre }}{% else %}{{ barre.reference }}{% endif %}</h1>
-        <div class="u-sous-titre">
-          <span class="u-pastille {{ classe_statut }}">{{ statut }}</span>
-          {% if !barre.resume.is_empty() %}<span>{{ barre.resume }}</span>{% endif %}
-        </div>
-      </div>
+{# En-tête commun aux onglets d'un devis ou d'un avenant (design de Raven, étape 4) : retour, numéro et pastille de statut,
+   client et référence, deux boutons (aperçu, envoi) et le menu « … » (chaque décision est notée dans l'historique), onglets. #}
+<header class="rv-tete rv-tete--fiche">
+  <div class="rv-tete-texte">
+    <a class="rv-retour" href="{{ barre.retour }}">{% call ui::icone("gauche", 14) %}{% endcall %}{% if barre.avenant %}{{ crate::profil::mot("Chantier") }}{% else %}Devis{% endif %}</a>
+    <div class="rv-tete-titre">
+      <h1>{{ barre.titre }}</h1>
+      {% call ui::pastille(barre.pastille) %}{% endcall %}
     </div>
-    <div class="u-actions">
-      <span class="u-petit u-muet">{{ barre.titre }}</span>
-      {% if let Some((chantier_id, chantier_numero)) = barre.chantier %}
-      <a class="btn" href="/chantiers/{{ chantier_id }}">{% call ui::icone("chantiers", 16) %}{% endcall %}{{ crate::profil::mot("Chantier") }} n° {{ chantier_numero }}</a>
-      {% endif %}
-      <details class="u-menu">
-        <summary class="btn">Actions{% call ui::icone("bas", 14) %}{% endcall %}</summary>
-        <div class="u-menu-liste">
-          {% if barre.peut_marquer_envoye %}
-          <form method="post" action="/devis/{{ id }}/statut/envoye">
-            <button class="u-mi" type="submit">Marquer comme envoyé</button>
-          </form>
-          {% endif %}
-          {% if barre.peut_accepter %}
-          <details>
-            <summary class="u-mi">Accepter le devis…</summary>
-            <form method="post" action="/devis/{{ id }}/statut/accepter" class="u-menu-form">
-              <label class="form-control">
-                <span class="u-lbl">Date d'acceptation <i>*</i></span>
-                <input class="input input-bordered input-sm" type="date" name="date" value="{{ barre.aujourdhui }}" min="{{ barre.date_devis }}" max="{{ barre.aujourdhui }}" required>
-              </label>
-              {% if !barre.avenant %}<span class="u-petit u-muet">Le {{ crate::profil::mot("chantier") }} est créé avec ce devis. Pour le corriger ensuite, on passera par un avenant.</span>{% endif %}
-              <button class="btn btn-primary btn-sm" type="submit">Confirmer l'acceptation</button>
-            </form>
-          </details>
-          {% endif %}
-          {% if barre.peut_refuser %}
-          <details>
-            <summary class="u-mi danger">Refuser…</summary>
-            <form method="post" action="/devis/{{ id }}/statut/refuser" class="u-menu-form">
-              <label class="form-control">
-                <span class="u-lbl">Date du refus <i>*</i></span>
-                <input class="input input-bordered input-sm" type="date" name="date" value="{{ barre.aujourdhui }}" min="{{ barre.date_devis }}" max="{{ barre.aujourdhui }}" required>
-              </label>
-              <label class="form-control">
-                <span class="u-lbl">Motif (facultatif)</span>
-                <textarea class="textarea textarea-bordered textarea-sm" rows="2" name="motif" maxlength="500" placeholder="Ex. : trop cher, autre entreprise choisie…"></textarea>
-              </label>
-              <button class="btn btn-danger btn-sm" type="submit">Confirmer le refus</button>
-            </form>
-          </details>
-          {% endif %}
-          {% if barre.peut_remettre_en_brouillon %}
-          <form method="post" action="/devis/{{ id }}/statut/brouillon">
-            <button class="u-mi" type="submit">Remettre en brouillon</button>
-          </form>
-          {% endif %}
-          <a class="u-mi" href="/devis/{{ id }}/historique">Afficher l'historique</a>
-          <div class="u-sep"></div>
-          <a class="u-mi" href="/devis/{{ id }}/email">Envoyer par e-mail</a>
-          <a class="u-mi" href="/devis/{{ id }}/pdf?telecharger=1">Exporter en PDF</a>
-          {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
-          {# Pour corriger un devis déjà envoyé ou accepté : on en fait une copie, on ne le modifie pas. #}
-          <form method="post" action="/devis/{{ id }}/dupliquer">
-            <button class="u-mi" type="submit" title="Crée une copie en brouillon avec le prochain numéro">Dupliquer</button>
-          </form>
-        </div>
-      </details>
-    </div>
+    <p>
+      {%- if barre.client.is_empty() %}Client à choisir{% else %}{{ barre.client }}{% endif %}
+      {%- if !barre.reference.is_empty() %} · {{ barre.reference }}{% endif %}
+      {%- if let Some((chantier_id, chantier_numero)) = barre.chantier %} · <a href="/chantiers/{{ chantier_id }}">{{ crate::profil::mot("Chantier") }} n° {{ chantier_numero }}</a>{% endif %}
+      {%- if !barre.resume.is_empty() %} · {{ barre.resume }}{% endif %}
+    </p>
   </div>
-  <nav class="u-onglets" aria-label="Parties du devis">
-    <a class="tab{% if onglet == "informations" %} tab-active{% endif %}" href="/devis/{{ id }}">Informations</a>
-    <a class="tab{% if onglet == "encodage" %} tab-active{% endif %}" href="/devis/{{ id }}/encodage">Encodage</a>
-    <a class="tab{% if onglet == "totaux" %} tab-active{% endif %}" href="/devis/{{ id }}/totaux">Totaux</a>
-    <a class="tab{% if onglet == "visualisation" %} tab-active{% endif %}" href="/devis/{{ id }}/apercu">Visualisation</a>
-    <a class="tab{% if onglet == "historique" %} tab-active{% endif %}" href="/devis/{{ id }}/historique">Historique</a>
-  </nav>
+  <div class="rv-actions">
+    {% call ui::lien_bouton("/devis/{}/apercu"|format(id), "Aperçu du document") %}{% endcall %}
+    {% if barre.avenant %}{% call ui::lien_bouton("/devis/{}/email"|format(id), "Envoyer l'avenant", "acc") %}{% endcall %}{% else %}{% call ui::lien_bouton("/devis/{}/email"|format(id), "Envoyer le devis", "acc") %}{% endcall %}{% endif %}
+    <details class="rv-menu-wrap">
+      <summary class="rv-btn rv-btn--ghost rv-btn--carre" aria-label="Plus d'actions sur {% if barre.avenant %}cet avenant{% else %}ce devis{% endif %}" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
+      <div class="rv-menu">
+        {% if barre.peut_marquer_envoye %}
+        <form method="post" action="/devis/{{ id }}/statut/envoye">
+          <button class="rv-menu-item" type="submit">Marquer comme envoyé</button>
+        </form>
+        {% endif %}
+        {% if barre.peut_accepter %}
+        <details>
+          <summary class="rv-menu-item">Accepter le devis…</summary>
+          <form method="post" action="/devis/{{ id }}/statut/accepter" class="rv-menu-form">
+            <div class="rv-field"><label class="rv-label" for="date-acceptation">Date d'acceptation</label><input class="rv-input rv-input--sm rv-num" id="date-acceptation" type="date" name="date" value="{{ barre.aujourdhui }}" min="{{ barre.date_devis }}" max="{{ barre.aujourdhui }}" required></div>
+            {% if !barre.avenant %}<span class="rv-hint">Le {{ crate::profil::mot("chantier") }} est créé avec ce devis. Pour le corriger ensuite, on passera par un avenant.</span>{% endif %}
+            {% call ui::bouton("Confirmer l'acceptation", "ink sm") %}{% endcall %}
+          </form>
+        </details>
+        {% endif %}
+        {% if barre.peut_refuser %}
+        <details>
+          <summary class="rv-menu-item">Refuser le devis…</summary>
+          <form method="post" action="/devis/{{ id }}/statut/refuser" class="rv-menu-form">
+            <div class="rv-field"><label class="rv-label" for="date-refus">Date du refus</label><input class="rv-input rv-input--sm rv-num" id="date-refus" type="date" name="date" value="{{ barre.aujourdhui }}" min="{{ barre.date_devis }}" max="{{ barre.aujourdhui }}" required></div>
+            <div class="rv-field">
+              <label class="rv-label" for="motif-refus">Motif (facultatif)</label>
+              <textarea class="rv-input" id="motif-refus" rows="2" name="motif" maxlength="500" placeholder="Ex. : trop cher, autre entreprise choisie…" style="height:auto;padding:8px 12px"></textarea>
+            </div>
+            {% call ui::bouton("Confirmer le refus", "sm") %}{% endcall %}
+          </form>
+        </details>
+        {% endif %}
+        {% if barre.peut_remettre_en_brouillon %}
+        <form method="post" action="/devis/{{ id }}/statut/brouillon">
+          <button class="rv-menu-item" type="submit">Remettre en brouillon</button>
+        </form>
+        {% endif %}
+        <div class="rv-menu-sep"></div>
+        <a class="rv-menu-item" href="/devis/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
+        {# Pour corriger un devis déjà envoyé ou accepté : on en fait une copie, on ne le modifie pas. #}
+        <form method="post" action="/devis/{{ id }}/dupliquer">
+          <button class="rv-menu-item" type="submit" title="Crée une copie en brouillon avec le prochain numéro">Dupliquer {% if barre.avenant %}cet avenant{% else %}ce devis{% endif %}</button>
+        </form>
+        <a class="rv-menu-item" href="/devis/{{ id }}/historique">Afficher l'historique</a>
+      </div>
+    </details>
+  </div>
 </header>
+<div class="rv-tete-onglets">
+  {% call ui::onglets("Parties du devis") %}
+    {% call ui::onglet("/devis/{}"|format(id), "Informations", onglet == "informations") %}{% endcall %}
+    {% call ui::onglet("/devis/{}/encodage"|format(id), "Encodage", onglet == "encodage") %}{% endcall %}
+    {% call ui::onglet("/devis/{}/totaux"|format(id), "Totaux", onglet == "totaux") %}{% endcall %}
+    {% call ui::onglet("/devis/{}/apercu"|format(id), "Visualisation", onglet == "visualisation") %}{% endcall %}
+    {% call ui::onglet("/devis/{}/historique"|format(id), "Historique", onglet == "historique") %}{% endcall %}
+  {% endcall %}
+</div>

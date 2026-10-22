@@ -1,11 +1,11 @@
 {# Réponse à htmx après la modification d'une ligne : on ne remplace que les totaux et le message. #}
-<div id="encodage-erreur" hx-swap-oob="true">{% if !enc.message.is_empty() %}<div role="alert" class="alert alert-warning"><span>{{ enc.message }}</span></div>{% endif %}</div>
+<div id="encodage-erreur" hx-swap-oob="true">{% if !enc.message.is_empty() %}<div class="rv-banner rv-banner--bad" role="alert"><span>{{ enc.message }}</span></div>{% endif %}</div>
 {% for l in enc.lignes %}
 {% if l.est_chiffre %}<span id="total-{{ l.id }}" hx-swap-oob="true">{{ l.total }}</span>{% endif %}
 {% if l.est_chiffre && enc.marge_activee %}<span id="marge-{{ l.id }}" hx-swap-oob="true">{{ l.marge }}</span>{% endif %}
 {% if l.est_titre %}<span id="soustotal-{{ l.id }}" hx-swap-oob="true">{{ l.sous_total }}</span>{% endif %}
 {% endfor %}
 {% if let Some(r) = enc.rentabilite %}
-<span id="marge-totale" hx-swap-oob="true">{{ r.total.marge }} ({{ r.total.taux_marge }})</span>
+<span id="marge-totale" hx-swap-oob="true">{{ r.total.marge }} ({{ r.total.taux_marge }} du coût)</span>
 {% endif %}
 <div id="totaux" hx-swap-oob="true">{% include "_encodage_totaux.html" %}</div>
