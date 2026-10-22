@@ -42,7 +42,7 @@ async fn poster(site: &Router, uri: &str, corps: &str) -> (StatusCode, Option<St
     envoyer(site, requete).await
 }
 
-const PANNEAUX: &str = "description=Panneaux+isolants+PIR+12+cm&genre=fourniture&categorie=Toiture&fournisseur=Brico+Pro&unite=m%C2%B2&prix_achat=28&marge=60&prix_vente=&remarque=Pose+comprise";
+const PANNEAUX: &str = "description=Panneaux+isolants+PIR+12+cm&genre=fourniture&categorie=Toiture&fournisseur=Brico+Pro&unite=m%C2%B2&prix_achat=28&marge=37%2C5&prix_vente=&remarque=Pose+comprise";
 
 #[sqlx::test]
 async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: PgConnectOptions) {
@@ -53,7 +53,7 @@ async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: Pg
     assert!(page.contains("Aucun ouvrage trouvé.") && page.contains("href=\"/bibliotheque\"") && !page.contains("Bibliothèque<small>"));
     assert_eq!(lire(&s, "/bibliotheque/nouveau").await.0, StatusCode::OK);
 
-    // Prix de vente calculé depuis l'achat et la marge : 28 € + 60 % = 44,80 €.
+    // Prix de vente calculé depuis l'achat et la marge : 28 € avec 37,5 % de marge sur le prix de vente = 44,80 €.
     let (_, lieu, _) = poster(&s, "/bibliotheque", PANNEAUX).await;
     assert_eq!(lieu.as_deref(), Some("/bibliotheque?ok=cree"));
     let (id, vente, achat): (i64, i64, Option<i64>) =
@@ -62,7 +62,7 @@ async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: Pg
     poster(&s, "/bibliotheque", "description=Pose+de+goutti%C3%A8res&genre=main_oeuvre&unite=h&prix_vente=45").await;
 
     let (_, page) = lire(&s, "/bibliotheque?ok=cree").await;
-    for attendu in ["Panneaux isolants PIR 12 cm", "Brico Pro", "28,00\u{a0}€", "60 %", "44,80\u{a0}€", "Toiture", "Sans catégorie", "2 ouvrage(s)", "L&#39;ouvrage est ajouté"] {
+    for attendu in ["Panneaux isolants PIR 12 cm", "Brico Pro", "28,00\u{a0}€", "37,5 %", "44,80\u{a0}€", "Toiture", "Sans catégorie", "2 ouvrage(s)", "L&#39;ouvrage est ajouté"] {
         assert!(page.contains(attendu) || page.contains(&attendu.replace("&#39;", "'")), "{attendu}");
     }
     // Filtre par catégorie et recherche (htmx : le tableau seul).
@@ -87,7 +87,8 @@ async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: Pg
     let (_, lieu, _) = poster(&s, &format!("/bibliotheque/{id}"), &PANNEAUX.replace("prix_vente=", "prix_vente=42%2C50")).await;
     assert_eq!(lieu.as_deref(), Some("/bibliotheque?ok=modifie"));
     let (_, page) = lire(&s, "/bibliotheque").await;
-    assert!(page.contains("51,79 %") && page.contains("42,50\u{a0}€"));
+    // (42,50 − 28) ÷ 42,50 = 34,12 % du prix de vente.
+    assert!(page.contains("34,12 %") && page.contains("42,50\u{a0}€"));
     assert_eq!(lire(&s, "/bibliotheque/999999").await.0, StatusCode::NOT_FOUND);
 
     let (_, lieu, _) = poster(&s, &format!("/bibliotheque/{id}/supprimer"), "").await;

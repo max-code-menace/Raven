@@ -2,8 +2,9 @@
 //! fiche (description, type, catégorie, fournisseur, unité, prix d'achat, marge, prix de vente, remarque), et
 //! insertion dans l'Encodage d'un devis (route dans `devis_lignes`).
 //!
-//! La marge se saisit ou se déduit : avec un prix de vente, la marge est recalculée ; sans prix de vente, il est
-//! calculé depuis le prix d'achat et la marge (prix de vente = achat × (1 + marge)).
+//! La marge se saisit ou se déduit, toujours en pour cent du prix de vente (comme dans l'éditeur de devis) :
+//! avec un prix de vente, la marge est recalculée ; sans prix de vente, il est calculé depuis le prix d'achat et la
+//! marge (prix de vente = achat ÷ (1 − marge)), ce qui demande une marge sous 100 %.
 
 use askama::Template;
 use axum::{
@@ -48,11 +49,11 @@ fn prix(e5: i64) -> String {
     format!("{}\u{a0}€", calcul::prix_pour_affichage(e5))
 }
 
-/// La marge en pour cent du prix d'achat, en 1/100 000 (« 46,55 % » = 4 655 000). `None` sans prix d'achat.
+/// La marge en pour cent du prix de vente, en 1/100 000 (« 31,76 % » = 3 176 471). `None` sans prix de vente.
 pub(crate) fn marge_e5(achat_e5: i64, vente_e5: i64) -> Option<i64> {
-    (achat_e5 > 0).then(|| {
+    (vente_e5 > 0).then(|| {
         let n = i128::from(vente_e5 - achat_e5) * 10_000_000;
-        let d = i128::from(achat_e5);
+        let d = i128::from(vente_e5);
         let q = n / d;
         // Arrondi au plus proche.
         let r = n % d;
@@ -60,11 +61,14 @@ pub(crate) fn marge_e5(achat_e5: i64, vente_e5: i64) -> Option<i64> {
     })
 }
 
-/// Le prix de vente depuis le prix d'achat et la marge (en %, 1/100 000), arrondi au 1/100 000 d'euro.
-pub(crate) fn vente_depuis_marge(achat_e5: i64, marge_e5: i64) -> i64 {
-    let n = i128::from(achat_e5) * (10_000_000 + i128::from(marge_e5));
-    let d: i128 = 10_000_000;
-    ((n + d / 2).div_euclid(d)) as i64
+/// Le prix de vente depuis le prix d'achat et la marge sur le prix de vente (en %, 1/100 000), arrondi au
+/// 1/100 000 d'euro. `None` pour une marge de 100 % ou plus (aucun prix ne la donne).
+pub(crate) fn vente_depuis_marge(achat_e5: i64, marge_e5: i64) -> Option<i64> {
+    let d = 10_000_000 - i128::from(marge_e5);
+    (d > 0).then(|| {
+        let n = i128::from(achat_e5) * 10_000_000;
+        ((2 * n + d).div_euclid(2 * d)) as i64
+    })
 }
 
 fn marge_texte(achat: Option<i64>, vente: Option<i64>) -> String {
@@ -365,7 +369,10 @@ pub(crate) fn verifier(s: &Saisie) -> Result<Valeurs, Vec<String>> {
     // Ni prix de vente, ni prix d'achat et marge : le prix reste vide (« à compléter »).
     let vente = match (nombre(&s.prix_vente), achat, marge) {
         (Ok(Some(v)), _, _) => Some(v),
-        (Ok(None), Some(a), Some(m)) => Some(vente_depuis_marge(a, m)),
+        (Ok(None), Some(a), Some(m)) => vente_depuis_marge(a, m).or_else(|| {
+            erreurs.push("La marge se compte sur le prix de vente : elle doit rester sous 100 %.".to_string());
+            None
+        }),
         (Ok(None), _, _) => None,
         (Err(()), _, _) => {
             erreurs.push("Le prix de vente n'est pas un nombre.".to_string());
@@ -602,19 +609,25 @@ mod tests {
 
     #[test]
     fn la_marge_et_le_prix_de_vente() {
-        // 29 € d'achat, 42,50 € de vente : 46,55 % de marge.
-        assert_eq!(marge_e5(2_900_000, 4_250_000), Some(4_655_172));
-        assert_eq!(marge_texte(Some(2_900_000), Some(4_250_000)), "46,55 %");
+        // 29 € d'achat, 42,50 € de vente : 13,50 € de marge, 31,76 % du prix de vente.
+        assert_eq!(marge_e5(2_900_000, 4_250_000), Some(3_176_471));
+        assert_eq!(marge_texte(Some(2_900_000), Some(4_250_000)), "31,76 %");
         assert_eq!(marge_texte(None, Some(4_250_000)), "—");
         assert_eq!(marge_texte(Some(2_900_000), None), "—", "prix de vente à compléter");
-        // 28 € + 60 % = 44,80 €.
-        assert_eq!(vente_depuis_marge(2_800_000, 6_000_000), 4_480_000);
+        // 28 € avec 37,5 % de marge sur le prix de vente : 28 ÷ 0,625 = 44,80 €.
+        assert_eq!(vente_depuis_marge(2_800_000, 3_750_000), Some(4_480_000));
+        // 10 € avec 33 % : 14,925… → 14,92537 €.
+        assert_eq!(vente_depuis_marge(1_000_000, 3_300_000), Some(1_492_537));
+        assert_eq!(vente_depuis_marge(1_000_000, 0), Some(1_000_000));
+        assert_eq!(vente_depuis_marge(1_000_000, 10_000_000), None);
     }
 
     #[test]
     fn la_saisie_d_un_ouvrage() {
-        let v = verifier(&saisie("28", "60", "")).unwrap();
+        let v = verifier(&saisie("28", "37,5", "")).unwrap();
         assert_eq!((v.prix_achat_e5, v.prix_vente_e5, v.genre), (Some(2_800_000), Some(4_480_000), "fourniture"));
+        // Une marge de 100 % ou plus sur le prix de vente n'existe pas.
+        assert!(verifier(&saisie("28", "100", "")).is_err());
         // Le prix de vente saisi l'emporte sur la marge.
         assert_eq!(verifier(&saisie("28", "60", "45")).unwrap().prix_vente_e5, Some(4_500_000));
         assert_eq!(verifier(&saisie("", "", "45")).unwrap().prix_achat_e5, None);

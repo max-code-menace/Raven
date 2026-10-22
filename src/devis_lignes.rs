@@ -304,7 +304,7 @@ pub struct RentableVue {
     pub achats: String,
     pub frais: String,
     pub marge: String,
-    /// « 51,52 % », ou « — » sans coût.
+    /// La marge sur le prix de vente (« 34 % »), ou « — » sans vente.
     pub taux_marge: String,
     pub ventes: String,
     /// « 16 h », ou « — » sans heures.

@@ -295,8 +295,8 @@ async fn la_page_totaux_montre_la_rentabilite_par_type_de_poste(options: PgPoolO
     remplir(&s, d, main_d_oeuvre, "quantite=16&unite=h&prix_unitaire=50&prix_achat=30").await;
 
     let (_, page) = lire(&s, &format!("/devis/{d}/totaux")).await;
-    // Fournitures : 200 € vendus, 120 € achetés, frais 12 €, marge 68 €, 51,52 % de 132 €.
-    for texte in ["Fournitures", "Main d&#39;œuvre", "120,00\u{a0}€", "12,00\u{a0}€", "68,00\u{a0}€", "51,52 %", "200,00\u{a0}€"] {
+    // Fournitures : 200 € vendus, 120 € achetés, frais 12 €, bénéfice 68 €, marge 34 % du prix de vente.
+    for texte in ["Fournitures", "Main d&#39;œuvre", "120,00\u{a0}€", "12,00\u{a0}€", "68,00\u{a0}€", "34 %", "200,00\u{a0}€"] {
         assert!(page.contains(texte), "{texte}");
     }
     // Main d'œuvre : 800 € vendus, 480 € achetés, frais 48 €, marge 272 €, 16 h.
@@ -305,6 +305,7 @@ async fn la_page_totaux_montre_la_rentabilite_par_type_de_poste(options: PgPoolO
     }
     // Total : marge 340 € ; ventes 1 000 € (= le total HT du devis).
     assert!(page.contains("340,00\u{a0}€") && page.contains("1\u{a0}000,00\u{a0}€"));
+    assert!(!page.contains("51,52 %"), "plus de taux sur le coût");
     assert!(!page.contains("sans prix d'achat"));
     assert!(!page.contains("Postes libres / Ouvrages"), "seules les catégories utilisées apparaissent");
 }

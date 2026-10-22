@@ -104,8 +104,8 @@
           <th>Type de poste</th>
           <th class="n">Achats HT</th>
           <th class="n">Frais généraux</th>
+          <th class="n">Bénéfice</th>
           <th class="n">Marge</th>
-          <th class="n">Taux</th>
           <th class="n">Ventes HT</th>
           <th class="n">Temps</th>
         </tr>
@@ -149,9 +149,9 @@
     </table>
   </div>
   <div class="u-card-b">
-    <p class="u-petit u-muet">Marge = ventes − achats − frais généraux ; le taux est calculé sur achats + frais généraux.</p>
+    <p class="u-petit u-muet">Bénéfice = ventes − achats − frais généraux ; la marge est ce bénéfice en % des ventes HT (prix de vente).</p>
     {% if r.lignes_sans_achat > 0 %}
-    <div role="alert" class="u-bandeau alerte">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ r.lignes_sans_achat }} ligne(s) chiffrée(s) sans prix d'achat : leur marge est comptée en entier.</span></div>
+    <div role="alert" class="u-bandeau alerte">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ r.lignes_sans_achat }} ligne(s) chiffrée(s) sans prix d'achat : leur vente est comptée en entier comme bénéfice.</span></div>
     {% endif %}
   </div>
 </section>

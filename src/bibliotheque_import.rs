@@ -4,7 +4,7 @@
 //! On envoie un fichier Excel (.xlsx) ou CSV (point-virgule, virgule ou tabulation). La ligne d'en-tête est
 //! retrouvée par le titre des colonnes, pas par leur position : Description (obligatoire), Type, Catégorie,
 //! Fournisseur, Unité, Prix d'achat, Marge, Prix de vente. Sans prix de vente, il est calculé depuis le prix d'achat
-//! et la marge (une marge vide vaut 0 %, comme chez Ubique). Un ouvrage déjà présent (même description et même
+//! et la marge, en % du prix de vente (une marge vide vaut 0 %, comme chez Ubique). Un ouvrage déjà présent (même description et même
 //! unité) n'est pas ajouté une seconde fois : on peut relancer l'import sans créer de doublons.
 
 use askama::Template;
@@ -323,8 +323,8 @@ mod tests {
             l.ouvrages.iter().map(|v| (v.description.as_str(), v.genre, v.prix_achat_e5, v.prix_vente_e5)).collect();
         assert_eq!(d[0], ("Modification alimentation boiler", "ouvrage", Some(19_750_000), Some(19_750_000)));
         assert_eq!(d[1], ("Prise double bipolaire + terre; sécurité", "ouvrage", Some(10_780_000), Some(10_780_000)));
-        // 50 € + 20 % de marge = 60 €.
-        assert_eq!(d[2], ("Main d'œuvre électricien", "main_oeuvre", Some(5_000_000), Some(6_000_000)));
+        // 50 € avec 20 % de marge sur le prix de vente : 50 ÷ 0,8 = 62,50 €.
+        assert_eq!(d[2], ("Main d'œuvre électricien", "main_oeuvre", Some(5_000_000), Some(6_250_000)));
         assert_eq!(l.ouvrages[2].categorie, "Électricité");
         // Une ligne sans aucun prix est gardée, prix « à compléter ».
         assert_eq!((l.ouvrages[3].description.as_str(), l.ouvrages[3].prix_vente_e5), ("Sans prix", None));
