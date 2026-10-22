@@ -113,10 +113,10 @@
         <tr><td>Achats</td><td class="n">{{ suivi.achats_prevus }}</td><td class="n">{{ suivi.achats_reels }}</td></tr>
         <tr><td>Frais généraux</td><td class="n">{{ suivi.frais_generaux }}</td><td class="n u-muet">—</td></tr>
         <tr class="font-semibold"><td>Bénéfice</td><td class="n">{{ suivi.benefice_prevu }}</td><td class="n"{% if suivi.benefice_actuel_negatif %} style="color:#8E2B22"{% endif %}>{{ suivi.benefice_actuel }}</td></tr>
-        <tr><td>En % du coût</td><td class="n">{{ suivi.taux_prevu }}</td><td class="n">{{ suivi.taux_actuel }}</td></tr>
+        <tr><td>Marge sur le prix de vente</td><td class="n">{{ suivi.taux_prevu }}</td><td class="n">{{ suivi.taux_actuel }}</td></tr>
       </tbody>
     </table>
-    <p class="u-petit u-muet px-[18px] py-3" style="margin:0">Prévu : devis de base et avenants acceptés{% if suivi.lignes_sans_achat > 0 %} ({{ suivi.lignes_sans_achat }} ligne(s) sans prix d'achat){% endif %}. Actuel : facturé HT moins les achats saisis.</p>
+    <p class="u-petit u-muet px-[18px] py-3" style="margin:0">Prévu : devis de base et avenants acceptés{% if suivi.lignes_sans_achat > 0 %} ({{ suivi.lignes_sans_achat }} ligne(s) sans prix d'achat){% endif %}. Actuel : facturé HT moins les achats saisis. La marge est ce bénéfice en % des ventes (facturé HT pour l'actuel).</p>
   </section>
 
   <section class="u-card">

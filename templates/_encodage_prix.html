@@ -1,0 +1,2 @@
+{# Le prix de vente unitaire d'une ligne ; renvoyé seul à htmx (oob) quand un coefficient l'a calculé. #}
+<input id="prix-{{ l.id }}"{% if oob %} hx-swap-oob="true"{% endif %} aria-label="Prix unitaire HT de la ligne {{ l.numero }}" class="rv-cell rv-cell--num" type="text" inputmode="decimal" name="prix_unitaire" value="{{ l.prix_unitaire }}"{% if !enc.modifiable %} disabled{% endif %}>

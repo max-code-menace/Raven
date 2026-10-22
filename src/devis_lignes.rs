@@ -225,8 +225,10 @@ pub struct LigneVue {
     pub prix_unitaire: String,
     /// Prix d'achat unitaire à saisir (option marge).
     pub prix_achat: String,
-    /// « 80,00 € (25 %) » : marge de la ligne et son taux sur le prix d'achat ; vide sans prix d'achat.
+    /// « 20,00 € (20 %) » : bénéfice de la ligne et sa marge sur le prix de vente ; vide sans prix d'achat.
     pub marge: String,
+    /// Coefficient de vente (prix de vente ÷ prix d'achat, « 1,25 ») ; vide sans prix d'achat.
+    pub coefficient: String,
     pub taux: Vec<Choix>,
     /// Taux de TVA de la ligne, pour l'affichage en lecture (« 6 % »).
     pub taux_texte: String,
@@ -302,7 +304,7 @@ pub struct RentableVue {
     pub achats: String,
     pub frais: String,
     pub marge: String,
-    /// « 51,52 % », ou « — » sans coût.
+    /// La marge sur le prix de vente (« 34 % »), ou « — » sans vente.
     pub taux_marge: String,
     pub ventes: String,
     /// « 16 h », ou « — » sans heures.
@@ -357,6 +359,12 @@ pub struct Encodage {
     pub colonnes_description: usize,
     /// Présente seulement quand l'option marge est allumée.
     pub rentabilite: Option<RentabiliteVue>,
+    /// Bénéfice du devis en pour cent de son prix de vente (« 20 % », « — » sans vente).
+    pub marge_sur_vente: String,
+    /// Ventes ÷ achats des lignes qui ont un prix d'achat (« 1,25 », « — » sans achat).
+    pub coefficient_moyen: String,
+    /// La ligne dont le prix de vente vient d'être calculé par son coefficient : son champ est renvoyé à htmx.
+    pub prix_change: Option<i64>,
     /// Les types de quantité (valeur, sigle, mot entier, explication).
     pub types_quantite: [(&'static str, &'static str, &'static str, &'static str); 3],
     /// Les unités proposées pour le métier de l'organisation.
@@ -414,11 +422,11 @@ fn construire_encodage(
             }
             format!("{lot}.{rang}")
         };
-        // Marge de la ligne : vente − achat, et son taux sur le prix d'achat. Vide sans prix d'achat.
+        // Bénéfice de la ligne : vente − achat, et sa marge sur le prix de vente. Vide sans prix d'achat.
         let marge = match (l.est_chiffre(), l.quantite_e5, l.prix_achat_unitaire_e5) {
             (true, Some(_), Some(_)) => {
                 let (vente, achat) = (l.total_cents(), l.achat_total_cents());
-                let taux = calcul::taux_de_marge(vente - achat, achat).map(|t| format!(" ({})", calcul::taux_en_texte(t as i32)));
+                let taux = calcul::taux_sur_vente(vente - achat, vente).map(|t| format!(" ({})", calcul::taux_en_texte(t as i32)));
                 format!("{}{}", format_euros(vente - achat), taux.unwrap_or_default())
             }
             _ => String::new(),
@@ -453,6 +461,10 @@ fn construire_encodage(
             prix_unitaire: l.prix_unitaire_e5.map(calcul::ecrire_decimal_e5).unwrap_or_default(),
             prix_achat: l.prix_achat_unitaire_e5.map(calcul::ecrire_decimal_e5).unwrap_or_default(),
             marge,
+            coefficient: match (l.est_chiffre(), l.prix_unitaire_e5, l.prix_achat_unitaire_e5) {
+                (true, Some(v), Some(a)) => calcul::coefficient_e5(v, a).map(calcul::ecrire_decimal_e5).unwrap_or_default(),
+                _ => String::new(),
+            },
             taux: taux
                 .iter()
                 .map(|(tid, libelle)| Choix {
@@ -479,10 +491,19 @@ fn construire_encodage(
     }
 
     let t = totaux_des_lignes(lignes, entete.ajustement);
-    let rentabilite = entete.marge_activee.then(|| {
-        let rentables: Vec<calcul::LigneRentable> = lignes.iter().filter_map(LigneBase::en_rentable).collect();
-        vue_rentabilite(&calcul::rentabilite(&rentables, entete.frais_generaux_centiemes, t.ajustement_cents))
-    });
+    let rentables: Vec<calcul::LigneRentable> = lignes.iter().filter_map(LigneBase::en_rentable).collect();
+    let calculee = calcul::rentabilite(&rentables, entete.frais_generaux_centiemes, t.ajustement_cents);
+    // Marge du devis sur son prix de vente (frais généraux et remise compris).
+    let marge_sur_vente = calcul::taux_sur_vente(calculee.total.marge_cents, calculee.total.ventes_cents)
+        .map(|t| calcul::taux_en_texte(t as i32))
+        .unwrap_or_else(|| "—".to_string());
+    // Coefficient moyen : ventes ÷ achats des seules lignes qui ont un prix d'achat.
+    let (ventes_avec_achat, achats): (i64, i64) = rentables
+        .iter()
+        .filter(|r| r.a_un_prix_d_achat)
+        .fold((0, 0), |(v, a), r| (v + r.ventes_cents, a + r.achats_cents));
+    let coefficient_moyen = calcul::coefficient_e5(ventes_avec_achat, achats).map(calcul::ecrire_decimal_e5).unwrap_or_else(|| "—".to_string());
+    let rentabilite = entete.marge_activee.then(|| vue_rentabilite(&calculee));
     Encodage {
         id,
         modifiable,
@@ -495,6 +516,9 @@ fn construire_encodage(
         frais_generaux: calcul::ecrire_decimal_e5(entete.frais_generaux_centiemes * 1000),
         colonnes_description: if entete.marge_activee { 6 } else { 5 },
         rentabilite,
+        marge_sur_vente,
+        coefficient_moyen,
+        prix_change: None,
         types_quantite: TYPES_QUANTITE,
         unites: contexte.unites,
     }
@@ -822,6 +846,69 @@ async fn modifier(
     Ok(Html(Maj { enc }.render()?))
 }
 
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct Coefficient {
+    coefficient: String,
+}
+
+/// Le plus grand coefficient accepté (garde-fou contre une faute de frappe : 125 au lieu de 1,25).
+const COEFFICIENT_MAX_E5: i64 = 100 * 100_000;
+
+/// Lit un coefficient tapé (« 1,25 ») : positif, au plus 100.
+fn lire_coefficient(texte: &str) -> Result<i64, String> {
+    let t = texte.trim();
+    match calcul::lire_decimal_e5(t) {
+        Some(c) if c > 0 && c <= COEFFICIENT_MAX_E5 => Ok(c),
+        _ => Err(format!("Le coefficient « {t} » n'est pas valable : un nombre plus grand que 0, au plus 100 (exemple : 1,35).")),
+    }
+}
+
+/// Un coefficient tapé dans une ligne : prix de vente = prix d'achat × coefficient, arrondi au centime.
+/// Le coefficient n'est pas enregistré : il se relit toujours depuis les deux prix.
+async fn appliquer_coefficient(
+    mut db: Base,
+    Path((id, ligne_id)): Path<(i64, i64)>,
+    FormSimple(f): FormSimple<Coefficient>,
+) -> Result<Html<String>, Erreur> {
+    let entete = charger_entete(&mut *db, id).await?;
+    exiger_brouillon(&entete)?;
+    let mut tx = db.begin().await?;
+    sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
+    let ligne: Option<(String, Option<i64>)> = sqlx::query_as(
+        "SELECT genre::text, prix_achat_unitaire_e5 FROM devis_lignes WHERE id = $1 AND devis_id = $2",
+    )
+    .bind(ligne_id)
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let (genre, achat) = ligne.ok_or_else(Erreur::introuvable)?;
+    let resultat = match (GENRES_CHIFFRES.contains(&genre.as_str()), achat) {
+        // Champ vidé : rien à calculer, le prix reste.
+        _ if f.coefficient.trim().is_empty() => Ok(None),
+        (false, _) => Err("Cette ligne n'a pas de prix.".to_string()),
+        (true, Some(a)) if a > 0 => lire_coefficient(&f.coefficient).map(|c| Some(calcul::prix_par_coefficient_e5(a, c))),
+        (true, _) => Err("Saisissez d'abord le prix d'achat de la ligne : le coefficient le multiplie.".to_string()),
+    };
+    let message = match resultat {
+        Ok(None) => String::new(),
+        Ok(Some(prix)) => {
+            sqlx::query("UPDATE devis_lignes SET prix_unitaire_e5 = $1, updated_at = now() WHERE id = $2")
+                .bind(prix)
+                .bind(ligne_id)
+                .execute(&mut *tx)
+                .await?;
+            recalculer(&mut tx, id).await?;
+            String::new()
+        }
+        Err(m) => m,
+    };
+    tx.commit().await?;
+    let mut enc = charger_encodage(&mut *db, id, &entete, message).await?;
+    enc.prix_change = Some(ligne_id);
+    Ok(Html(Maj { enc }.render()?))
+}
+
 async fn supprimer(mut db: Base, Path((id, ligne_id)): Path<(i64, i64)>) -> Result<Html<String>, Erreur> {
     let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
@@ -944,6 +1031,7 @@ pub fn routes() -> Router<AppState> {
         .route("/devis/{id}/frais-generaux", post(changer_frais_generaux))
         .route("/devis/{id}/lignes/{ligne_id}", post(modifier))
         .route("/devis/{id}/lignes/{ligne_id}/supprimer", post(supprimer))
+        .route("/devis/{id}/lignes/{ligne_id}/coefficient", post(appliquer_coefficient))
         .route(
             "/devis/{id}/lignes/{ligne_id}/monter",
             post(|db: Base, Path((id, l)): Path<(i64, i64)>| deplacer(db, id, l, true)),

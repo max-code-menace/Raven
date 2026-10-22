@@ -196,10 +196,15 @@ async fn le_prix_d_achat_s_enregistre_et_la_marge_de_la_ligne_est_renvoyee(optio
     poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
     let l = ajouter_ligne(&pool, &s, d, "fourniture").await;
 
-    // Vendu 100 € l'unité, acheté 80 € : marge 20 €, soit 25 % du prix d'achat.
+    // Vendu 100 € l'unité, acheté 80 € : bénéfice 20 €, soit 20 % du prix de vente, coefficient 1,25.
     let maj = remplir(&s, d, l, "quantite=1&prix_unitaire=100&prix_achat=80").await;
-    assert!(maj.contains(&format!("id=\"marge-{l}\"")) && maj.contains("20,00\u{a0}€ (25 %)"));
-    assert!(maj.contains("id=\"marge-totale\"") && maj.contains("20,00\u{a0}€ (25 %)"));
+    assert!(maj.contains(&format!("<span id=\"marge-{l}\" hx-swap-oob=\"true\">20,00\u{a0}€ (20 %)</span>")), "{maj}");
+    assert!(maj.contains("<span id=\"marge-totale\" hx-swap-oob=\"true\">20,00\u{a0}€</span>"));
+    assert!(maj.contains("<span id=\"marge-vente\" hx-swap-oob=\"true\">20 %</span>"));
+    assert!(maj.contains("<span id=\"coefficient-moyen\" hx-swap-oob=\"true\">1,25</span>"));
+    assert!(maj.contains(&format!("id=\"coef-{l}\" hx-swap-oob=\"true\"")) && maj.contains("name=\"coefficient\" value=\"\" placeholder=\"1,25\""));
+    // Le prix de vente n'est pas renvoyé (le champ pourrait être en cours de saisie).
+    assert!(!maj.contains(&format!("id=\"prix-{l}\"")));
     let (achat,): (Option<i64>,) = sqlx::query_as("SELECT prix_achat_unitaire_e5 FROM devis_lignes WHERE id = $1").bind(l).fetch_one(&pool).await.unwrap();
     assert_eq!(achat, Some(8_000_000));
 
@@ -290,8 +295,8 @@ async fn la_page_totaux_montre_la_rentabilite_par_type_de_poste(options: PgPoolO
     remplir(&s, d, main_d_oeuvre, "quantite=16&unite=h&prix_unitaire=50&prix_achat=30").await;
 
     let (_, page) = lire(&s, &format!("/devis/{d}/totaux")).await;
-    // Fournitures : 200 € vendus, 120 € achetés, frais 12 €, marge 68 €, 51,52 % de 132 €.
-    for texte in ["Fournitures", "Main d&#39;œuvre", "120,00\u{a0}€", "12,00\u{a0}€", "68,00\u{a0}€", "51,52 %", "200,00\u{a0}€"] {
+    // Fournitures : 200 € vendus, 120 € achetés, frais 12 €, bénéfice 68 €, marge 34 % du prix de vente.
+    for texte in ["Fournitures", "Main d&#39;œuvre", "120,00\u{a0}€", "12,00\u{a0}€", "68,00\u{a0}€", "34 %", "200,00\u{a0}€"] {
         assert!(page.contains(texte), "{texte}");
     }
     // Main d'œuvre : 800 € vendus, 480 € achetés, frais 48 €, marge 272 €, 16 h.
@@ -300,6 +305,7 @@ async fn la_page_totaux_montre_la_rentabilite_par_type_de_poste(options: PgPoolO
     }
     // Total : marge 340 € ; ventes 1 000 € (= le total HT du devis).
     assert!(page.contains("340,00\u{a0}€") && page.contains("1\u{a0}000,00\u{a0}€"));
+    assert!(!page.contains("51,52 %"), "plus de taux sur le coût");
     assert!(!page.contains("sans prix d'achat"));
     assert!(!page.contains("Postes libres / Ouvrages"), "seules les catégories utilisées apparaissent");
 }
@@ -408,4 +414,54 @@ async fn lire_octets(site: &Router, uri: &str) -> (StatusCode, Vec<u8>) {
     let r = site.clone().oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap()).await.unwrap();
     let statut = r.status();
     (statut, r.into_body().collect().await.unwrap().to_bytes().to_vec())
+}
+
+// ─── Coefficient et marge sur prix de vente (refonte, étape 4-3) ───────────
+
+#[sqlx::test]
+async fn le_coefficient_calcule_le_prix_de_vente(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let d = brouillon(&pool).await;
+    let s = site(&pool);
+    poster(&s, &format!("/devis/{d}/marge"), "marge_activee=on").await;
+    let l = ajouter_ligne(&pool, &s, d, "fourniture").await;
+    remplir(&s, d, l, "quantite=2&prix_achat=12,34").await;
+
+    // 12,34 € × 1,35 = 16,659 € → 16,66 € ; total 2 × 16,66 = 33,32 €.
+    let (statut, maj) = poster(&s, &format!("/devis/{d}/lignes/{l}/coefficient"), "coefficient=1,35").await;
+    assert_eq!(statut, StatusCode::OK);
+    let (prix,): (Option<i64>,) = sqlx::query_as("SELECT prix_unitaire_e5 FROM devis_lignes WHERE id = $1").bind(l).fetch_one(&pool).await.unwrap();
+    assert_eq!(prix, Some(1_666_000));
+    assert!(maj.contains(&format!("id=\"prix-{l}\" hx-swap-oob=\"true\"")) && maj.contains("name=\"prix_unitaire\" value=\"16,66\""), "{maj}");
+    assert!(maj.contains("name=\"coefficient\" value=\"\" placeholder=\"1,35\""));
+    let (ht,): (i64,) = sqlx::query_as("SELECT montant_ht_cents FROM devis WHERE id = $1").bind(d).fetch_one(&pool).await.unwrap();
+    assert_eq!(ht, 3_332);
+    // Bénéfice 2 × (16,66 − 12,34) = 8,64 € ; 8,64 ÷ 33,32 = 25,93 % du prix de vente.
+    assert!(maj.contains("8,64\u{a0}€ (25,93 %)"));
+
+    // Un coefficient invalide est expliqué et rien ne change.
+    for faux in ["zéro", "0", "-1", "250"] {
+        let (_, maj) = poster(&s, &format!("/devis/{d}/lignes/{l}/coefficient"), &format!("coefficient={faux}")).await;
+        assert!(maj.contains("rv-banner--bad") && maj.contains("coefficient"), "{faux}");
+    }
+    let (prix,): (Option<i64>,) = sqlx::query_as("SELECT prix_unitaire_e5 FROM devis_lignes WHERE id = $1").bind(l).fetch_one(&pool).await.unwrap();
+    assert_eq!(prix, Some(1_666_000));
+
+    // Un champ vidé ne change rien et n'affiche pas d'erreur.
+    let (_, maj) = poster(&s, &format!("/devis/{d}/lignes/{l}/coefficient"), "coefficient=").await;
+    assert!(!maj.contains("rv-banner--bad"));
+
+    // Sans prix d'achat, le coefficient ne peut rien calculer.
+    let autre = ajouter_ligne(&pool, &s, d, "fourniture").await;
+    let (_, maj) = poster(&s, &format!("/devis/{d}/lignes/{autre}/coefficient"), "coefficient=1,5").await;
+    assert!(maj.contains("Saisissez d") && maj.contains("abord le prix d"), "{maj}");
+
+    // La page montre la colonne, le coefficient de la ligne et le coefficient moyen.
+    let (_, page) = lire(&s, &format!("/devis/{d}/encodage")).await;
+    assert!(page.contains(">Coef.<") && page.contains("Marge sur le prix de vente") && page.contains("Coefficient moyen"));
+
+    // Un devis qui n'est plus un brouillon refuse le coefficient.
+    sqlx::query("UPDATE devis SET statut = 'envoye' WHERE id = $1").bind(d).execute(&pool).await.unwrap();
+    let (statut, _) = poster(&s, &format!("/devis/{d}/lignes/{l}/coefficient"), "coefficient=2").await;
+    assert_eq!(statut, StatusCode::CONFLICT);
 }

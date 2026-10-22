@@ -76,9 +76,9 @@ pub struct Suivi {
     pub aujourdhui: String,
 }
 
-/// Le bénéfice en pour cent du coût (comme le taux de marge des devis), « — » sans coût.
-fn taux(benefice: i64, cout: i64) -> String {
-    calcul::taux_de_marge(benefice, cout).map(|t| calcul::taux_en_texte(t as i32)).unwrap_or_else(|| "—".to_string())
+/// Le bénéfice en pour cent du prix de vente (comme la marge des devis), « — » sans vente.
+fn taux(benefice: i64, ventes: i64) -> String {
+    calcul::taux_sur_vente(benefice, ventes).map(|t| calcul::taux_en_texte(t as i32)).unwrap_or_else(|| "—".to_string())
 }
 
 /// Dépensé en pour cent du prévu, borné à 100 pour la barre.
@@ -139,11 +139,11 @@ pub async fn charger(db: &mut PgConnection, chantier_id: i64) -> Result<Suivi, s
         achats_prevus: format_euros(prevu.achats_cents),
         frais_generaux: format_euros(prevu.frais_generaux_cents),
         benefice_prevu: format_euros(prevu.marge_cents),
-        taux_prevu: taux(prevu.marge_cents, prevu.cout_cents()),
+        taux_prevu: taux(prevu.marge_cents, prevu.ventes_cents),
         facture_ht: format_euros(facture_ht),
         achats_reels: format_euros(achats_reels),
         benefice_actuel: format_euros(benefice_actuel),
-        taux_actuel: taux(benefice_actuel, achats_reels),
+        taux_actuel: taux(benefice_actuel, facture_ht),
         benefice_actuel_negatif: benefice_actuel < 0,
         disponible: format_euros(disponible),
         depasse: disponible < 0,

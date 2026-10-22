@@ -68,7 +68,7 @@
           <input class="input input-bordered text-right" type="text" inputmode="decimal" name="prix_achat" value="{{ saisie.prix_achat }}">
         </label>
         <label class="form-control">
-          <span class="u-lbl">Marge (%)</span>
+          <span class="u-lbl">Marge (% du prix de vente)</span>
           <input class="input input-bordered text-right" type="text" inputmode="decimal" name="marge" value="{{ saisie.marge }}" placeholder="{{ marge_calculee }}">
         </label>
         <label class="form-control">
@@ -76,7 +76,7 @@
           <input class="input input-bordered text-right" type="text" inputmode="decimal" name="prix_vente" value="{{ saisie.prix_vente }}">
         </label>
       </div>
-      <p class="u-petit u-muet" style="margin:0">Hors TVA, par unité. Sans prix de vente, il est calculé : prix d'achat + marge ; sans les deux, il reste « à compléter ». Avec un prix de vente, la marge se recalcule{% if !marge_calculee.is_empty() %} (actuellement {{ marge_calculee }}){% endif %}.</p>
+      <p class="u-petit u-muet" style="margin:0">Hors TVA, par unité. Sans prix de vente, il est calculé depuis le prix d'achat et la marge (exemple : acheté 60 € avec 40 % de marge, vendu 100 €) ; sans les deux, il reste « à compléter ». Avec un prix de vente, la marge se recalcule{% if !marge_calculee.is_empty() %} (actuellement {{ marge_calculee }}){% endif %}.</p>
     </div>
   </div>
 </form>

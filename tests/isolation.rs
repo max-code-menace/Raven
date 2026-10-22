@@ -131,7 +131,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
             deux("POST", format!("/devis/{d}{suite}"));
         }
         for &l in &lignes_devis {
-            for suite in ["", "/supprimer", "/monter", "/descendre"] {
+            for suite in ["", "/supprimer", "/monter", "/descendre", "/coefficient"] {
                 deux("POST", format!("/devis/{d}/lignes/{l}{suite}"));
             }
             deux("GET", format!("/devis/{d}/encodage?metre={l}"));
