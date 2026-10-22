@@ -1,7 +1,7 @@
 //! Génération de PDF avec Typst (bibliothèque Rust, sans programme externe).
 //! Les polices sont embarquées dans le programme : le PDF est identique sur ton PC et chez l'hébergeur.
-//! Archivo et IBM Plex Mono (celles du design de Raven, licences `assets/polices/OFL-Archivo.txt` et
-//! `OFL-IBMPlexMono.txt`) pour le devis ; Inter (`assets/polices/OFL.txt`) pour les pièces pas encore refaites.
+//! Archivo et IBM Plex Mono, celles du design de Raven (licences `assets/polices/OFL-Archivo.txt` et
+//! `OFL-IBMPlexMono.txt`), pour le devis comme pour la facture.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -15,11 +15,7 @@ use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
 use typst_pdf::PdfOptions;
 
-const POLICES: [&[u8]; 12] = [
-    include_bytes!("../assets/polices/Inter-Regular.otf"),
-    include_bytes!("../assets/polices/Inter-SemiBold.otf"),
-    include_bytes!("../assets/polices/Inter-Bold.otf"),
-    include_bytes!("../assets/polices/Inter-Italic.otf"),
+const POLICES: [&[u8]; 8] = [
     include_bytes!("../assets/polices/Archivo-Regular.ttf"),
     include_bytes!("../assets/polices/Archivo-Italic.ttf"),
     include_bytes!("../assets/polices/Archivo-Medium.ttf"),
@@ -243,7 +239,7 @@ mod tests {
 
     #[test]
     fn un_pdf_minimal_se_genere() {
-        let pdf = generer("#set text(font: \"Inter\")\nBonjour, élève : 1 234,50 €".to_string(), HashMap::new()).unwrap();
+        let pdf = generer("#set text(font: \"Archivo\")\nBonjour, élève : 1 234,50 €".to_string(), HashMap::new()).unwrap();
         assert!(pdf.starts_with(b"%PDF-"));
         assert!(pdf.len() > 1_000);
     }

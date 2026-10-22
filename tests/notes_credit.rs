@@ -227,3 +227,43 @@ async fn ecrire_les_pages_d_une_facture_en_png(options: PgPoolOptions, connexion
         }
     }
 }
+
+// ─── QR code de paiement sur le PDF (refonte, PDF de la facture) ────────────
+
+async fn qr(pool: &PgPool, id: i64) -> Option<String> {
+    ubifacture::facture_pdf::qr_de_la_facture(&mut *pool.acquire().await.unwrap(), id).await.unwrap()
+}
+
+#[sqlx::test]
+async fn le_pdf_de_la_facture_porte_le_qr_code_de_paiement(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let s = site(&pool);
+    let facture = facture_validee(&pool, &s).await;
+
+    // Le QR code décrit le virement : bénéficiaire, IBAN, total TTC de la facture et sa communication structurée.
+    let total = ttc(&pool, facture).await;
+    let vcs: String = sqlx::query_scalar("SELECT vcs FROM factures WHERE id = $1").bind(facture).fetch_one(&pool).await.unwrap();
+    let texte = qr(&pool, facture).await.expect("un QR code sur une facture validée");
+    let attendu = format!("BCD\n002\n1\nSCT\n\nUbique SRL\nBE68539007547034\nEUR{}.{:02}\n\n\n{vcs}", total / 100, total % 100);
+    assert_eq!(texte, attendu);
+
+    // Le montant reste celui de la facture émise, même après un paiement partiel (le PDF est figé dans l'archive).
+    let aujourdhui: String = sqlx::query_scalar("SELECT ((now() AT TIME ZONE 'Europe/Brussels')::date)::text").fetch_one(&pool).await.unwrap();
+    let methode: i64 = sqlx::query_scalar("SELECT min(id) FROM methodes_paiement").fetch_one(&pool).await.unwrap();
+    sqlx::query("INSERT INTO paiements (facture_id, date_paiement, montant_cents, methode_id) VALUES ($1, $2::date, 1000, $3)")
+        .bind(facture).bind(&aujourdhui).bind(methode).execute(&pool).await.unwrap();
+    assert_eq!(qr(&pool, facture).await, Some(attendu));
+
+    // Pas de QR code sur une note de crédit (brouillon ou validée), ni sur un brouillon de facture.
+    let (_, lieu) = poster(&s, &format!("/factures/{facture}/crediter"), "").await;
+    let note = id_depuis(lieu);
+    assert_eq!(qr(&pool, note).await, None);
+    poster(&s, &format!("/factures/{note}/valider"), "").await;
+    assert_eq!(qr(&pool, note).await, None);
+    let (_, lieu) = poster(&s, "/factures", "").await;
+    assert_eq!(qr(&pool, id_depuis(lieu)).await, None);
+
+    // Sans compte bancaire par défaut, pas de QR code (le PDF se fait quand même).
+    sqlx::query("UPDATE societe_comptes_bancaires SET par_defaut = false").execute(&pool).await.unwrap();
+    assert_eq!(qr(&pool, facture).await, None);
+}
