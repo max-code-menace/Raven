@@ -29,14 +29,8 @@
       </form>
       {% endif %}
       {% endif %}
-      {% if crate::profil::actuel().avancements %}
-      {% if let Some(brouillon) = finances.brouillon %}
-      <a class="btn btn-primary" href="/chantiers/{{ id }}/avancements/{{ brouillon }}">Reprendre le brouillon</a>
-      {% else if !finances.finale %}
-      <form method="post" action="/chantiers/{{ id }}/avancements">
-        <button class="btn btn-primary" type="submit">Nouvel avancement</button>
-      </form>
-      {% endif %}
+      {% if !finances.finale %}
+      <a class="btn btn-primary" href="/chantiers/{{ id }}/facturer">Facturer</a>
       {% endif %}
     </div>
   </div>
@@ -91,7 +85,7 @@
   {% endif %}
 
   <section class="u-card">
-    <div class="u-card-h"><h2>Facturation</h2><a class="u-petit" href="/chantiers/{{ id }}/finances">Finances</a></div>
+    <div class="u-card-h"><h2>Facturation</h2>{% if !finances.finale %}<a class="u-petit" href="/chantiers/{{ id }}/facturer">Facturer</a>{% else %}<a class="u-petit" href="/chantiers/{{ id }}/finances">Finances</a>{% endif %}</div>
     <div class="u-card-b">
       <span class="u-cle">Reste à facturer HT</span>
       <span class="u-grand">{{ factures.reste_a_facturer }}</span>
@@ -234,37 +228,7 @@
   <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Factures et notes de crédit <span class="u-compte">{{ factures.factures.len() }}</span></h2></summary>
   <div class="u-outils" style="justify-content:flex-end">
     {% if !finances.finale %}
-    <details class="u-menu">
-      <summary class="btn btn-sm">{% call ui::icone("plus", 14) %}{% endcall %}Nouveau{% call ui::icone("bas", 14) %}{% endcall %}</summary>
-      <div class="u-menu-liste u-menu-form" style="min-width:320px">
-        <div class="u-adresse flex flex-col gap-1">
-          <div class="flex justify-between"><span>Montant du devis</span><span>{{ devis_ht }}</span></div>
-          <div class="flex justify-between"><span>Avenants</span><span>{{ avenants_ht }}</span></div>
-          <div class="flex justify-between font-semibold"><span>Total à facturer HT</span><span>{{ total_ht }}</span></div>
-          <div class="flex justify-between"><span>Déjà facturé HT</span><span>{{ factures.facture_ht }}</span></div>
-          <div class="flex justify-between font-semibold"><span>Reste à facturer HT</span><span>{{ factures.reste_a_facturer }}</span></div>
-        </div>
-        <form method="post" action="/chantiers/{{ id }}/factures/acompte" class="flex flex-col gap-2">
-          <span class="u-lbl" style="margin:0">Facture d'acompte</span>
-          <span class="u-petit u-muet">Sur le total devis/avenants HT ({{ finances.total }}), répartie entre les taux de TVA.</span>
-          <div class="flex gap-2">
-            <select class="select select-bordered select-sm" name="mode" aria-label="Unité">
-              <option value="pourcentage">%</option>
-              <option value="montant">€ HT</option>
-            </select>
-            <input class="input input-bordered input-sm w-full text-right" type="text" inputmode="decimal" name="valeur" placeholder="30" required aria-label="Montant de l'acompte">
-          </div>
-          <button class="btn btn-sm" type="submit">Créer l'acompte en brouillon</button>
-        </form>
-        <div class="u-sep"></div>
-        <form method="post" action="/chantiers/{{ id }}/factures/finale" class="flex flex-col gap-2">
-          <span class="u-lbl" style="margin:0">Facture finale</span>
-          <span class="u-petit u-muet">Facture le reste à avancer ({{ finances.reste }} HT), puis déduit les acomptes déjà facturés. Plus aucun avancement ni acompte ne sera possible ensuite.</span>
-          <button class="btn btn-primary btn-sm" type="submit">Créer la facture finale</button>
-        </form>
-        <p class="u-petit u-muet">Facture d'avancement : bouton « Facturer » sur un avancement validé.</p>
-      </div>
-    </details>
+    <a class="btn btn-sm btn-primary" href="/chantiers/{{ id }}/facturer">Facturer</a>
     {% endif %}
   </div>
   <div class="overflow-x-auto">

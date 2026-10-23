@@ -151,7 +151,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         }
     }
     for &c in &chantiers {
-        for suite in ["", "/devis", "/finances"] {
+        for suite in ["", "/devis", "/finances", "/facturer"] {
             deux("GET", format!("/chantiers/{c}{suite}"));
         }
         for suite in ["", "/avancements", "/avenants", "/factures/acompte", "/factures/finale", "/achats"] {

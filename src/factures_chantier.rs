@@ -7,11 +7,12 @@
 //! - **Finale** : crée l'avancement « Solde » qui porte chaque poste à 100 %, le facture, puis déduit les acomptes
 //!   déjà facturés (moins leurs notes de crédit). Total facturé = total devis/avenants.
 
+use askama::Template;
 use axum::{
     Router,
-    extract::{Form, Path},
-    response::Redirect,
-    routing::post,
+    extract::{Form, Path, Query},
+    response::{Html, Redirect},
+    routing::{get, post},
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
@@ -142,8 +143,9 @@ async fn creer_facture(
     Ok(id)
 }
 
-fn vers_finances(chantier_id: i64, erreur: &str) -> Result<Redirect, Erreur> {
-    Ok(Redirect::to(&format!("/chantiers/{chantier_id}/finances?erreur={erreur}")))
+/// Un refus ramène à la fenêtre « Facturer », qui dit pourquoi.
+fn vers_facturer(chantier_id: i64, erreur: &str) -> Result<Redirect, Erreur> {
+    Ok(Redirect::to(&format!("/chantiers/{chantier_id}/facturer?erreur={erreur}")))
 }
 
 fn vers_facture(id: i64) -> Result<Redirect, Erreur> {
@@ -180,10 +182,10 @@ async fn creer_acompte(mut db: Base, Path(chantier_id): Path<i64>, Form(a): Form
     let mut tx = db.begin().await?;
     let e = entete(&mut tx, chantier_id).await?.ok_or_else(Erreur::introuvable)?;
     if avancements::a_une_finale(&mut *tx, chantier_id).await? {
-        return vers_finances(chantier_id, "finale");
+        return vers_facturer(chantier_id, "finale");
     }
     let Some((montant, pourcentage)) = montant_acompte(&a, total) else {
-        return vers_finances(chantier_id, "acompte");
+        return vers_facturer(chantier_id, "acompte");
     };
     let bases = avancements::bases_par_taux(&mut *tx, chantier_id).await?;
     let valeurs: Vec<i64> = bases.iter().map(|(_, b)| *b).collect();
@@ -229,7 +231,7 @@ async fn facturer_avancement(mut db: Base, Path((chantier_id, avancement_id)): P
     }
     let lignes = avancements::lignes_de_facture(&mut *tx, chantier_id, numero).await?;
     if lignes.is_empty() {
-        return vers_finances(chantier_id, "rien");
+        return vers_facturer(chantier_id, "rien");
     }
     let id = creer_facture(&mut tx, "avancement", chantier_id, Some(avancement_id), &e, &reference, &lignes).await?;
     tx.commit().await?;
@@ -265,7 +267,7 @@ async fn creer_finale(mut db: Base, Path(chantier_id): Path<i64>) -> Result<Redi
     let mut tx = db.begin().await?;
     let e = entete(&mut tx, chantier_id).await?.ok_or_else(Erreur::introuvable)?;
     if avancements::a_une_finale(&mut *tx, chantier_id).await? {
-        return vers_finances(chantier_id, "finale");
+        return vers_facturer(chantier_id, "finale");
     }
     let avancement_brouillon: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM avancements WHERE chantier_id = $1 AND statut = 'brouillon')")
@@ -273,15 +275,15 @@ async fn creer_finale(mut db: Base, Path(chantier_id): Path<i64>) -> Result<Redi
             .fetch_one(&mut *tx)
             .await?;
     if avancement_brouillon {
-        return vers_finances(chantier_id, "avancement_brouillon");
+        return vers_facturer(chantier_id, "avancement_brouillon");
     }
     // Un acompte en brouillon ne serait pas déduit : on demande de le valider ou de le supprimer d'abord.
     if facture_en_brouillon(&mut *tx, chantier_id).await? {
-        return vers_finances(chantier_id, "facture_brouillon");
+        return vers_facturer(chantier_id, "facture_brouillon");
     }
     let (soldes, mut lignes) = avancements::preparer_solde(&mut *tx, chantier_id).await?;
     if soldes.is_empty() {
-        return vers_finances(chantier_id, "rien");
+        return vers_facturer(chantier_id, "rien");
     }
     let (avancement_id, _) = avancements::inserer_solde(&mut tx, chantier_id, &soldes).await?;
     let (acomptes, numeros) = acomptes_par_taux(&mut tx, chantier_id).await?;
@@ -297,8 +299,105 @@ async fn creer_finale(mut db: Base, Path(chantier_id): Path<i64>) -> Result<Redi
     vers_facture(id)
 }
 
+// ─── La fenêtre « Facturer » ────────────────────────────────────────────────
+
+/// Un avancement validé qui n'a pas encore sa facture.
+pub struct AvancementAFacturer {
+    pub id: i64,
+    pub numero: i32,
+    pub montant: String,
+}
+
+/// Une seule fenêtre pour facturer un chantier (23/10/2026, d'après « Facturer depuis le devis » de Vertuoza) :
+/// ce qui est prévu, déjà facturé et restant, puis les trois façons de facturer, chacune avec ce qu'il faut faire.
+#[derive(Template)]
+#[template(path = "chantier_facturer.html")]
+struct PageFacturer {
+    id: i64,
+    numero: i64,
+    reference: String,
+    total: String,
+    facture_ht: String,
+    reste_a_facturer: String,
+    pourcentage_facture: String,
+    /// État d'avancement : déjà avancé (validé) et reste à avancer.
+    avance: String,
+    pourcentage_avance: String,
+    reste_a_avancer: String,
+    avancement_en_cours: Option<i64>,
+    avancement_a_facturer: Option<AvancementAFacturer>,
+    /// La facture finale existe : le chantier est soldé.
+    finale: Option<(i64, String)>,
+    /// Une facture du chantier attend encore d'être validée.
+    facture_brouillon: Option<(i64, String)>,
+    message_erreur: &'static str,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct RetourFacturer {
+    erreur: String,
+}
+
+async fn facturer(mut db: Base, Path(chantier_id): Path<i64>, Query(r): Query<RetourFacturer>) -> Result<Html<String>, Erreur> {
+    let chantier: Option<(i64, String)> = sqlx::query_as("SELECT ch.numero, d.reference FROM chantiers ch JOIN devis d ON d.id = ch.devis_id WHERE ch.id = $1")
+        .bind(chantier_id)
+        .fetch_optional(&mut *db)
+        .await?;
+    let (numero, reference) = chantier.ok_or_else(Erreur::introuvable)?;
+    let finances = avancements::finances(&mut db, chantier_id).await?;
+    let recap = recap(&mut db, chantier_id, finances.total_cents).await?;
+    let facture_cents: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(sum(CASE WHEN genre = 'note_credit' THEN -montant_ht_cents ELSE montant_ht_cents END), 0)::bigint
+         FROM factures WHERE chantier_id = $1 AND numero IS NOT NULL",
+    )
+    .bind(chantier_id)
+    .fetch_one(&mut *db)
+    .await?;
+    let avancement_a_facturer = finances
+        .avancements
+        .iter()
+        .find(|a| !a.brouillon && a.facture.is_none())
+        .map(|a| AvancementAFacturer { id: a.id, numero: a.numero, montant: a.montant.clone() });
+    let pieces: Vec<(i64, String, Option<i64>, NaiveDate)> = sqlx::query_as(
+        "SELECT id, genre::text, numero, date_facture FROM factures
+         WHERE chantier_id = $1 AND (genre = 'finale' OR numero IS NULL) ORDER BY numero IS NULL, id",
+    )
+    .bind(chantier_id)
+    .fetch_all(&mut *db)
+    .await?;
+    let finale = pieces.iter().find(|(_, g, n, _)| g == "finale" && n.is_some()).map(|(id, g, n, d)| (*id, factures::titre(g, *n, *d)));
+    let facture_brouillon = pieces.iter().find(|(_, _, n, _)| n.is_none()).map(|(id, g, _, _)| (*id, factures::libelle_genre(g).to_string()));
+    let page = PageFacturer {
+        id: chantier_id,
+        numero,
+        reference,
+        total: finances.total.clone(),
+        facture_ht: recap.facture_ht,
+        reste_a_facturer: recap.reste_a_facturer,
+        pourcentage_facture: ac::pourcentage_centiemes(facture_cents, finances.total_cents).map(ac::pourcentage_en_texte).unwrap_or_default(),
+        avance: finances.avance.clone(),
+        pourcentage_avance: finances.pourcentage_avance.clone(),
+        reste_a_avancer: finances.reste.clone(),
+        avancement_en_cours: finances.brouillon,
+        avancement_a_facturer,
+        finale,
+        facture_brouillon,
+        message_erreur: match r.erreur.as_str() {
+            "acompte" => "L'acompte n'est pas créé : indiquez un pourcentage ou un montant HT plus grand que 0, au plus le montant du chantier.",
+            "finale" => "Ce chantier a déjà sa facture finale : plus d'acompte ni d'état d'avancement possible.",
+            "rien" => "Il n'y a rien à facturer.",
+            "avancement_brouillon" => "Terminez d'abord l'état d'avancement en cours (validez-le ou supprimez-le).",
+            "facture_brouillon" => "Validez ou supprimez d'abord la facture en brouillon de ce chantier : un acompte en brouillon ne serait pas déduit de la facture finale.",
+            _ => "",
+        },
+    };
+    Ok(Html(page.render()?))
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/chantiers/{id}/facturer", get(facturer))
         .route("/chantiers/{id}/factures/acompte", post(creer_acompte))
         .route("/chantiers/{id}/factures/finale", post(creer_finale))
         .route("/chantiers/{id}/avancements/{avancement}/facturer", post(facturer_avancement))
