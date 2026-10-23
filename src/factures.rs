@@ -12,7 +12,7 @@ use axum::{
     Router,
     extract::{Form, Path, Query},
     http::HeaderMap,
-    response::{Html, Redirect},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use chrono::{Datelike, NaiveDate};
@@ -22,6 +22,7 @@ use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 use crate::base::Base;
 use crate::calcul::{self, Ajustement};
 use crate::commun::{Choix, echapper_like, encoder_url, format_euros};
+use crate::composants::Enregistrement;
 use crate::devis_editeur::{Personne, Referentiel};
 use crate::facture_calcul;
 use crate::fiches::choix_base;
@@ -628,7 +629,7 @@ impl Retour {
     fn message_erreur(&self) -> &'static str {
         match self.erreur.as_str() {
             "peppol" => "L'envoi par Peppol a échoué : la raison est dans le bloc « Facturation électronique ».",
-            "infos" => "Les informations n'ont pas été enregistrées : vérifiez la date, le client, la référence (200 caractères) et la remarque (2 000 caractères).",
+            "infos" => "Certaines informations n'ont pas été enregistrées (les autres l'ont été) : vérifiez la date, le client, les conditions, la référence (200 caractères) et la remarque (2 000 caractères).",
             "paiement_date" => "Le paiement n'est pas enregistré : la date est vide ou dans le futur.",
             "paiement_montant" => "Le paiement n'est pas enregistré : le montant doit être positif et ne pas dépasser le reste à recevoir.",
             "paiement_methode" => "Le paiement n'est pas enregistré : choisissez une méthode de paiement.",
@@ -740,6 +741,8 @@ struct Page {
     archive: Vec<crate::archive::Ligne>,
     /// Facturation électronique : l'adresse Peppol du client et ce qui empêche l'envoi (pièce validée seulement).
     peppol: Option<crate::peppol::Bloc>,
+    /// La note de la barre du bas d'un brouillon : les informations s'enregistrent toutes seules.
+    enregistrement: Enregistrement,
 }
 
 #[derive(Template)]
@@ -814,6 +817,11 @@ pub(crate) async fn nom_client(db: &mut PgConnection, entreprise: Option<i64>, c
 }
 
 async fn afficher(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
+    let page = construire_page(&mut *db, id, &retour, Enregistrement::default()).await?;
+    Ok(Html(page.render()?))
+}
+
+async fn construire_page(db: &mut PgConnection, id: i64, retour: &Retour, enregistrement: Enregistrement) -> Result<Page, Erreur> {
     let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     let r = Referentiel::charger(&mut *db).await?;
     let lignes = charger_lignes(&mut *db, id).await?;
@@ -876,46 +884,57 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour
         rappel: if solde.etat == "en_retard" { crate::rappels::resume_facture(&mut *db, id).await? } else { None },
         archive: if f.numero.is_some() { crate::archive::lignes(&mut *db, &f).await? } else { Vec::new() },
         peppol: crate::peppol::controler(&mut *db, &f).await?,
+        enregistrement,
     };
-    Ok(Html(page.render()?))
+    Ok(page)
 }
 
-/// Enregistre l'en-tête d'un brouillon (date, référence, client, conditions…).
-async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(form): Form<InfosForm>) -> Result<Redirect, Erreur> {
+/// Enregistre l'en-tête d'un brouillon (date, référence, client, conditions…). Le formulaire s'envoie tout seul (htmx)
+/// à chaque changement : chaque valeur valable est gardée, une valeur refusée garde la précédente (avec un message).
+/// La réponse est la fiche entière ; htmx en reprend la barre du bas (note « Enregistré », bouton Valider), le bloc
+/// « Avant de valider » et le bloc Peppol, qui dépendent du client et des conditions.
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, entetes: HeaderMap, Form(form): Form<InfosForm>) -> Result<Response, Erreur> {
     let f = charger(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if !f.brouillon() {
         return Err(Erreur::conflit("Cette facture est validée : elle ne se modifie plus. Corrigez-la par une note de crédit."));
     }
     let r = Referentiel::charger(&mut *db).await?;
-    let erreur = Ok(Redirect::to(&format!("/factures/{id}?erreur=infos")));
-    let Ok(date) = NaiveDate::parse_from_str(form.date.trim(), "%Y-%m-%d") else { return erreur };
+    let mut erreurs: Vec<String> = Vec::new();
+    let date = NaiveDate::parse_from_str(form.date.trim(), "%Y-%m-%d").unwrap_or_else(|_| {
+        erreurs.push("La date de la facture n'est pas une date.".to_string());
+        f.date_facture
+    });
     let client = match form.client.trim() {
         "" => None,
-        texte => match Personne::lire(texte).filter(|p| r.existe(*p)) {
-            Some(p) => Some(p),
-            None => return erreur,
-        },
+        texte => Personne::lire(texte).filter(|p| r.existe(*p)).or_else(|| {
+            erreurs.push("Choisissez le client dans la liste.".to_string());
+            Personne::depuis(f.client_entreprise_id, f.client_contact_id)
+        }),
     };
-    let identifiant = |texte: &str, liste: &[(i64, String)]| -> Result<Option<i64>, ()> {
+    let mut identifiant = |texte: &str, liste: &[(i64, String)], avant: Option<i64>, message: &str| -> Option<i64> {
         match texte.trim() {
-            "" => Ok(None),
-            t => t.parse::<i64>().ok().filter(|i| liste.iter().any(|(x, _)| x == i)).map(Some).ok_or(()),
+            "" => None,
+            t => t.parse::<i64>().ok().filter(|i| liste.iter().any(|(x, _)| x == i)).or_else(|| {
+                erreurs.push(message.to_string());
+                avant
+            }),
         }
     };
-    let (Ok(conditions), Ok(taux)) =
-        (identifiant(&form.conditions_paiement_id, &r.options.conditions), identifiant(&form.taux_tva_id, &r.options.taux_tva))
-    else {
-        return erreur;
+    let conditions =
+        identifiant(&form.conditions_paiement_id, &r.options.conditions, f.conditions_paiement_id, "Choisissez les conditions de paiement dans la liste.");
+    let taux = identifiant(&form.taux_tva_id, &r.options.taux_tva, f.taux_tva_id, "Choisissez le taux de TVA dans la liste.");
+    let mut texte = |valeur: &str, max: usize, avant: &str, message: &str| -> String {
+        let valeur = valeur.trim();
+        if valeur.chars().count() > max {
+            erreurs.push(message.to_string());
+            avant.to_string()
+        } else {
+            valeur.to_string()
+        }
     };
-    let reference = form.reference.trim();
-    let responsable = form.responsable.trim();
-    let remarque = form.remarque.trim();
-    if reference.chars().count() > LONGUEUR_MAX_REFERENCE
-        || responsable.chars().count() > LONGUEUR_MAX_REFERENCE
-        || remarque.chars().count() > LONGUEUR_MAX_TEXTE
-    {
-        return erreur;
-    }
+    let reference = texte(&form.reference, LONGUEUR_MAX_REFERENCE, &f.reference, "La référence dépasse 200 caractères.");
+    let responsable = texte(&form.responsable, LONGUEUR_MAX_REFERENCE, &f.responsable, "Le responsable dépasse 200 caractères.");
+    let remarque = texte(&form.remarque, LONGUEUR_MAX_TEXTE, &f.remarque, "La remarque dépasse 2 000 caractères.");
     let (entreprise, contact) = Personne::colonnes(client);
     sqlx::query(
         "UPDATE factures SET date_facture = $1, reference = $2, responsable = $3, client_entreprise_id = $4, client_contact_id = $5,
@@ -933,7 +952,13 @@ async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(form): Form<InfosFo
     .bind(id)
     .execute(&mut *db)
     .await?;
-    Ok(Redirect::to(&format!("/factures/{id}?ok=infos")))
+    if crate::composants::par_htmx(&entetes) {
+        let enregistrement = Enregistrement::maintenant(&mut *db, erreurs).await?;
+        let page = construire_page(&mut *db, id, &Retour::default(), enregistrement).await?;
+        return Ok(Html(page.render()?).into_response());
+    }
+    let suite = if erreurs.is_empty() { "ok=infos" } else { "erreur=infos" };
+    Ok(Redirect::to(&format!("/factures/{id}?{suite}")).into_response())
 }
 
 // ─── Lignes saisies à la main (facture simple, note de crédit) ──────────────

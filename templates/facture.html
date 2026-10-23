@@ -96,7 +96,11 @@
     <section class="u-card" id="informations">
       <div class="u-card-h"><h2>Informations générales</h2></div>
       {% if brouillon %}
-      <form id="facture-infos" method="post" action="/factures/{{ id }}">
+      {# Enregistrement automatique : le formulaire part tout seul 0,6 s après la dernière frappe (ou à la sortie d'un
+         champ), une demande à la fois. htmx reprend de la réponse la barre du bas (note, bouton Valider), le bloc
+         « Avant de valider » et le bloc Peppol, qui dépendent du client et des conditions. #}
+      <form id="facture-infos" method="post" action="/factures/{{ id }}" hx-post="/factures/{{ id }}" hx-trigger="input delay:600ms, change"
+        hx-sync="this:queue last" hx-target="#facture-barre" hx-select="#facture-barre" hx-swap="outerHTML" hx-select-oob="#avant-valider,#peppol">
         <div class="u-deux">
           <div class="u-col">
             <h3>Détails de la facture</h3>
@@ -149,7 +153,6 @@
               <span class="u-lbl">Remarque (imprimée sur la facture)</span>
               <textarea class="textarea textarea-bordered" name="remarque" rows="4" maxlength="2000">{{ form.remarque }}</textarea>
             </label>
-            <button class="btn self-end" type="submit">Enregistrer les informations</button>
           </div>
         </div>
       </form>
@@ -186,7 +189,7 @@
 
   <aside class="flex flex-col gap-4">
     {% if brouillon %}
-    <section class="u-card">
+    <section class="u-card" id="avant-valider">
       <div class="u-card-h"><h2>Avant de valider</h2>
         {% if a_completer.is_empty() %}<span class="u-pastille s-accepte">prête</span>{% else %}<span class="u-pastille s-a-envoyer">{{ a_completer.len() }} point(s)</span>{% endif %}
       </div>
@@ -198,7 +201,7 @@
         {% for m in a_completer %}
         <div class="flex gap-2 items-start text-[13.5px]"><span class="text-[#953A0A] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
         {% endfor %}
-        <p class="u-petit u-muet" style="margin:8px 0 0">Vous avez rempli les informations générales ? Cliquez sur « Enregistrer les informations » pour qu'elles comptent.</p>
+        <p class="u-petit u-muet" style="margin:8px 0 0">Les informations s'enregistrent toutes seules : cette liste se met à jour pendant que vous les remplissez.</p>
         {% endif %}
       </div>
     </section>
@@ -360,15 +363,16 @@
 {% endblock %}
 
 {% block barre %}
-<div class="u-barre">
+<div class="u-barre" id="facture-barre">
   {% if brouillon %}
-  <details class="u-menu mr-auto">
+  <details class="u-menu">
     <summary class="btn btn-danger">Supprimer…</summary>
     <form method="post" action="/factures/{{ id }}/supprimer" class="u-menu-liste gauche u-menu-form">
       <span class="u-petit">Supprimer ce brouillon ? Il n'a pas de numéro : la numérotation ne garde pas de trou.</span>
       <button class="btn btn-danger btn-sm" type="submit">Confirmer la suppression</button>
     </form>
   </details>
+  {% call ui::enregistrement(enregistrement) %}{% endcall %}
   {% endif %}
   <a class="btn" href="/factures">Fermer</a>
   <a class="btn{% if !brouillon && !peut_marquer_envoyee %} btn-primary{% endif %}" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>

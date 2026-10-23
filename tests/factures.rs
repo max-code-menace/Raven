@@ -275,6 +275,65 @@ async fn saisies_refusees_et_lignes_supprimees(options: PgPoolOptions, connexion
     assert_eq!(lieu.as_deref(), Some(format!("/factures/{id}?erreur=infos").as_str()));
 }
 
+/// Comme le navigateur avec htmx : l'enregistrement automatique.
+async fn poster_htmx(site: &Router, uri: &str, corps: &str) -> (StatusCode, String) {
+    let requete = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header("HX-Request", "true")
+        .body(Body::from(corps.to_string()))
+        .unwrap();
+    let (statut, _, page) = envoyer(site, requete).await;
+    (statut, page)
+}
+
+/// Le morceau de page qui commence à `debut` et finit à la première `fin` qui suit.
+fn morceau<'a>(page: &'a str, debut: &str, fin: &str) -> &'a str {
+    let i = page.find(debut).unwrap_or_else(|| panic!("{debut} absent"));
+    let reste = &page[i..];
+    &reste[..reste.find(fin).map(|j| j + fin.len()).unwrap_or(reste.len())]
+}
+
+#[sqlx::test]
+async fn l_en_tete_s_enregistre_tout_seul_et_valider_suit(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let s = site(&pool);
+    let id = nouvelle(&s).await;
+    poste(&pool, &s, id, "Travaux", "1", "100", 2100).await;
+    let c = client(&pool).await;
+
+    // Ni client ni conditions : « Valider… » est grisé ; plus de bouton « Enregistrer les informations ».
+    let (_, page) = lire(&s, &format!("/factures/{id}")).await;
+    assert!(page.contains(&format!("hx-post=\"/factures/{id}\"")) && !page.contains("Enregistrer les informations"));
+    assert!(morceau(&page, "id=\"facture-barre\"", "</div>").contains("disabled title=\"Complétez d'abord"));
+
+    // Le formulaire part tout seul : la barre renvoyée (que htmx remplace) dit « Enregistré » et propose « Valider… »,
+    // le bloc « Avant de valider » est prêt, sans recharger la page.
+    let corps = format!(
+        "date={}&reference=Petits+travaux&responsable=&client=e{c}&conditions_paiement_id={}&taux_tva_id=&remarque=",
+        aujourdhui(&pool).await,
+        condition_30_jours(&pool).await
+    );
+    let (statut, page) = poster_htmx(&s, &format!("/factures/{id}"), &corps).await;
+    assert_eq!(statut, StatusCode::OK);
+    let barre = morceau(&page, "id=\"facture-barre\"", "</div>");
+    assert!(barre.contains("Enregistré à ") && barre.contains("<summary class=\"btn btn-primary\">Valider…</summary>"), "{barre}");
+    assert!(morceau(&page, "id=\"avant-valider\"", "</section>").contains("prête"));
+
+    // Un client inconnu : pas enregistré (le client choisi reste), la barre le dit ; le reste est enregistré.
+    let (statut, page) = poster_htmx(&s, &format!("/factures/{id}"), &corps.replace(&format!("client=e{c}"), "client=e999999").replace("Petits+travaux", "Gros+travaux")).await;
+    assert_eq!(statut, StatusCode::OK);
+    assert!(morceau(&page, "id=\"facture-barre\"", "</div>").contains("Pas enregistré : Choisissez le client dans la liste."));
+    let (reference, client_id): (String, Option<i64>) =
+        sqlx::query_as("SELECT reference, client_entreprise_id FROM factures WHERE id = $1").bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!((reference.as_str(), client_id), ("Gros travaux", Some(c)));
+
+    // Une facture validée ne s'enregistre plus, même toute seule.
+    poster(&s, &format!("/factures/{id}/valider"), "").await;
+    assert_eq!(poster_htmx(&s, &format!("/factures/{id}"), &corps).await.0, StatusCode::CONFLICT);
+}
+
 #[sqlx::test]
 async fn la_liste_filtre_et_totalise(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;

@@ -98,7 +98,9 @@ async fn la_page_montre_le_numero_et_le_statut(options: PgPoolOptions, connexion
     assert!(page.contains("Devis N° 20") && page.contains("-1</h1>"));
     assert!(page.contains("Brouillon"));
     assert!(page.contains("Dupont SRL (entreprise)"));
-    assert!(page.contains("Enregistrer"));
+    // Plus de bouton « Enregistrer » : le formulaire s'envoie tout seul et la barre du bas le dit.
+    assert!(page.contains(&format!("hx-post=\"/devis/{id}\"")) && page.contains("Les modifications s'enregistrent automatiquement."));
+    assert!(!page.contains(">Enregistrer<"));
     assert!(!page.contains("<fieldset class=\"flex flex-col gap-6\" disabled"));
     // Les trois taux et les dix conditions de départ sont proposés.
     assert!(page.contains("Taux réduit (6,00 %)") && page.contains("Paiement comptant"));
@@ -151,23 +153,103 @@ async fn un_contact_peut_etre_le_client(options: PgPoolOptions, connexion: PgCon
 }
 
 #[sqlx::test]
-async fn les_champs_obligatoires_sont_verifies_et_rien_n_est_enregistre(options: PgPoolOptions, connexion: PgConnectOptions) {
+async fn un_brouillon_se_remplit_petit_a_petit_et_une_valeur_refusee_garde_l_ancienne(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
     let id = nouveau_brouillon(&pool).await;
-    let (statut, _, page) = poster(&site(&pool), &format!("/devis/{id}"), "reference=&responsable=&date_devis=pas-une-date").await;
+    let s = site(&pool);
+    let lire_devis = || async {
+        sqlx::query_as::<_, (String, String, Option<i64>, Option<i64>)>(
+            "SELECT reference, date_devis::text, client_entreprise_id, taux_tva_id FROM devis WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+    };
+
+    // Enregistrement automatique : la référence est gardée alors que le client, le taux et les conditions manquent encore
+    // (ils sont rappelés avant l'envoi, onglet Visualisation).
+    let (statut, lieu, _) =
+        poster(&s, &format!("/devis/{id}"), "reference=C44+Volet&responsable=&date_devis=2026-10-15&facturation_identique=on&chantier_identique=on").await;
+    assert_eq!((statut, lieu), (StatusCode::SEE_OTHER, Some(format!("/devis/{id}?ok=1"))));
+    assert_eq!(lire_devis().await, ("C44 Volet".to_string(), "2026-10-15".to_string(), None, None));
+
+    // Une date illisible n'est pas enregistrée : l'ancienne reste, avec un message ; le reste est enregistré.
+    let (statut, _, page) =
+        poster(&s, &format!("/devis/{id}"), "reference=C45&date_devis=pas-une-date&facturation_identique=on&chantier_identique=on").await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(!page.contains("Le responsable est obligatoire."), "le responsable est facultatif");
-    for message in [
-        "La référence est obligatoire.",
-        "La date du devis est obligatoire.",
-        "Choisissez le client du devis.",
-        "Le taux de TVA par défaut est obligatoire.",
-        "Les conditions de paiement sont obligatoires.",
-    ] {
-        assert!(page.contains(message), "{message}");
-    }
-    let (reference,): (String,) = sqlx::query_as("SELECT reference FROM devis WHERE id = $1").bind(id).fetch_one(&pool).await.unwrap();
-    assert_eq!(reference, "");
+    assert!(page.contains("La date du devis est obligatoire."));
+    assert!(!page.contains("Le responsable est obligatoire.") && !page.contains("La référence est obligatoire."));
+    assert_eq!(lire_devis().await.0, "C45");
+    assert_eq!(lire_devis().await.1, "2026-10-15");
+
+    // Une date d'une autre année non plus : le numéro « 2026-1 » appartient à 2026.
+    let (statut, _, page) = poster(&s, &format!("/devis/{id}"), "reference=C45&date_devis=2027-01-04&facturation_identique=on&chantier_identique=on").await;
+    assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(page.contains("La date doit rester en 2026"));
+    assert_eq!(lire_devis().await.1, "2026-10-15");
+
+    // Un client choisi puis un client inconnu : le premier reste.
+    let e = entreprise(&pool, "Dupont SRL").await;
+    poster(&s, &format!("/devis/{id}"), &format!("reference=C45&date_devis=2026-10-15&client=e{e}&facturation_identique=on&chantier_identique=on")).await;
+    let (statut, _, page) =
+        poster(&s, &format!("/devis/{id}"), "reference=C45&date_devis=2026-10-15&client=e999999&facturation_identique=on&chantier_identique=on").await;
+    assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(page.contains("Choisissez le client du devis."));
+    assert_eq!(lire_devis().await.2, Some(e));
+}
+
+/// Comme le navigateur avec htmx : l'enregistrement automatique.
+async fn poster_htmx(site: &Router, uri: &str, corps: &str) -> (StatusCode, String) {
+    let requete = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header("HX-Request", "true")
+        .body(Body::from(corps.to_string()))
+        .unwrap();
+    let (statut, _, page) = envoyer(site, requete).await;
+    (statut, page)
+}
+
+/// Le morceau de page qui commence à `debut` et finit à la première `fin` qui suit.
+fn morceau<'a>(page: &'a str, debut: &str, fin: &str) -> &'a str {
+    let i = page.find(debut).unwrap_or_else(|| panic!("{debut} absent"));
+    let reste = &page[i..];
+    &reste[..reste.find(fin).map(|j| j + fin.len()).unwrap_or(reste.len())]
+}
+
+#[sqlx::test]
+async fn l_enregistrement_automatique_repond_par_la_note_et_l_en_tete(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let id = nouveau_brouillon(&pool).await;
+    let e = entreprise(&pool, "Dupont SRL").await;
+    let (tva, cond) = (taux_reduit(&pool).await, sept_jours(&pool).await);
+    let s = site(&pool);
+
+    // Un gestionnaire inconnu : pas enregistré, le reste l'est. Réponse 200 (htmx ne remplace rien sur une erreur).
+    let (statut, page) = poster_htmx(&s, &format!("/devis/{id}"), &format!("{}&gestionnaire_id=9999", formulaire(&format!("e{e}"), tva, cond))).await;
+    assert_eq!(statut, StatusCode::OK);
+    let note = morceau(&page, "id=\"etat-enregistrement\"", "</span>\n");
+    assert!(note.contains("Pas enregistré : Ce gestionnaire n&#39;existe pas.") && note.contains("Le reste est enregistré."), "{note}");
+    // L'en-tête renvoyé (que htmx remplace aussi) porte déjà le client et la référence enregistrés.
+    let tete = morceau(&page, "id=\"devis-tete\"", "</header>");
+    assert!(tete.contains("Dupont SRL") && tete.contains("C44 Volet"), "{tete}");
+    // Pas de bandeau d'erreur en haut de page pendant qu'on tape (il décalerait le formulaire).
+    assert!(!page.contains("role=\"alert\""));
+    let (reference, client, gestionnaire): (String, Option<i64>, Option<i64>) =
+        sqlx::query_as("SELECT reference, client_entreprise_id, gestionnaire_contact_id FROM devis WHERE id = $1").bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!((reference.as_str(), client, gestionnaire), ("C44 Volet", Some(e), None));
+
+    // Corrigé : la note donne l'heure de l'enregistrement.
+    let (statut, page) = poster_htmx(&s, &format!("/devis/{id}"), &formulaire(&format!("e{e}"), tva, cond)).await;
+    assert_eq!(statut, StatusCode::OK);
+    let note = morceau(&page, "id=\"etat-enregistrement\"", "</span>\n");
+    assert!(note.contains("Enregistré à ") && !note.contains("Pas enregistré"), "{note}");
+
+    // Un devis envoyé ne s'enregistre plus, même tout seul.
+    sqlx::query("UPDATE devis SET statut = 'envoye' WHERE id = $1").bind(id).execute(&pool).await.unwrap();
+    assert_eq!(poster_htmx(&s, &format!("/devis/{id}"), &formulaire(&format!("e{e}"), tva, cond)).await.0, StatusCode::CONFLICT);
 }
 
 #[sqlx::test]
@@ -185,7 +267,7 @@ async fn un_client_ou_un_taux_inexistant_est_refuse(options: PgPoolOptions, conn
     let s = site(&pool);
     let (statut, _, page) = poster(&s, &format!("/devis/{id}"), &formulaire("e9999", 9999, 9999)).await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(page.contains("Choisissez le client du devis.") && page.contains("Le taux de TVA par défaut est obligatoire."));
+    assert!(page.contains("Choisissez le client du devis.") && page.contains("Choisissez le taux de TVA par défaut dans la liste."));
     // Un code mal écrit ne provoque pas d'erreur serveur.
     let (statut, _, _) = poster(&s, &format!("/devis/{id}"), &formulaire("n'importe quoi", 1, 1)).await;
     assert_eq!(statut, StatusCode::UNPROCESSABLE_ENTITY);

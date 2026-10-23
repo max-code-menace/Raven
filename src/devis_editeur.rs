@@ -5,7 +5,7 @@ use askama::Template;
 use axum::{
     Router,
     extract::{Path, Query},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
@@ -16,6 +16,7 @@ use sqlx::{FromRow, PgConnection};
 
 use crate::base::Base;
 use crate::commun::{Choix, PAYS, choix_fixes, vide_en_none};
+use crate::composants::Enregistrement;
 use crate::devis_statut::{Barre, charger_barre};
 use crate::fiches::{Genre, Options, choix_base};
 use crate::{AppState, Erreur};
@@ -207,14 +208,15 @@ impl From<&Devis> for DevisForm {
     }
 }
 
-/// Le formulaire vérifié et nettoyé, prêt à être enregistré.
+/// Le formulaire vérifié et nettoyé, prêt à être enregistré. Un brouillon se complète petit à petit : le client, le
+/// taux et les conditions peuvent encore manquer (ce qui manque est listé avant l'envoi, onglet Visualisation).
 struct Valeurs {
     reference: String,
     responsable: String,
     date_devis: NaiveDate,
-    client: Personne,
-    taux_tva_id: i64,
-    conditions_paiement_id: i64,
+    client: Option<Personne>,
+    taux_tva_id: Option<i64>,
+    conditions_paiement_id: Option<i64>,
     facturation_identique: bool,
     facturation_client: Option<Personne>,
     chantier_identique: bool,
@@ -238,95 +240,100 @@ fn lire_jours_ouvrables(texte: &str) -> Option<i32> {
     }
 }
 
+/// Lit le formulaire champ par champ (enregistrement automatique) : une valeur valable remplace celle du devis `d`,
+/// une valeur refusée garde celle de `d` et donne un message. Un champ laissé vide est permis (un brouillon se complète
+/// petit à petit ; ce qui manque est listé avant l'envoi), sauf la date.
 /// `annee_numero` : l'année du numéro d'un devis (un avenant n'en a pas : son numéro est propre à son chantier).
-fn valider(f: &DevisForm, r: &Referentiel, avenant: bool, annee_numero: Option<i32>) -> Result<Valeurs, Vec<String>> {
+fn lire(f: &DevisForm, d: &Devis, r: &Referentiel, avenant: bool, annee_numero: Option<i32>) -> (Valeurs, Vec<String>) {
     let mut erreurs = Vec::new();
 
     // Un devis n'a pas de jours ouvrables supplémentaires : seul un avenant en accorde.
-    let jours_ouvrables = if avenant { lire_jours_ouvrables(&f.jours_ouvrables) } else { Some(0) };
-    if jours_ouvrables.is_none() {
-        erreurs.push("Les jours ouvrables supplémentaires sont un nombre entier entre 0 et 999.".to_string());
-    }
-
-    let reference = f.reference.trim().to_string();
-    if reference.is_empty() {
-        erreurs.push("La référence est obligatoire.".to_string());
-    }
-    // Facultatif : un indépendant seul n'a pas à se nommer ; vide, il n'apparaît pas sur le PDF.
-    let responsable = f.responsable.trim().to_string();
-    let date_devis = NaiveDate::parse_from_str(f.date_devis.trim(), "%Y-%m-%d").ok();
-    if date_devis.is_none() {
-        erreurs.push("La date du devis est obligatoire.".to_string());
-    }
-    // La numérotation est annuelle : le numéro « 2026-57 » reste dans son année.
-    if let (Some(d), Some(annee)) = (date_devis, annee_numero)
-        && d.year() != annee
-    {
-        erreurs.push(format!("La date doit rester en {annee} : le numéro de ce devis appartient à la numérotation de {annee}. Pour un devis daté d'une autre année, crée un nouveau devis."));
-    }
-
-    let client = Personne::lire(&f.client).filter(|p| r.existe(*p));
-    if client.is_none() {
-        erreurs.push("Choisissez le client du devis.".to_string());
-    }
-
-    let taux_tva_id = f.taux_tva_id.trim().parse::<i64>().ok().filter(|id| r.options.taux_tva.iter().any(|(i, _)| i == id));
-    if taux_tva_id.is_none() {
-        erreurs.push("Le taux de TVA par défaut est obligatoire.".to_string());
-    }
-    let conditions_paiement_id = f
-        .conditions_paiement_id
-        .trim()
-        .parse::<i64>()
-        .ok()
-        .filter(|id| r.options.conditions.iter().any(|(i, _)| i == id));
-    if conditions_paiement_id.is_none() {
-        erreurs.push("Les conditions de paiement sont obligatoires.".to_string());
-    }
-
-    // Facturé à quelqu'un d'autre : il faut dire à qui.
-    let facturation_identique = f.facturation_identique.is_some();
-    let facturation_client = if facturation_identique {
-        None
+    let jours_ouvrables = if avenant {
+        lire_jours_ouvrables(&f.jours_ouvrables).unwrap_or_else(|| {
+            erreurs.push("Les jours ouvrables supplémentaires sont un nombre entier entre 0 et 999.".to_string());
+            d.jours_ouvrables
+        })
     } else {
-        let p = Personne::lire(&f.facturation_client).filter(|p| r.existe(*p));
-        if p.is_none() {
-            erreurs.push("Choisissez le client de facturation, ou cochez « identique au client ».".to_string());
-        }
-        p
+        0
     };
 
-    let chantier_identique = f.chantier_identique.is_some();
-    if !f.chantier_pays.is_empty() && !PAYS.iter().any(|(v, _)| *v == f.chantier_pays) {
-        erreurs.push("Ce pays n'existe pas.".to_string());
-    }
+    let reference = f.reference.trim().to_string();
+    // Facultatif : un indépendant seul n'a pas à se nommer ; vide, il n'apparaît pas sur le PDF.
+    let responsable = f.responsable.trim().to_string();
+    let date_devis = match NaiveDate::parse_from_str(f.date_devis.trim(), "%Y-%m-%d") {
+        Err(_) => {
+            erreurs.push("La date du devis est obligatoire.".to_string());
+            d.date_devis
+        }
+        // La numérotation est annuelle : le numéro « 2026-57 » reste dans son année.
+        Ok(date) if annee_numero.is_some_and(|annee| date.year() != annee) => {
+            let annee = annee_numero.unwrap_or_default();
+            erreurs.push(format!("La date doit rester en {annee} : le numéro de ce devis appartient à la numérotation de {annee}. Pour un devis daté d'une autre année, crée un nouveau devis."));
+            d.date_devis
+        }
+        Ok(date) => date,
+    };
 
-    // Architecte et gestionnaire : facultatifs, mais ils doivent exister.
-    let mut contact = |texte: &str, nom: &str| -> Option<i64> {
-        let id = vide_en_none(texte)?;
-        match id.parse::<i64>().ok().filter(|n| r.contacts.iter().any(|(i, _)| i == n)) {
-            Some(n) => Some(n),
+    // Un choix dans une liste : vide = pas encore choisi ; inconnu = refusé (la valeur d'avant reste).
+    let mut personne = |texte: &str, avant: Option<Personne>, message: &str| -> Option<Personne> {
+        if texte.trim().is_empty() {
+            return None;
+        }
+        Personne::lire(texte).filter(|p| r.existe(*p)).or_else(|| {
+            erreurs.push(message.to_string());
+            avant
+        })
+    };
+    let client = personne(&f.client, Personne::depuis(d.client_entreprise_id, d.client_contact_id), "Choisissez le client du devis.");
+    // Facturé à quelqu'un d'autre : tant qu'on ne dit pas à qui, la facturation reste comme avant. Case cochée, le
+    // menu (caché) est ignoré.
+    const FACTURATION: &str = "Choisissez le client de facturation, ou cochez « identique au client ».";
+    let (facturation_identique, facturation_client) = if f.facturation_identique.is_some() {
+        (true, None)
+    } else {
+        let avant = Personne::depuis(d.facturation_entreprise_id, d.facturation_contact_id);
+        match personne(&f.facturation_client, avant, FACTURATION) {
+            Some(p) => (false, Some(p)),
             None => {
-                erreurs.push(format!("{nom} n'existe pas."));
-                None
+                if f.facturation_client.trim().is_empty() {
+                    erreurs.push(FACTURATION.to_string());
+                }
+                (d.facturation_identique, avant)
             }
         }
     };
-    let architecte_id = contact(&f.architecte_id, "Cet architecte");
-    let gestionnaire_id = contact(&f.gestionnaire_id, "Ce gestionnaire");
 
-    let (Some(date_devis), Some(client), Some(taux_tva_id), Some(conditions_paiement_id), Some(jours_ouvrables)) =
-        (date_devis, client, taux_tva_id, conditions_paiement_id, jours_ouvrables)
-    else {
-        return Err(erreurs);
+    let mut identifiant = |texte: &str, liste: &[(i64, String)], avant: Option<i64>, message: &str| -> Option<i64> {
+        let texte = vide_en_none(texte)?;
+        texte.parse::<i64>().ok().filter(|id| liste.iter().any(|(i, _)| i == id)).or_else(|| {
+            erreurs.push(message.to_string());
+            avant
+        })
     };
-    if !erreurs.is_empty() {
-        return Err(erreurs);
-    }
+    let taux_tva_id = identifiant(&f.taux_tva_id, &r.options.taux_tva, d.taux_tva_id, "Choisissez le taux de TVA par défaut dans la liste.");
+    let conditions_paiement_id = identifiant(
+        &f.conditions_paiement_id,
+        &r.options.conditions,
+        d.conditions_paiement_id,
+        "Choisissez les conditions de paiement dans la liste.",
+    );
+    // Architecte et gestionnaire : facultatifs, mais ils doivent exister.
+    let architecte_id = identifiant(&f.architecte_id, &r.contacts, d.architecte_contact_id, "Cet architecte n'existe pas.");
+    let gestionnaire_id = identifiant(&f.gestionnaire_id, &r.contacts, d.gestionnaire_contact_id, "Ce gestionnaire n'existe pas.");
+
+    let chantier_identique = f.chantier_identique.is_some();
+    let chantier_pays = match f.chantier_pays.as_str() {
+        "" => "BE".to_string(),
+        p if PAYS.iter().any(|(v, _)| *v == p) => p.to_string(),
+        _ => {
+            erreurs.push("Ce pays n'existe pas.".to_string());
+            d.chantier_pays.clone()
+        }
+    };
 
     // Adresse identique à celle du client : on n'enregistre pas de seconde adresse.
     let chantier = |s: &str| if chantier_identique { String::new() } else { s.trim().to_string() };
-    Ok(Valeurs {
+    let valeurs = Valeurs {
         reference,
         responsable,
         date_devis,
@@ -340,18 +347,19 @@ fn valider(f: &DevisForm, r: &Referentiel, avenant: bool, annee_numero: Option<i
         chantier_numero: chantier(&f.chantier_numero),
         chantier_code_postal: chantier(&f.chantier_code_postal),
         chantier_ville: chantier(&f.chantier_ville),
-        chantier_pays: if f.chantier_pays.is_empty() { "BE".to_string() } else { f.chantier_pays.clone() },
+        chantier_pays,
         architecte_id,
         gestionnaire_id,
         remarque_1: f.remarque_1.trim().to_string(),
         remarque_2: f.remarque_2.trim().to_string(),
         jours_ouvrables,
-    })
+    };
+    (valeurs, erreurs)
 }
 
 /// Renvoie `false` si le devis n'est plus un brouillon (ou n'existe plus) : rien n'est modifié.
 async fn enregistrer_en_base(db: &mut PgConnection, id: i64, v: &Valeurs) -> Result<bool, sqlx::Error> {
-    let (client_entreprise, client_contact) = Personne::colonnes(Some(v.client));
+    let (client_entreprise, client_contact) = Personne::colonnes(v.client);
     let (facturation_entreprise, facturation_contact) = Personne::colonnes(v.facturation_client);
     let res = sqlx::query(
         "UPDATE devis SET reference = $1, responsable = $2, date_devis = $3,
@@ -417,6 +425,8 @@ struct Page {
     architectes: Vec<Choix>,
     gestionnaires: Vec<Choix>,
     form: DevisForm,
+    /// La note de la barre du bas : les informations s'enregistrent toutes seules.
+    enregistrement: Enregistrement,
     /// Le bloc « Acomptes » (comme dans Vertuoza, onglet Informations).
     acomptes: Acomptes,
 }
@@ -493,6 +503,7 @@ fn construire_page(id: i64, d: &Devis, form: DevisForm, erreurs: Vec<String>, re
         architectes: choix_base(&contacts, &form.architecte_id),
         gestionnaires: choix_base(&contacts, &form.gestionnaire_id),
         form,
+        enregistrement: Enregistrement::default(),
         acomptes: Acomptes::default(),
     }
 }
@@ -545,27 +556,32 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(retour): Query<Retour
     Ok(Html(page.render()?))
 }
 
-async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(form): Form<DevisForm>) -> Result<Response, Erreur> {
+/// Enregistre les informations d'un brouillon. Le formulaire s'envoie tout seul (htmx) à chaque changement : chaque
+/// valeur valable est gardée, une valeur refusée garde la précédente. La réponse est la page entière ; htmx n'en
+/// reprend que la note de la barre du bas (« Enregistré à 14:32 ») et l'en-tête (client, référence).
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, entetes: HeaderMap, Form(form): Form<DevisForm>) -> Result<Response, Erreur> {
     let devis = charger_devis(&mut *db, id).await?.ok_or_else(Erreur::introuvable)?;
     if devis.statut != "brouillon" {
         return Err(Erreur::conflit("Ce devis n'est plus un brouillon : il ne peut plus être modifié."));
     }
     let referentiel = Referentiel::charger(&mut *db).await?;
-    match valider(&form, &referentiel, devis.chantier_id.is_some(), devis.chantier_id.is_none().then_some(devis.annee)) {
-        Ok(valeurs) => {
-            if enregistrer_en_base(&mut *db, id, &valeurs).await? {
-                Ok(Redirect::to(&format!("/devis/{id}?ok=1")).into_response())
-            } else {
-                Err(Erreur::conflit("Ce devis n'est plus un brouillon : il ne peut plus être modifié."))
-            }
-        }
-        Err(erreurs) => {
-            let barre = charger_barre(&mut *db, id).await?;
-            let mut page = construire_page(id, &devis, form, erreurs, &Retour::default(), barre, &referentiel);
-            page.acomptes = charger_acomptes(&mut *db, id, devis.chantier_id.is_some()).await?;
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
-        }
+    let (valeurs, erreurs) = lire(&form, &devis, &referentiel, devis.chantier_id.is_some(), devis.chantier_id.is_none().then_some(devis.annee));
+    if !enregistrer_en_base(&mut *db, id, &valeurs).await? {
+        return Err(Erreur::conflit("Ce devis n'est plus un brouillon : il ne peut plus être modifié."));
     }
+    if crate::composants::par_htmx(&entetes) {
+        let barre = charger_barre(&mut *db, id).await?;
+        let mut page = construire_page(id, &devis, form, Vec::new(), &Retour::default(), barre, &referentiel);
+        page.enregistrement = Enregistrement::maintenant(&mut *db, erreurs).await?;
+        return Ok(Html(page.render()?).into_response());
+    }
+    if erreurs.is_empty() {
+        return Ok(Redirect::to(&format!("/devis/{id}?ok=1")).into_response());
+    }
+    let barre = charger_barre(&mut *db, id).await?;
+    let mut page = construire_page(id, &devis, form, erreurs, &Retour::default(), barre, &referentiel);
+    page.acomptes = charger_acomptes(&mut *db, id, devis.chantier_id.is_some()).await?;
+    Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
 }
 
 pub fn routes() -> Router<AppState> {

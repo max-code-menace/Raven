@@ -1,7 +1,7 @@
 {% import "_ui.html" as ui %}
 {# En-tête commun aux onglets d'un devis ou d'un avenant (design de Raven, étape 4) : retour, numéro et pastille de statut,
    client et référence, deux boutons (aperçu, envoi) et le menu « … » (chaque décision est notée dans l'historique), onglets. #}
-<header class="rv-tete rv-tete--fiche">
+<header class="rv-tete rv-tete--fiche" id="devis-tete">
   <div class="rv-tete-texte">
     <a class="rv-retour" href="{{ barre.retour }}">{% call ui::icone("gauche", 14) %}{% endcall %}{% if barre.avenant %}{{ crate::profil::mot("Chantier") }}{% else %}Devis{% endif %}</a>
     <div class="rv-tete-titre">

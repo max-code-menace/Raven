@@ -148,6 +148,32 @@ pub fn recap(t: &calcul::Totaux, libelle_ajustement: &str) -> Recap {
     Recap { lignes, ttc: format_euros(t.ttc_cents) }
 }
 
+// ─── Enregistrement automatique ─────────────────────────────────────────────
+
+/// Ce que dit la barre du bas d'un formulaire qui s'enregistre tout seul (macro `ui::enregistrement`) : à l'ouverture,
+/// que tout s'enregistre automatiquement ; ensuite l'heure du dernier enregistrement, ou les valeurs refusées.
+#[derive(Debug, Default)]
+pub struct Enregistrement {
+    /// « 14:32 » (heure de Bruxelles) ; vide tant que rien n'a été enregistré depuis l'ouverture de la page.
+    pub heure: String,
+    /// Les valeurs refusées : leur champ garde sa valeur précédente, les autres champs sont enregistrés.
+    pub erreurs: Vec<String>,
+}
+
+impl Enregistrement {
+    /// Juste après un enregistrement : l'heure de Bruxelles et ce qui a été refusé.
+    pub async fn maintenant(db: &mut sqlx::PgConnection, erreurs: Vec<String>) -> Result<Self, sqlx::Error> {
+        let heure: String =
+            sqlx::query_scalar("SELECT to_char(now() AT TIME ZONE 'Europe/Brussels', 'HH24:MI')").fetch_one(&mut *db).await?;
+        Ok(Enregistrement { heure, erreurs })
+    }
+}
+
+/// La demande vient de l'enregistrement automatique (htmx), pas d'un formulaire envoyé en entier.
+pub fn par_htmx(entetes: &axum::http::HeaderMap) -> bool {
+    entetes.contains_key("hx-request") && !entetes.contains_key("hx-history-restore-request")
+}
+
 // ─── Page de démonstration ──────────────────────────────────────────────────
 
 pub struct ExempleFacture {
