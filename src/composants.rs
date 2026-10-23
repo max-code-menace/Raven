@@ -174,6 +174,22 @@ pub fn par_htmx(entetes: &axum::http::HeaderMap) -> bool {
     entetes.contains_key("hx-request") && !entetes.contains_key("hx-history-restore-request")
 }
 
+/// La réponse à l'enregistrement automatique d'un petit formulaire dans un bloc (une page en a plusieurs : Réglages ›
+/// E-mails) : sa note seule, que htmx met à la place de l'ancienne (`id`).
+#[derive(Template)]
+#[template(path = "_enregistrement.html")]
+pub struct NoteSeule {
+    pub id: String,
+    pub enregistrement: Enregistrement,
+}
+
+impl NoteSeule {
+    pub async fn rendre(db: &mut sqlx::PgConnection, id: String, erreurs: Vec<String>) -> Result<Html<String>, Erreur> {
+        let enregistrement = Enregistrement::maintenant(db, erreurs).await?;
+        Ok(Html(NoteSeule { id, enregistrement }.render()?))
+    }
+}
+
 // ─── Page de démonstration ──────────────────────────────────────────────────
 
 pub struct ExempleFacture {

@@ -84,7 +84,7 @@ pub async fn recalculer(pool: &PgPool, devis: i64) {
 pub async fn remplir(pool: &PgPool, s: &Router) -> Donnees {
     sqlx::query(
         "INSERT INTO societe (nom, nom_abrege, rue, numero, code_postal, ville, email, telephone, numero_tva)
-         VALUES ('Ubique SRL', 'Ubique', 'Rue de l''Exemple', '1', '1300', 'Wavre', 'info@exemple.be', '010 00 00 00', 'BE0123456789')",
+         VALUES ('Ubique SRL', 'Ubique', 'Rue de l''Exemple', '1', '1300', 'Wavre', 'info@exemple.be', '010 00 00 00', 'BE 0123 456 749')",
     )
     .execute(pool)
     .await

@@ -230,10 +230,10 @@ async fn changer_le_statut_et_la_date_de_debut(options: PgPoolOptions, connexion
     let (_, page) = lire(&s, &format!("/chantiers/{id}?ok=1")).await;
     assert!(page.contains("Le chantier est enregistré.") && page.contains("Terminé") && page.contains("12/10/2026"));
 
-    // Valeurs refusées : rien ne change.
+    // Valeurs refusées : la valeur d'avant reste (le reste est enregistré).
     let (_, lieu) = poster(&s, &format!("/chantiers/{id}"), "statut=perdu&date_debut=2026-10-12").await;
     assert_eq!(lieu, Some(format!("/chantiers/{id}?erreur=statut")));
-    let (_, lieu) = poster(&s, &format!("/chantiers/{id}"), "statut=en_cours&date_debut=2026-13-45").await;
+    let (_, lieu) = poster(&s, &format!("/chantiers/{id}"), "statut=termine&date_debut=2026-13-45").await;
     assert_eq!(lieu, Some(format!("/chantiers/{id}?erreur=date")));
     let (_, _, st, debut) = chantier_de(&pool, d).await.unwrap();
     assert_eq!((st.as_str(), debut.as_str()), ("termine", "2026-10-12"));

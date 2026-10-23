@@ -52,7 +52,11 @@
     {% for m in modeles %}
     <details class="u-card" id="modele-{{ m.code }}" style="box-shadow:none"{% if m.ouvert %} open{% endif %}>
       <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>{{ m.nom }}</h2><span class="u-petit u-muet truncate max-w-[50%]">{{ m.objet }}</span></summary>
-      <form method="post" action="/parametres/emails/{{ m.code }}" class="u-card-b">
+      {# Enregistrement automatique : chaque formulaire de cette page part tout seul 0,6 s après la dernière frappe et
+         ne reçoit en réponse que sa note. #}
+      <form method="post" action="/parametres/emails/{{ m.code }}" class="u-card-b"
+        hx-post="/parametres/emails/{{ m.code }}" hx-trigger="input delay:600ms, change" hx-sync="this:queue last"
+        hx-target="#etat-modele-{{ m.code }}" hx-swap="outerHTML">
         <label class="form-control">
           <span class="u-lbl">Objet <i>*</i></span>
           <input class="input input-bordered" type="text" name="objet" value="{{ m.objet }}" maxlength="300" required>
@@ -61,14 +65,15 @@
           <span class="u-lbl">Message</span>
           <textarea class="textarea textarea-bordered" name="corps" rows="12">{{ m.corps }}</textarea>
         </label>
-        <button class="btn btn-primary btn-sm self-end" type="submit">Enregistrer le modèle</button>
+        {% call ui::enregistrement(vide, m.note) %}{% endcall %}
       </form>
     </details>
     {% endfor %}
   </div>
 </section>
 
-<form class="u-card" id="rappels" method="post" action="/parametres/rappels">
+<form class="u-card" id="rappels" method="post" action="/parametres/rappels"
+  hx-post="/parametres/rappels" hx-trigger="input delay:600ms, change" hx-sync="this:queue last" hx-target="#etat-rappels" hx-swap="outerHTML">
   <div class="u-card-h"><h2>{% call ui::icone("cloche", 17) %}{% endcall %}Rappels de paiement</h2><a class="u-petit" href="/factures/rappels">Voir les factures à relancer</a></div>
   <div class="u-grille-champs">
     <label class="form-control">
@@ -79,12 +84,13 @@
       <span class="u-lbl">Rappel suivant (« Rappel de paiement »), jours après le précédent</span>
       <input class="input input-bordered" type="number" name="suivant" min="1" max="365" value="{{ rappel_suivant }}" required>
     </label>
-    <div class="flex items-end"><button class="btn btn-primary btn-sm" type="submit">Enregistrer les délais</button></div>
+    <div class="flex items-end pb-3">{% call ui::enregistrement(vide, "etat-rappels") %}{% endcall %}</div>
   </div>
   <p class="u-petit u-muet px-[18px] pb-4" style="margin:0">Semi-automatique : l'application propose chaque jour les factures à relancer (écran Rappels de paiement, tableau de bord, fiche de la facture) ; rien ne part sans votre clic.</p>
 </form>
 
-<form class="u-card" method="post" action="/parametres/rappels/mentions">
+<form class="u-card" method="post" action="/parametres/rappels/mentions"
+  hx-post="/parametres/rappels/mentions" hx-trigger="input delay:600ms, change" hx-sync="this:queue last" hx-target="#etat-mentions" hx-swap="outerHTML">
   <div class="u-card-h"><h2>{% call ui::icone("attention", 17) %}{% endcall %}Rappels : ce qu'on peut réclamer</h2></div>
   <div class="u-card-b">
     <p class="u-petit u-muet" style="margin:0">Chaque rappel se termine par des mentions légales que le serveur ajoute et que vous ne pouvez pas retirer (créancier, facture, montant dû, délai de 14 jours dès le lendemain de l'envoi). Ces réglages décident de ce qu'elles annoncent. <strong>Envers un particulier</strong> (client sans numéro de TVA) : le rappel est gratuit, et une indemnité ou des intérêts ne sont annoncés que si vos conditions générales les prévoient. <strong>Envers une entreprise</strong> (client avec un numéro de TVA) : intérêts légaux et 40 € d'indemnité forfaitaire sont annoncés (loi du 2 août 2002).</p>
@@ -100,7 +106,7 @@
       <input class="checkbox checkbox-sm" type="checkbox" name="pme" {% if rappel_pme %}checked{% endif %}>
       <span>Mon entreprise est une PME (art. 1:24 du Code des sociétés et des associations) : les intérêts peuvent courir dès le début du délai de 14 jours, mais ne se réclament qu'après son expiration sans paiement.</span>
     </label>
-    <button class="btn btn-primary btn-sm self-end" type="submit">Enregistrer</button>
+    {% call ui::enregistrement(vide, "etat-mentions") %}{% endcall %}
   </div>
 </form>
 

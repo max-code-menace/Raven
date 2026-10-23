@@ -11,7 +11,7 @@
       <a class="u-retour" href="/chantiers" aria-label="Retour aux {{ crate::profil::mot("chantiers") }}" title="Retour aux {{ crate::profil::mot("chantiers") }}">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
         <h1>{{ crate::profil::mot("Chantier") }} N° {{ numero }}{% if !reference.is_empty() %} - {{ reference }}{% endif %}</h1>
-        <div class="u-sous-titre">
+        <div class="u-sous-titre" id="chantier-statut">
           <span class="u-pastille {{ classe_statut }}">{{ statut }}</span>
           <span>{{ client }} · Début le {{ date_debut }}</span>
         </div>
@@ -143,7 +143,10 @@
 </div>
 
 <div class="grid gap-4 lg:grid-cols-3 items-start">
-  <form class="u-card" method="post" action="/chantiers/{{ id }}">
+  {# Enregistrement automatique : chaque choix part tout seul ; htmx reprend de la réponse la note du bloc et la
+     pastille de statut de l'en-tête. #}
+  <form class="u-card" method="post" action="/chantiers/{{ id }}" hx-post="/chantiers/{{ id }}" hx-trigger="change" hx-sync="this:queue last"
+    hx-target="#etat-chantier" hx-select="#etat-chantier" hx-swap="outerHTML" hx-select-oob="#chantier-statut">
     <div class="u-card-h"><h2>Suivi</h2></div>
     <div class="u-card-b">
       <label class="form-control">
@@ -158,7 +161,7 @@
         <span class="u-lbl">Début de {{ crate::profil::mot("chantier") }}</span>
         <input class="input input-bordered input-sm" type="date" name="date_debut" value="{{ date_debut_champ }}" required>
       </label>
-      <button class="btn btn-sm self-end" type="submit">Enregistrer</button>
+      {% call ui::enregistrement(enregistrement, "etat-chantier") %}{% endcall %}
     </div>
   </form>
 </div>

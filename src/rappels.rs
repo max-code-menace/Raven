@@ -9,6 +9,7 @@ use askama::Template;
 use axum::{
     Router,
     extract::{Path, Query},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -337,17 +338,30 @@ struct Delais {
     suivant: String,
 }
 
-async fn enregistrer_delais(mut db: Base, Form(d): Form<Delais>) -> Result<Redirect, Erreur> {
-    let lire = |t: &str| t.trim().parse::<i32>().ok().filter(|n| (1..=365).contains(n));
-    let (Some(premier), Some(suivant)) = (lire(&d.premier), lire(&d.suivant)) else {
-        return Ok(Redirect::to("/parametres/emails?erreur=delais#rappels"));
+/// Les délais des rappels. Le formulaire s'envoie tout seul (htmx) : un délai refusé garde le précédent ; la réponse
+/// est la note du bloc seule.
+async fn enregistrer_delais(mut db: Base, entetes: HeaderMap, Form(d): Form<Delais>) -> Result<Response, Erreur> {
+    let (premier_avant, suivant_avant): (i32, i32) =
+        sqlx::query_as("SELECT rappel_premier_jours, rappel_suivant_jours FROM reglages WHERE organisation_id = app_organisation()").fetch_one(&mut *db).await?;
+    let mut erreurs = Vec::new();
+    let mut lire = |t: &str, avant: i32, nom: &str| {
+        t.trim().parse::<i32>().ok().filter(|n| (1..=365).contains(n)).unwrap_or_else(|| {
+            erreurs.push(format!("{nom} : un nombre de jours entre 1 et 365."));
+            avant
+        })
     };
+    let premier = lire(&d.premier, premier_avant, "Premier rappel");
+    let suivant = lire(&d.suivant, suivant_avant, "Rappel suivant");
     sqlx::query("UPDATE reglages SET rappel_premier_jours = $1, rappel_suivant_jours = $2, updated_at = now() WHERE organisation_id = app_organisation()")
         .bind(premier)
         .bind(suivant)
         .execute(&mut *db)
         .await?;
-    Ok(Redirect::to("/parametres/emails?ok=delais#rappels"))
+    if crate::composants::par_htmx(&entetes) {
+        return Ok(crate::composants::NoteSeule::rendre(&mut db, "etat-rappels".into(), erreurs).await?.into_response());
+    }
+    let suite = if erreurs.is_empty() { "ok" } else { "erreur" };
+    Ok(Redirect::to(&format!("/parametres/emails?{suite}=delais#rappels")).into_response())
 }
 
 #[derive(Deserialize, Default)]
@@ -358,16 +372,22 @@ struct Mentions {
     pme: Option<String>,
 }
 
-/// Les trois réglages qui décident ce qu'un rappel peut réclamer à un particulier (voir `retard.rs`).
-async fn enregistrer_mentions(mut db: Base, Form(m): Form<Mentions>) -> Result<Redirect, Erreur> {
+/// Les trois réglages qui décident ce qu'un rappel peut réclamer à un particulier (voir `retard.rs`). Le formulaire
+/// s'envoie tout seul (htmx) : un taux refusé garde le précédent, les cases sont gardées ; la réponse est la note seule.
+async fn enregistrer_mentions(mut db: Base, entetes: HeaderMap, Form(m): Form<Mentions>) -> Result<Response, Erreur> {
     // Un taux en pour cent (« 8 » ou « 8,5 ») devient des centièmes de pour cent ; vide = pas d'intérêts de retard.
     let interets = if m.interets.trim().is_empty() {
         Some(None)
     } else {
         crate::fiches::euros_vers_centimes(&m.interets).filter(|c| (0..=3000).contains(c)).map(|c| Some(c as i32))
     };
-    let Some(interets) = interets else {
-        return Ok(Redirect::to("/parametres/emails?erreur=mentions#rappels"));
+    let mut erreurs = Vec::new();
+    let interets = match interets {
+        Some(i) => i,
+        None => {
+            erreurs.push("Le taux d'intérêt est un nombre entre 0 et 30 (par exemple 8 ou 8,5), ou vide.".to_string());
+            sqlx::query_scalar("SELECT rappel_interets_particuliers FROM reglages WHERE organisation_id = app_organisation()").fetch_one(&mut *db).await?
+        }
     };
     sqlx::query("UPDATE reglages SET rappel_indemnite_particuliers = $1, rappel_interets_particuliers = $2, rappel_pme = $3, updated_at = now() WHERE organisation_id = app_organisation()")
         .bind(m.indemnite.is_some())
@@ -375,7 +395,11 @@ async fn enregistrer_mentions(mut db: Base, Form(m): Form<Mentions>) -> Result<R
         .bind(m.pme.is_some())
         .execute(&mut *db)
         .await?;
-    Ok(Redirect::to("/parametres/emails?ok=mentions#rappels"))
+    if crate::composants::par_htmx(&entetes) {
+        return Ok(crate::composants::NoteSeule::rendre(&mut db, "etat-mentions".into(), erreurs).await?.into_response());
+    }
+    let suite = if erreurs.is_empty() { "ok" } else { "erreur" };
+    Ok(Redirect::to(&format!("/parametres/emails?{suite}=mentions#rappels")).into_response())
 }
 
 pub fn routes() -> Router<AppState> {

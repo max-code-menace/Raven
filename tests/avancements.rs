@@ -274,7 +274,8 @@ async fn valider_figer_remettre_en_brouillon_supprimer(options: PgPoolOptions, c
     // Informations : date et référence.
     let (_, lieu, _) = poster(&s, &format!("{base}/infos"), "date=2026-10-20&reference=Situation%20octobre").await;
     assert_eq!(lieu, Some(format!("{base}?ok=infos")));
-    for (corps, code) in [("date=2026-13-01&reference=X", "erreur=date"), ("date=2026-10-20&reference=%20", "erreur=reference")] {
+    // Une valeur refusée garde la précédente (le reste est enregistré).
+    for (corps, code) in [("date=2026-13-01&reference=Situation%20octobre", "erreur=date"), ("date=2026-10-20&reference=%20", "erreur=reference")] {
         let (_, lieu, _) = poster(&s, &format!("{base}/infos"), corps).await;
         assert_eq!(lieu, Some(format!("{base}?{code}")), "{corps}");
     }

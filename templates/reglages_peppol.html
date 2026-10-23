@@ -76,7 +76,7 @@
   <div class="u-card-h"><h2>Réception des factures fournisseurs</h2></div>
   <div class="u-card-b" style="display:flex;flex-direction:column;gap:12px">
     {% if inscription.reception %}
-    <p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Allumée</span> Vos fournisseurs vous envoient leurs factures par Peppol : elles arrivent dans <a class="underline" href="/achats/recues">Finances › Factures fournisseurs</a>, à rattacher à vos {{ crate::profil::mot("chantiers") }}.{% if !releve_le.is_empty() %} Dernière relève le {{ releve_le }}.{% endif %}</p>
+    <p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Allumée</span> Vos fournisseurs vous envoient leurs factures par Peppol : elles arrivent dans <a class="underline" href="/achats/recues">Paiements › À payer</a>, à rattacher à vos {{ crate::profil::mot("chantiers") }}.{% if !releve_le.is_empty() %} Dernière relève le {{ releve_le }}.{% endif %}</p>
     {% if !inscription.verifiee %}<p class="u-petit" style="margin:0">Votre entreprise ne sera publiée en réception sur le réseau Peppol qu'une fois votre identité vérifiée (étape 2 ci-dessus).</p>{% endif %}
     {% if proprietaire %}
     <details>
