@@ -11,7 +11,7 @@
       <a class="btn btn-sm" href="/achats/recues" aria-label="Retour">‹</a>
       <div>
         <h1>{{ genre }} fournisseur{% if !numero.is_empty() %} n° {{ numero }}{% endif %} · {{ fournisseur }}</h1>
-        <div class="u-sous-titre">{% if traitee %}<span class="u-pastille s-accepte">Traitée</span>{% else %}<span class="u-pastille s-a-envoyer">À traiter</span>{% endif %} Reçue par Peppol le {{ recue }}</div>
+        <div class="u-sous-titre">{% if traitee %}<span class="u-pastille s-accepte">Traitée</span>{% else %}<span class="u-pastille s-a-envoyer">À traiter</span>{% endif %}{% if !paiement.is_empty() %} <span class="u-pastille {{ paiement_classe }}">{{ paiement }}</span>{% endif %} Reçue par Peppol le {{ recue }}</div>
       </div>
     </div>
     <div class="u-actions">
@@ -52,6 +52,7 @@
             <tr><td>Numéro</td><td class="mono">{{ numero }}</td></tr>
             <tr><td>Date</td><td>{{ date }}</td></tr>
             {% if !echeance.is_empty() %}<tr><td>Échéance</td><td>{{ echeance }}</td></tr>{% endif %}
+            {% for r in references %}<tr><td>{{ r.libelle }}</td><td class="mono">{{ r.valeur }}</td></tr>{% endfor %}
             {% if !validation.is_empty() && validation_ok %}<tr><td>Contrôle</td><td>{{ validation }}</td></tr>{% endif %}
           </tbody>
         </table>
@@ -69,15 +70,73 @@
             {% for t in taux %}<tr><td class="u-muet">TVA {{ t.taux }} sur {{ t.base }}</td><td class="n">{{ t.tva }}</td></tr>{% endfor %}
             <tr><td>Total TVA</td><td class="n">{{ tva }}</td></tr>
             <tr><td><strong>Total TTC</strong></td><td class="n"><strong>{{ ttc }}</strong></td></tr>
-            {% if !note_credit %}<tr><td>À payer</td><td class="n">{{ a_payer }}</td></tr>{% endif %}
           </tbody>
         </table>
-        {% if !note_credit && (!iban.is_empty() || !communication.is_empty()) %}
-        <p class="u-petit" style="margin:8px 0 0">{% if !iban.is_empty() %}IBAN <span class="mono">{{ iban }}</span>{% endif %}{% if !communication.is_empty() %} · communication <span class="mono">{{ communication }}</span>{% endif %}</p>
-        {% endif %}
-        {% if note_credit %}<p class="u-petit u-muet" style="margin:8px 0 0">Une note de crédit compte en négatif dans les achats.</p>{% endif %}
+        {% if note_credit %}<p class="u-petit u-muet" style="margin:8px 0 0">Une note de crédit compte en négatif dans les achats. Elle ne se paie pas : elle réduit ce que vous devez au fournisseur.</p>{% endif %}
       </div>
     </section>
+    {% if !note_credit %}
+    <section class="u-card" id="paiement">
+      <div class="u-card-h"><h2>Paiement</h2><span class="u-pastille {{ paiement_classe }}">{{ paiement }}</span></div>
+      <div class="u-ligne-montant"><span>À payer (TTC)</span><span>{{ a_payer }}</span></div>
+      <div class="u-ligne-montant"><span>Payé</span><span style="color:#1C6B3C">{{ paye }}</span></div>
+      <div class="u-ligne-montant" style="font-weight:600;background:#F2F8F8"><span>Reste à payer</span><span>{{ reste_a_payer }}</span></div>
+      {% for p in paiements %}
+      <div class="u-ligne-montant items-center">
+        <span>{{ p.date }} · {{ p.methode }}{% if !p.remarque.is_empty() %}<small class="block u-muet">{{ p.remarque }}</small>{% endif %}</span>
+        <span class="flex items-center gap-1"><b style="font-weight:500">{{ p.montant }}</b>
+          <details class="u-menu">
+            <summary class="btn u-ib" aria-label="Retirer ce paiement" title="Retirer ce paiement">{% call ui::icone("corbeille", 15) %}{% endcall %}</summary>
+            <form method="post" action="/achats/recues/{{ id }}/paiements/{{ p.id }}/supprimer" class="u-menu-liste u-menu-form">
+              <span class="u-petit">Retirer ce paiement de {{ p.montant }} ?</span>
+              <button class="btn btn-danger btn-sm" type="submit">Retirer le paiement</button>
+            </form>
+          </details>
+        </span>
+      </div>
+      {% else %}
+      <div class="u-ligne-montant u-muet">Aucun paiement enregistré.</div>
+      {% endfor %}
+      <div class="u-card-b" style="border-top:1px solid #E9EBE7">
+        <div><span class="u-cle">Échéance</span>{% if echeance.is_empty() %}<span class="u-muet">pas indiquée par le fournisseur</span>{% else %}<span{% if en_retard %} style="color:#953A0A;font-weight:600"{% endif %}>{{ echeance }}{% if en_retard %} · {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %} de retard{% endif %}</span>{% endif %}</div>
+        {% if !iban.is_empty() %}<div><span class="u-cle">IBAN du fournisseur</span><span class="mono">{{ iban }}</span></div>{% endif %}
+        {% if !communication.is_empty() %}<div><span class="u-cle">Communication</span><span class="mono">{{ communication }}</span></div>{% endif %}
+        {% if a_payer_encore %}
+        <details class="u-card" style="box-shadow:none"{% if payer_ouvert %} open{% endif %}>
+          <summary class="u-card-h" style="padding:9px 12px"><span class="u-chevron flex">{% call ui::icone("bas", 14) %}{% endcall %}</span><h2 style="font-size:13.5px">Ajouter un paiement</h2></summary>
+          <form method="post" action="/achats/recues/{{ id }}/paiements" class="u-card-b">
+            <div class="u-segment" role="radiogroup" aria-label="Type de paiement">
+              <label class="flex items-center gap-1 px-2 text-[13px] whitespace-nowrap"><input class="radio radio-xs" type="radio" name="genre" value="complet" checked> Complet</label>
+              <label class="flex items-center gap-1 px-2 text-[13px] whitespace-nowrap"><input class="radio radio-xs" type="radio" name="genre" value="partiel"> Partiel</label>
+            </div>
+            <div class="grid gap-3 grid-cols-2">
+              <label class="form-control">
+                <span class="u-lbl">Date du paiement</span>
+                <input class="input input-bordered input-sm" type="date" name="date" value="{{ aujourdhui }}" max="{{ aujourdhui }}" required>
+              </label>
+              <label class="form-control">
+                <span class="u-lbl">Montant TTC (partiel)</span>
+                <input class="input input-bordered input-sm text-right" type="text" inputmode="decimal" name="montant" value="{{ reste_a_payer_saisie }}">
+              </label>
+            </div>
+            <label class="form-control">
+              <span class="u-lbl">Méthode de paiement</span>
+              <select class="select select-bordered select-sm" name="methode_id">
+                {% for m in methodes %}<option value="{{ m.valeur }}"{% if m.choisi %} selected{% endif %}>{{ m.libelle }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="form-control">
+              <span class="u-lbl">Remarque</span>
+              <input class="input input-bordered input-sm" type="text" name="remarque" maxlength="500">
+            </label>
+            <span class="u-petit u-muet">« Complet » enregistre le reste à payer ({{ reste_a_payer }}).</span>
+            <button class="btn btn-primary btn-sm self-end" type="submit">Enregistrer le paiement</button>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
   </div>
 </div>
 
@@ -106,13 +165,14 @@
     <p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Traitée</span> Toute la base HT est répartie.</p>
     {% else %}
     <p class="u-petit" style="margin:0"><strong>Reste à répartir : {{ reste }} HT.</strong></p>
+    {% if !proposition.is_empty() %}<p class="u-petit" style="margin:0">{{ proposition }} Vous pouvez en choisir un autre.</p>{% endif %}
     <form method="post" action="/achats/recues/{{ id }}/rattacher" class="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_auto] items-end" style="margin:0">
       <label class="form-control">
         <span class="u-lbl">Destination</span>
         <select class="select select-bordered select-sm" name="destination" required>
           {% if crate::profil::actuel().achats %}
           <option value="">—</option>
-          {% for c in chantiers %}<option value="{{ c.valeur }}">{{ c.libelle }}</option>{% endfor %}
+          {% for c in chantiers %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
           {% endif %}
           <option value="sans">Sans {{ crate::profil::mot("chantier") }} (frais généraux)</option>
         </select>

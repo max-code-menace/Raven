@@ -127,7 +127,7 @@ async fn les_factures_fournisseurs(options: PgPoolOptions, connexion: PgConnectO
     let (code, page) = lire(&s, "/achats").await;
     assert_eq!(code, StatusCode::OK);
     assert!(page.contains("Factures fournisseurs") && page.contains("Aucun achat saisi") && page.contains("PL45 (n° 1)"));
-    assert!(page.contains("href=\"/achats/recues\" aria-current=\"page\">À payer"), "rangé dans Paiements › À payer");
+    assert!(page.contains("href=\"/achats/recues?vue=a_payer\" aria-current=\"page\">À payer"), "rangé dans Paiements › À payer");
 
     let (_, lieu, _) = poster(&s, "/achats", &format!("chantier={chantier}&date=2026-10-10&montant=1250%2C50&categorie=fourniture&fournisseur=FACQ&description=261684166")).await;
     assert_eq!(lieu.as_deref(), Some("/achats?ok=achat"));

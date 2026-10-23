@@ -106,6 +106,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
     let achats = ids(pool, "SELECT id FROM chantier_achats").await;
     let imports = ids(pool, "SELECT id FROM imports_excel").await;
     let recues = ids(pool, "SELECT id FROM factures_recues").await;
+    let paiements_fournisseurs = ids(pool, "SELECT id FROM paiements_fournisseurs").await;
     ids(pool, "SELECT id FROM devis_metres").await;
     // Les mesures de A, avec leur ligne et leur devis.
     let mesures: Vec<(i64, i64, i64)> = sqlx::query_as(
@@ -193,6 +194,10 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         }
         deux("POST", format!("/achats/recues/{r}/rattacher"));
         deux("POST", format!("/achats/recues/{r}/annuler"));
+        deux("POST", format!("/achats/recues/{r}/paiements"));
+        for &p in &paiements_fournisseurs {
+            deux("POST", format!("/achats/recues/{r}/paiements/{p}/supprimer"));
+        }
     }
     for &e in &exports {
         deux("GET", format!("/exports/{e}/telecharger"));
@@ -222,7 +227,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
     for chemin in [
         "/", "/devis", "/factures", "/factures?statut=en_retard", "/chantiers", "/chantiers?statut=tous", "/entreprises", "/contacts",
         "/bibliotheque", "/bibliotheque/choisir?q=a", "/statistiques", "/statistiques?periode=12_mois", "/exports", "/factures/rappels",
-        "/factures/recurrences", "/achats", "/achats/recues", "/achats/recues?vue=toutes&ok=filtre", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
+        "/factures/recurrences", "/achats", "/achats/recues", "/achats/recues?vue=toutes&ok=filtre", "/achats/recues?vue=a_payer&ok=filtre", "/achats/recues?vue=payees&ok=filtre", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
         "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/parametres/peppol", "/parametres/bibliotheques", "/bibliotheque?vue=supprimes", "/bibliotheque?vue=a_completer", "/bibliotheque?vue=miens",
         "/admin", "/admin/catalogue", "/admin/organisations", "/admin/catalogue/graphisme.graphisme", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
     ] {

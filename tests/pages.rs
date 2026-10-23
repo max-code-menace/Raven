@@ -471,7 +471,7 @@ async fn le_menu_a_huit_espaces_qui_menent_tous_a_un_ecran(options: PgPoolOption
     let (_, page) = lire(&s, "/factures/recurrences").await;
     assert!(page.contains("href=\"/factures?genre=note_credit\">Notes de crédit") && page.contains("is-on\" href=\"/factures/recurrences\""));
     let (_, page) = lire(&s, "/factures/rappels").await;
-    assert!(page.contains("is-on\" href=\"/factures/rappels\" aria-current=\"page\">À recevoir") && page.contains("href=\"/achats/recues\">À payer"));
+    assert!(page.contains("is-on\" href=\"/factures/rappels\" aria-current=\"page\">À recevoir") && page.contains("href=\"/achats/recues?vue=a_payer\">À payer"));
     let (_, page) = lire(&s, "/parametres/emails").await;
     assert!(page.contains("href=\"/parametres/peppol\">Peppol") && page.contains("is-on\" href=\"/parametres/emails\""));
     let (_, page) = lire(&s, "/contacts").await;

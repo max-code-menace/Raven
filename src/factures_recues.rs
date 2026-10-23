@@ -37,6 +37,7 @@ use sqlx::{FromRow, PgConnection};
 use crate::base::Base;
 use crate::commun::{Choix, echapper_like, format_euros};
 use crate::fiches::euros_vers_centimes;
+use crate::paiements_fournisseurs;
 use crate::suivi_chantier::{CATEGORIES, libelle_categorie};
 use crate::{AppState, Erreur, peppol};
 
@@ -173,6 +174,119 @@ fn lire_document(doc: &Value) -> Result<Lu, String> {
 /// Le numéro de TVA écrit sans espace ni point, en majuscules (« BE 0123.456.749 » → « BE0123456749 »).
 fn tva_compacte(tva: &str) -> String {
     tva.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_uppercase()
+}
+
+// ─── Références du document : le chantier proposé d'office ──────────────────
+
+/// Les références qu'un fournisseur recopie sur sa facture (UBL) : c'est là qu'il écrit d'habitude la référence du
+/// chantier que son client lui a donnée. (élément, élément lu dedans, nom en clair)
+const REFERENCES: [(&str, Option<&str>, &str); 4] = [
+    ("BuyerReference", None, "Référence de l'acheteur"),
+    ("OrderReference", Some("ID"), "Bon de commande"),
+    ("ProjectReference", Some("ID"), "Projet"),
+    ("ContractDocumentReference", Some("ID"), "Contrat"),
+];
+
+pub struct Reference {
+    pub libelle: &'static str,
+    pub valeur: String,
+}
+
+/// Le contenu du premier élément `nom` d'un morceau de XML, quel que soit son préfixe (« cbc:ID » ou « ID »), sans le
+/// décoder. Raven n'a pas besoin d'un vrai lecteur de XML pour ces quelques éléments simples.
+fn element<'a>(xml: &'a str, nom: &str) -> Option<&'a str> {
+    let mut reste = xml;
+    while let Some(debut) = reste.find('<') {
+        reste = &reste[debut + 1..];
+        let fin_nom = reste.find(|c: char| c == '>' || c == '/' || c.is_whitespace())?;
+        let balise = &reste[..fin_nom];
+        if balise.is_empty() || balise.rsplit(':').next() != Some(nom) {
+            continue;
+        }
+        let ouverture = reste.find('>')?;
+        if reste[..ouverture].ends_with('/') {
+            return Some("");
+        }
+        let contenu = &reste[ouverture + 1..];
+        return contenu.find(&format!("</{balise}>")).map(|fin| &contenu[..fin]);
+    }
+    None
+}
+
+/// Le texte d'un élément XML : entités remplacées, espaces resserrés.
+fn texte_xml(brut: &str) -> String {
+    let t = brut.trim();
+    let t = match t.strip_prefix("<![CDATA[").and_then(|x| x.strip_suffix("]]>")) {
+        Some(cdata) => cdata.to_string(),
+        None => t.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&"),
+    };
+    t.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Les références trouvées dans le XML reçu, dans l'ordre de `REFERENCES`.
+fn references(xml: &str) -> Vec<Reference> {
+    REFERENCES
+        .iter()
+        .filter_map(|(nom, dedans, libelle)| {
+            let bloc = element(xml, nom)?;
+            let brut = match dedans {
+                Some(d) => element(bloc, d)?,
+                None => bloc,
+            };
+            let valeur = texte_xml(brut);
+            (!valeur.is_empty()).then_some(Reference { libelle, valeur })
+        })
+        .collect()
+}
+
+/// Un texte réduit à ses lettres et chiffres, en majuscules (« Maison Dupont » → « MAISONDUPONT »).
+fn cle(texte: &str) -> String {
+    texte.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_uppercase).collect()
+}
+
+/// Les codes d'un texte : les mots qui mêlent lettres et chiffres (« PL46 », « PL-46 » → « PL46 »), en majuscules. Un
+/// nombre seul (une année, une quantité) n'en est pas un.
+fn codes(texte: &str) -> Vec<String> {
+    let mut codes: Vec<String> = Vec::new();
+    for mot in texte.split(|c: char| !(c.is_alphanumeric() || matches!(c, '-' | '.' | '_'))) {
+        for morceau in std::iter::once(mot).chain(mot.split(['-', '.', '_'])) {
+            let code = cle(morceau);
+            let est_code = code.chars().count() >= 3 && code.chars().any(|c| c.is_ascii_digit()) && code.chars().any(char::is_alphabetic);
+            if est_code && !codes.contains(&code) {
+                codes.push(code);
+            }
+        }
+    }
+    codes
+}
+
+/// Le chantier proposé d'office : celui dont la référence entière, ou un code de sa référence (« PL46 » dans
+/// « PL46 Salle de bain »), se retrouve dans une référence de la facture. Les chantiers en cours d'abord ; rien n'est
+/// proposé quand plusieurs correspondent. Renvoie le chantier, la référence de la facture et ce qui a été reconnu.
+fn chantier_propose<'a>(references: &'a [Reference], chantiers: &[(i64, String, bool)]) -> Option<(i64, &'a Reference, String)> {
+    let reconnu = |reference_chantier: &str| {
+        let entiere = cle(reference_chantier);
+        let codes_chantier = codes(reference_chantier);
+        references.iter().find_map(|r| {
+            if entiere.chars().count() >= 3 && cle(&r.valeur) == entiere {
+                return Some((r, r.valeur.clone()));
+            }
+            let codes_facture = codes(&r.valeur);
+            codes_chantier.iter().find(|c| codes_facture.contains(c)).map(|c| (r, c.clone()))
+        })
+    };
+    for en_cours in [true, false] {
+        let mut trouves = chantiers
+            .iter()
+            .filter(|(_, _, e)| *e == en_cours)
+            .filter_map(|(id, reference, _)| reconnu(reference).map(|(r, code)| (*id, r, code)));
+        match (trouves.next(), trouves.next()) {
+            (Some(seul), None) => return Some(seul),
+            (Some(_), Some(_)) => return None,
+            _ => {}
+        }
+    }
+    None
 }
 
 /// La fiche du fournisseur : retrouvée par son numéro de TVA ou son adresse Peppol, sinon créée (profil
@@ -423,10 +537,31 @@ pub struct LigneBoite {
     pub numero: String,
     pub genre: &'static str,
     pub date: String,
+    pub echeance: String,
     pub ht: String,
     pub ttc: String,
     pub a_traiter: bool,
     pub reste: String,
+    /// La pastille de paiement (vide pour une note de crédit) et son détail (« échue le … · 12 jours »).
+    pub paiement: &'static str,
+    pub paiement_classe: &'static str,
+    pub paiement_detail: String,
+}
+
+#[derive(FromRow)]
+struct LigneSql {
+    id: i64,
+    recue: String,
+    fournisseur_nom: String,
+    numero: String,
+    genre: String,
+    date_facture: NaiveDate,
+    date_echeance: Option<NaiveDate>,
+    montant_ht_cents: i64,
+    montant_ttc_cents: i64,
+    reste: i64,
+    #[sqlx(flatten)]
+    solde: paiements_fournisseurs::Solde,
 }
 
 #[derive(Template)]
@@ -437,7 +572,13 @@ struct PageBoite {
     lignes: Vec<LigneBoite>,
     a_traiter: i64,
     traitees: i64,
+    a_payer: i64,
+    payees: i64,
     toutes: i64,
+    /// Ce qui reste à payer aux fournisseurs (toutes les factures reçues), et la part en retard.
+    total_a_payer: String,
+    total_en_retard: String,
+    nombre_en_retard: i64,
     /// La réception est allumée et Peppol configuré : la boîte se relève.
     reception: bool,
     releve_le: String,
@@ -456,29 +597,38 @@ struct RechercheBoite {
 
 async fn page_boite(db: &mut Base, r: RechercheBoite, message_erreur: String) -> Result<Html<String>, Erreur> {
     let vue = match r.vue.as_str() {
-        "traitees" | "toutes" => r.vue.clone(),
+        "traitees" | "a_payer" | "payees" | "toutes" => r.vue.clone(),
         _ => "a_traiter".to_string(),
     };
     let q = r.q.trim().to_string();
     let motif = format!("%{}%", echapper_like(&q));
-    let (a_traiter, traitees): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT count(*) FILTER (WHERE ({RESTE}) <> 0), count(*) FILTER (WHERE ({RESTE}) = 0) FROM factures_recues fr"
+    let (a_traiter, traitees, a_payer, payees): (i64, i64, i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT count(*) FILTER (WHERE ({RESTE}) <> 0), count(*) FILTER (WHERE ({RESTE}) = 0),
+                count(*) FILTER (WHERE e.reste_cents > 0), count(*) FILTER (WHERE e.etat = 'payee')
+         FROM factures_recues fr JOIN factures_recues_etats e ON e.facture_recue_id = fr.id"
     )))
     .fetch_one(&mut **db)
     .await?;
-    let lignes: Vec<(i64, String, String, String, String, NaiveDate, i64, i64, i64)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
-        "SELECT fr.id, to_char(fr.recue_le AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY'), fr.fournisseur_nom, fr.numero, fr.genre,
-                fr.date_facture, fr.montant_ht_cents, fr.montant_ttc_cents, {RESTE}
-         FROM factures_recues fr
-         WHERE ($1 = 'toutes' OR ($1 = 'a_traiter') = (({RESTE}) <> 0))
+    // « À payer » : les plus urgentes d'abord (échéance la plus proche) ; ailleurs, les plus récemment reçues.
+    let lignes: Vec<LigneSql> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+        "SELECT fr.id, to_char(fr.recue_le AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY') AS recue, fr.fournisseur_nom, fr.numero, fr.genre,
+                fr.date_facture, fr.date_echeance, fr.montant_ht_cents, fr.montant_ttc_cents, {RESTE} AS reste,
+                e.paye_cents, e.reste_cents, e.dernier_paiement, e.etat, e.jours_retard
+         FROM factures_recues fr JOIN factures_recues_etats e ON e.facture_recue_id = fr.id
+         WHERE CASE $1 WHEN 'toutes' THEN true
+                       WHEN 'a_traiter' THEN ({RESTE}) <> 0
+                       WHEN 'traitees' THEN ({RESTE}) = 0
+                       WHEN 'a_payer' THEN e.reste_cents > 0
+                       ELSE e.etat = 'payee' END
            AND ($2 = '' OR fr.fournisseur_nom ILIKE $3 OR fr.numero ILIKE $3)
-         ORDER BY fr.recue_le DESC, fr.id DESC LIMIT 200"
+         ORDER BY CASE WHEN $1 = 'a_payer' THEN fr.date_echeance END ASC NULLS LAST, fr.recue_le DESC, fr.id DESC LIMIT 200"
     )))
     .bind(&vue)
     .bind(&q)
     .bind(&motif)
     .fetch_all(&mut **db)
     .await?;
+    let totaux = paiements_fournisseurs::totaux(&mut *db).await?;
     let i = peppol::inscription(&mut *db).await?;
     let releve_le: Option<String> = sqlx::query_scalar(
         "SELECT to_char(peppol_releve_le AT TIME ZONE 'Europe/Brussels', 'DD/MM/YYYY · HH24:MI') FROM organisations WHERE id = app_organisation()",
@@ -490,22 +640,34 @@ async fn page_boite(db: &mut Base, r: RechercheBoite, message_erreur: String) ->
         q,
         lignes: lignes
             .into_iter()
-            .map(|(id, recue, fournisseur, numero, genre, date, ht, ttc, reste)| LigneBoite {
-                id,
-                recue,
-                fournisseur,
-                numero,
-                genre: libelle_genre(&genre),
-                date: date.format("%d/%m/%Y").to_string(),
-                ht: format_euros(signe(&genre) * ht),
-                ttc: format_euros(signe(&genre) * ttc),
-                a_traiter: reste != 0,
-                reste: format_euros(reste),
+            .map(|l| {
+                let (paiement, paiement_classe) = paiements_fournisseurs::etat(&l.solde.etat);
+                LigneBoite {
+                    id: l.id,
+                    recue: l.recue,
+                    fournisseur: l.fournisseur_nom,
+                    numero: l.numero,
+                    genre: libelle_genre(&l.genre),
+                    date: l.date_facture.format("%d/%m/%Y").to_string(),
+                    echeance: l.date_echeance.map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_default(),
+                    ht: format_euros(signe(&l.genre) * l.montant_ht_cents),
+                    ttc: format_euros(signe(&l.genre) * l.montant_ttc_cents),
+                    a_traiter: l.reste != 0,
+                    reste: format_euros(l.reste),
+                    paiement,
+                    paiement_classe,
+                    paiement_detail: l.solde.detail(l.date_echeance),
+                }
             })
             .collect(),
         a_traiter,
         traitees,
+        a_payer,
+        payees,
         toutes: a_traiter + traitees,
+        total_a_payer: format_euros(totaux.a_payer_cents),
+        total_en_retard: format_euros(totaux.en_retard_cents),
+        nombre_en_retard: totaux.nombre_en_retard,
         reception: i.reception && i.societe_id.is_some() && peppol::envoi_actif(),
         releve_le: releve_le.unwrap_or_default(),
         message_ok: match (r.ok.as_str(), r.nouvelles) {
@@ -679,6 +841,23 @@ struct PageRecue {
     reste_saisie: String,
     chantiers: Vec<Choix>,
     categories: Vec<Choix>,
+    /// Les références recopiées par le fournisseur (référence de l'acheteur, bon de commande…).
+    references: Vec<Reference>,
+    /// « Proposé d'office : … » quand une référence de la facture désigne un seul chantier ; vide sinon.
+    proposition: String,
+    /// Le paiement (pas pour une note de crédit) : pastille, montants, échéance, paiements déjà faits.
+    paiement: &'static str,
+    paiement_classe: &'static str,
+    paye: String,
+    reste_a_payer: String,
+    reste_a_payer_saisie: String,
+    a_payer_encore: bool,
+    en_retard: bool,
+    jours_retard: i32,
+    paiements: Vec<crate::paiements::LignePaiement>,
+    methodes: Vec<Choix>,
+    aujourdhui: String,
+    payer_ouvert: bool,
     message_ok: &'static str,
     message_erreur: &'static str,
 }
@@ -688,6 +867,7 @@ struct PageRecue {
 struct Retour {
     ok: String,
     erreur: String,
+    payer: String,
 }
 
 async fn afficher(mut db: Base, Path(id): Path<i64>, Query(r): Query<Retour>) -> Result<Html<String>, Erreur> {
@@ -763,12 +943,46 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(r): Query<Retour>) ->
             montant: format_euros(f.frais_generaux_cents),
         });
     }
-    let chantiers: Vec<(i64, i64, String)> = sqlx::query_as(
-        "SELECT ch.id, ch.numero, d.reference FROM chantiers ch JOIN devis d ON d.id = ch.devis_id
+    let chantiers: Vec<(i64, i64, String, bool)> = sqlx::query_as(
+        "SELECT ch.id, ch.numero, d.reference, ch.statut = 'en_cours' FROM chantiers ch JOIN devis d ON d.id = ch.devis_id
          ORDER BY ch.statut = 'en_cours' DESC, ch.numero DESC",
     )
     .fetch_all(&mut *db)
     .await?;
+    let libelle_chantier = |numero: i64, reference: &str| {
+        if reference.is_empty() { format!("{mot} n° {numero}") } else { format!("{reference} (n° {numero})") }
+    };
+
+    // Le chantier proposé d'office : une référence de la facture désigne un seul chantier (seulement avec le module
+    // des achats, qui permet de rattacher).
+    let xml: String = sqlx::query_scalar("SELECT xml FROM factures_recues WHERE id = $1").bind(id).fetch_one(&mut *db).await?;
+    let references = references(&xml);
+    let propose = if crate::profil::actuel().achats && f.reste != 0 {
+        let candidats: Vec<(i64, String, bool)> = chantiers.iter().map(|(id, _, reference, en_cours)| (*id, reference.clone(), *en_cours)).collect();
+        chantier_propose(&references, &candidats)
+    } else {
+        None
+    };
+    let proposition = match &propose {
+        Some((chantier, r, code)) => chantiers
+            .iter()
+            .find(|(c, _, _, _)| c == chantier)
+            .map(|(_, numero, reference, _)| {
+                format!(
+                    "Proposé d'office : {mot} {}, car la facture porte la référence « {code} » ({}).",
+                    libelle_chantier(*numero, reference),
+                    r.libelle.to_lowercase()
+                )
+            })
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+
+    let solde = paiements_fournisseurs::solde(&mut *db, id).await?;
+    let (paiement, paiement_classe) = paiements_fournisseurs::etat(&solde.etat);
+    let paiements = paiements_fournisseurs::lignes(&mut *db, id).await?;
+    let methodes = crate::paiements::methodes(&mut *db).await?;
+    let aujourdhui: NaiveDate = sqlx::query_scalar("SELECT (now() AT TIME ZONE 'Europe/Brussels')::date").fetch_one(&mut *db).await?;
     let (validation, validation_ok) = match f.validation.as_str() {
         "valid" => ("Conforme (contrôlée par Recommand : EN 16931 et Peppol BIS 3.0)", true),
         "invalid" => ("Non conforme aux règles Peppol : vérifiez-la avec le fournisseur avant de la payer", false),
@@ -805,11 +1019,11 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(r): Query<Retour>) ->
         reste: format_euros(f.reste),
         reste_saisie: format_euros(f.reste.abs()).trim_end_matches("\u{a0}€").replace('\u{a0}', ""),
         chantiers: chantiers
-            .into_iter()
-            .map(|(id, numero, reference)| Choix {
+            .iter()
+            .map(|(id, numero, reference, _)| Choix {
                 valeur: id.to_string(),
-                libelle: if reference.is_empty() { format!("{mot} n° {numero}") } else { format!("{reference} (n° {numero})") },
-                choisi: false,
+                libelle: libelle_chantier(*numero, reference),
+                choisi: propose.as_ref().is_some_and(|(c, _, _)| c == id),
             })
             .collect(),
         categories: CATEGORIES
@@ -817,14 +1031,35 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(r): Query<Retour>) ->
             .enumerate()
             .map(|(i, (v, l))| Choix { valeur: (*v).into(), libelle: crate::profil::categorie(l).into(), choisi: i == 0 })
             .collect(),
+        references,
+        proposition,
+        paiement,
+        paiement_classe,
+        paye: format_euros(solde.paye_cents),
+        reste_a_payer: format_euros(solde.reste_cents),
+        reste_a_payer_saisie: crate::avancement_calcul::euros_a_saisir(solde.reste_cents),
+        a_payer_encore: solde.reste_cents > 0,
+        en_retard: solde.etat == "en_retard",
+        jours_retard: solde.jours_retard,
+        paiements,
+        methodes: methodes.iter().enumerate().map(|(i, (v, l))| Choix { valeur: v.to_string(), libelle: l.clone(), choisi: i == 0 }).collect(),
+        aujourdhui: aujourdhui.format("%Y-%m-%d").to_string(),
+        payer_ouvert: (r.payer == "1" || r.erreur.starts_with("paiement_")) && solde.reste_cents > 0,
         message_ok: match r.ok.as_str() {
             "rattachee" => "La part est enregistrée.",
             "annulee" => "La répartition est annulée : la facture est de nouveau à traiter.",
+            "paiement" => "Le paiement est enregistré.",
+            "payee" => "Le paiement est enregistré : la facture est payée.",
+            "paiement_retire" => "Le paiement est retiré.",
             _ => "",
         },
         message_erreur: match r.erreur.as_str() {
             "montant" => "La part n'est pas enregistrée : indiquez un montant HT positif, au plus le reste à répartir.",
             "destination" => "Choisissez où va cette part.",
+            "paiement_date" => "Le paiement n'est pas enregistré : la date est vide ou dans le futur.",
+            "paiement_montant" => "Le paiement n'est pas enregistré : le montant doit être positif et ne pas dépasser le reste à payer.",
+            "paiement_methode" => "Le paiement n'est pas enregistré : choisissez une méthode de paiement.",
+            "paiement_remarque" => "Le paiement n'est pas enregistré : la remarque est trop longue (500 caractères au maximum).",
             _ => "",
         },
     };
@@ -1086,6 +1321,50 @@ mod tests {
         let mut autre = doc;
         autre["type"] = json!("selfBillingInvoice");
         assert!(lire_document(&autre).is_err());
+    }
+
+    #[test]
+    fn references_du_xml() {
+        let xml = r#"<?xml version="1.0"?><Invoice xmlns:cbc="urn:cbc" xmlns:cac="urn:cac"><cbc:ID>F-77</cbc:ID>
+            <cbc:BuyerReference> Chantier PL46 &amp; Claes </cbc:BuyerReference>
+            <cac:OrderReference><cbc:ID>BC-2026-0412</cbc:ID></cac:OrderReference>
+            <cac:ProjectReference><cbc:ID/></cac:ProjectReference>
+            <cac:InvoiceLine><cac:OrderLineReference><cbc:LineID>1</cbc:LineID></cac:OrderLineReference></cac:InvoiceLine></Invoice>"#;
+        let r = references(xml);
+        let lus: Vec<(&str, &str)> = r.iter().map(|r| (r.libelle, r.valeur.as_str())).collect();
+        assert_eq!(lus, [("Référence de l'acheteur", "Chantier PL46 & Claes"), ("Bon de commande", "BC-2026-0412")]);
+        // Sans préfixe d'espace de noms, et sans référence du tout.
+        assert_eq!(references("<Invoice><BuyerReference>L63</BuyerReference></Invoice>")[0].valeur, "L63");
+        assert!(references("<Invoice><ID>F-1</ID></Invoice>").is_empty());
+    }
+
+    #[test]
+    fn codes_d_une_reference() {
+        assert_eq!(codes("PL46 Salle de bain"), ["PL46"]);
+        assert_eq!(codes("Chantier PL-46 / Claes"), ["PL46"]);
+        assert_eq!(codes("PL46-Claes"), ["PL46CLAES", "PL46"]);
+        assert!(codes("Rénovation 2026, 12 m²").is_empty(), "un nombre seul n'est pas un code");
+        assert_eq!(cle("Maison  Dupont"), "MAISONDUPONT");
+    }
+
+    #[test]
+    fn chantier_propose_d_office() {
+        let refs = |texte: &str| vec![Reference { libelle: "Référence de l'acheteur", valeur: texte.into() }];
+        let chantiers = vec![
+            (1, "L63 Toiture".to_string(), true),
+            (2, "PL46 Salle de bain".to_string(), true),
+            (3, "Maison Dupont".to_string(), false),
+            (4, "PL46 Ancien".to_string(), false),
+        ];
+        let r = refs("Chantier pl46 - Claes");
+        assert_eq!(chantier_propose(&r, &chantiers).map(|(c, _, code)| (c, code)), Some((2, "PL46".into())), "le chantier en cours passe avant le terminé");
+        let r = refs("MAISON DUPONT");
+        assert_eq!(chantier_propose(&r, &chantiers).map(|(c, _, _)| c), Some(3), "la référence entière, même terminée");
+        let r = refs("L63 et PL46");
+        assert_eq!(chantier_propose(&r, &chantiers).map(|(c, _, _)| c), None, "deux chantiers en cours : rien n'est proposé");
+        let r = refs("Commande 2026-118");
+        assert_eq!(chantier_propose(&r, &chantiers).map(|(c, _, _)| c), None);
+        assert!(chantier_propose(&[], &chantiers).is_none());
     }
 
     #[test]

@@ -44,6 +44,7 @@ pub mod metier;
 pub mod organisations;
 pub mod page_client;
 pub mod paiements;
+pub mod paiements_fournisseurs;
 pub mod profil;
 pub mod pdf;
 pub mod peppol;
@@ -168,6 +169,7 @@ fn pages() -> Router<AppState> {
         .merge(metier::routes())
         .merge(peppol::routes())
         .merge(factures_recues::routes())
+        .merge(paiements_fournisseurs::routes())
         .merge(catalogue::routes())
         .merge(suivi_chantier::routes())
         .merge(bibliotheque::routes())
