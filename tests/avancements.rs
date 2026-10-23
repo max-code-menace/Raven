@@ -255,8 +255,11 @@ async fn un_seul_brouillon_a_la_fois(options: PgPoolOptions, connexion: PgConnec
     assert_eq!(lieu, Some(format!("/chantiers/{}/avancements/{av}?erreur=brouillon", ch.id)));
     let n: i64 = sqlx::query_scalar("SELECT count(*) FROM avancements").fetch_one(&pool).await.unwrap();
     assert_eq!(n, 1);
+    // Le brouillon se rouvre depuis l'onglet Finances et depuis la fenêtre « Facturer » ; rien ne propose d'en créer un second.
     let (_, page) = lire(&s, &format!("/chantiers/{}/finances", ch.id)).await;
-    assert!(page.contains("Reprendre le brouillon") && !page.contains("Nouvel avancement"));
+    assert!(page.contains("Ouvrir le brouillon") && !page.contains("Nouvel avancement"));
+    let (_, page) = lire(&s, &format!("/chantiers/{}/facturer", ch.id)).await;
+    assert!(page.contains("Reprendre l'avancement en cours") && !page.contains("Saisir l'avancement"));
 }
 
 #[sqlx::test]

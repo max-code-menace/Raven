@@ -208,11 +208,13 @@ async fn l_exemple_reel_avancement_puis_facture_finale(options: PgPoolOptions, c
     let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/avancements", ex.chantier), "").await;
     assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/finances?erreur=finale", ex.chantier).as_str()));
     let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/factures/acompte", ex.chantier), "mode=pourcentage&valeur=10").await;
-    assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/finances?erreur=finale", ex.chantier).as_str()));
+    assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/facturer?erreur=finale", ex.chantier).as_str()));
     let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/factures/finale", ex.chantier), "").await;
-    assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/finances?erreur=finale", ex.chantier).as_str()));
-    let (_, page) = lire(&s, &format!("/chantiers/{}/finances?erreur=finale", ex.chantier)).await;
+    assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/facturer?erreur=finale", ex.chantier).as_str()));
+    let (_, page) = lire(&s, &format!("/chantiers/{}/facturer?erreur=finale", ex.chantier)).await;
     assert!(page.contains("déjà sa facture finale"));
+    // La fenêtre « Facturer » dit que le chantier est soldé, sans plus rien proposer.
+    assert!(page.contains("Soldé") && page.contains("-126</a>") && !page.contains("Créer l'acompte"), "{page}");
 }
 
 #[sqlx::test]
@@ -230,7 +232,7 @@ async fn l_acompte_est_deduit_de_la_facture_finale(options: PgPoolOptions, conne
 
     // Tant que l'acompte est en brouillon, la facture finale attend.
     let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/factures/finale", ex.chantier), "").await;
-    assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/finances?erreur=facture_brouillon", ex.chantier).as_str()));
+    assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/facturer?erreur=facture_brouillon", ex.chantier).as_str()));
     assert_eq!(valider_facture(&pool, &s, acompte).await, 125);
 
     // La finale facture tout le chantier (rien n'a été avancé) et déduit l'acompte : 6 603,77 − 1 981,13 = 4 622,64 € HT.
@@ -259,7 +261,7 @@ async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(options: PgPoolOpti
     let ex = exemple(&pool, &s).await;
     for corps in ["mode=pourcentage&valeur=0", "mode=montant&valeur=999999", "mode=pourcentage&valeur=abc", "mode=x&valeur=10"] {
         let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/factures/acompte", ex.chantier), corps).await;
-        assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/finances?erreur=acompte", ex.chantier).as_str()), "{corps}");
+        assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/facturer?erreur=acompte", ex.chantier).as_str()), "{corps}");
     }
     let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/factures/acompte", ex.chantier), "mode=montant&valeur=1000").await;
     let acompte = id_facture(lieu);
@@ -269,7 +271,7 @@ async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(options: PgPoolOpti
     // Un avancement en brouillon bloque la finale.
     poster(&s, &format!("/chantiers/{}/avancements", ex.chantier), "").await;
     let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/factures/finale", ex.chantier), "").await;
-    assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/finances?erreur=avancement_brouillon", ex.chantier).as_str()));
+    assert_eq!(lieu.as_deref(), Some(format!("/chantiers/{}/facturer?erreur=avancement_brouillon", ex.chantier).as_str()));
     sqlx::query("DELETE FROM avancements WHERE chantier_id = $1").bind(ex.chantier).execute(&pool).await.unwrap();
 
     // Supprimer la finale en brouillon retire aussi son avancement de solde : on peut encore avancer.
@@ -281,6 +283,59 @@ async fn un_acompte_refuse_et_une_finale_brouillon_supprimee(options: PgPoolOpti
     assert_eq!(restants, 0);
     let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/avancements", ex.chantier), "").await;
     assert!(lieu.unwrap().contains("ok=cree"));
+}
+
+/// Le morceau de page entre `debut` et le `fin` qui suit.
+fn morceau<'a>(page: &'a str, debut: &str, fin: &str) -> &'a str {
+    let i = page.find(debut).unwrap_or_else(|| panic!("{debut} absent"));
+    let reste = &page[i..];
+    &reste[..reste.find(fin).map(|j| j + fin.len()).unwrap_or(reste.len())]
+}
+
+#[sqlx::test]
+async fn la_fenetre_facturer_suit_le_chantier(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let s = site(&pool);
+    let ex = exemple(&pool, &s).await;
+    let url = format!("/chantiers/{}/facturer", ex.chantier);
+
+    // Le bouton « Facturer » est sur la fiche du chantier et dans l'onglet Finances.
+    for onglet in ["", "/finances"] {
+        let (_, page) = lire(&s, &format!("/chantiers/{}{onglet}", ex.chantier)).await;
+        assert!(page.contains(&format!("href=\"{url}\"")), "{onglet}");
+    }
+
+    // Au départ : rien de facturé, les trois façons de facturer.
+    let (statut, page) = lire(&s, &url).await;
+    assert_eq!(statut, StatusCode::OK);
+    for attendu in ["Montant du chantier HT", "6\u{a0}603,77\u{a0}€", "Déjà facturé HT", "Reste à facturer HT", "Acompte", "État d'avancement", "Facture finale", "Saisir l'avancement", "Créer l'acompte"] {
+        assert!(page.contains(attendu), "{attendu}");
+    }
+    assert!(morceau(&page, "id=\"finale\"", "</section>").contains("type=\"submit\">Créer la facture finale"));
+
+    // Un avancement en cours : on le reprend, et la facture finale attend.
+    let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/avancements", ex.chantier), "").await;
+    let av: i64 = lieu.unwrap().rsplit('/').next().unwrap().split('?').next().unwrap().parse().unwrap();
+    let (_, page) = lire(&s, &url).await;
+    assert!(page.contains(&format!("href=\"/chantiers/{}/avancements/{av}\">Reprendre l'avancement en cours", ex.chantier)));
+    let finale = morceau(&page, "id=\"finale\"", "</section>");
+    assert!(finale.contains("Terminez d'abord l'état d'avancement en cours") && finale.contains("disabled"), "{finale}");
+
+    // Validé, pas encore facturé : un bouton le facture directement.
+    poster(&s, &format!("/chantiers/{}/avancements/{av}/lignes/l{}", ex.chantier, ex.a), "pourcentage=50").await;
+    poster(&s, &format!("/chantiers/{}/avancements/{av}/valider", ex.chantier), "").await;
+    let (_, page) = lire(&s, &url).await;
+    assert!(page.contains(&format!("action=\"/chantiers/{}/avancements/{av}/facturer\"", ex.chantier)) && page.contains("Facturer l'avancement n° 1"));
+
+    // Facturé (brouillon) : la fenêtre le signale ; une fois validé, il compte dans le « Déjà facturé ».
+    let (_, lieu, _) = poster(&s, &format!("/chantiers/{}/avancements/{av}/facturer", ex.chantier), "").await;
+    let facture = id_facture(lieu);
+    let (_, page) = lire(&s, &url).await;
+    assert!(page.contains(&format!("href=\"/factures/{facture}\">Ouvrir la facture")) && page.contains("Saisir l'avancement"));
+    valider_facture(&pool, &s, facture).await;
+    let (_, page) = lire(&s, &url).await;
+    assert!(page.contains("3\u{a0}000,00\u{a0}€") && page.contains("45,43 %"), "{page}");
+    assert!(!page.contains("Ouvrir la facture"));
 }
 
 #[sqlx::test]
