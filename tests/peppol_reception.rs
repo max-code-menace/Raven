@@ -291,7 +291,7 @@ async fn reception_releve_rattachement_et_export(options: PgPoolOptions, connexi
     // Ouvrir la boîte relève : deux pièces enregistrées, tout est marqué lu chez Recommand.
     let r = lire(&s, "/achats/recues", &cookie).await;
     assert_eq!(r.statut, StatusCode::OK);
-    assert!(r.corps.contains("Matériaux SA") && r.corps.contains("F-2026-77") && r.corps.contains("NC-3") && r.corps.contains("À traiter"), "{}", r.corps);
+    assert!(r.corps.contains("Matériaux SA") && r.corps.contains("F-2026-77") && r.corps.contains("NC-3") && r.corps.contains("À rattacher"), "{}", r.corps);
     assert!(!r.corps.contains("X-1"));
     assert_eq!(un::<i64>(&pool, "SELECT count(*) FROM factures_recues").await, 2);
     let non_lus = etat.lock().unwrap().non_lus.clone();
@@ -305,13 +305,13 @@ async fn reception_releve_rattachement_et_export(options: PgPoolOptions, connexi
     let r = poster(&s, "/achats/recues/relever", "", &cookie).await;
     assert_eq!(r.lieu.as_deref(), Some("/achats/recues?ok=releve&nouvelles=0"));
     assert_eq!(un::<i64>(&pool, "SELECT count(*) FROM factures_recues").await, 2);
-    assert!(lire(&s, "/", &cookie).await.corps.contains("2\u{a0}factures fournisseurs reçues par Peppol à traiter"));
+    assert!(lire(&s, "/", &cookie).await.corps.contains("2\u{a0}factures fournisseurs reçues par Peppol à rattacher"));
 
     // La facture : fournisseur, lignes, montants, PDF du fournisseur, XML tel quel.
     let facture: i64 = un(&pool, "SELECT id FROM factures_recues WHERE numero = 'F-2026-77'").await;
     let note: i64 = un(&pool, "SELECT id FROM factures_recues WHERE numero = 'NC-3'").await;
     let r = lire(&s, &format!("/achats/recues/{facture}"), &cookie).await;
-    for attendu in ["Matériaux SA", "BE0987654394", "Ciment", "Sacs de 25 kg", "150,04", "26,04", "BE68539007547034", "Conforme", "Reste à répartir : 124,00"] {
+    for attendu in ["Matériaux SA", "BE0987654394", "Ciment", "Sacs de 25 kg", "150,04", "26,04", "BE68539007547034", "Conforme", "Reste à rattacher : 124,00"] {
         assert!(r.corps.contains(attendu), "« {attendu} » manque : {}", r.corps);
     }
     assert_eq!(lire(&s, &format!("/achats/recues/{facture}/pdf"), &cookie).await.octets, b"%PDF-1.4 facture F-2026-77");
@@ -349,10 +349,10 @@ async fn reception_releve_rattachement_et_export(options: PgPoolOptions, connexi
         .await
         .unwrap();
     assert_eq!(achat, (10_000, "Matériaux SA".to_string(), "Facture n° F-2026-77".to_string()));
-    assert!(lire(&s, &format!("/achats/recues/{facture}"), &cookie).await.corps.contains("Reste à répartir : 24,00"));
+    assert!(lire(&s, &format!("/achats/recues/{facture}"), &cookie).await.corps.contains("Reste à rattacher : 24,00"));
     poster(&s, &format!("/achats/recues/{facture}/rattacher"), "destination=sans&montant=24", &cookie).await;
     let r = lire(&s, &format!("/achats/recues/{facture}"), &cookie).await;
-    assert!(r.corps.contains("Toute la base HT est répartie") && r.corps.contains("frais généraux"), "{}", r.corps);
+    assert!(r.corps.contains("Tout le montant HT est rattaché") && r.corps.contains("frais généraux"), "{}", r.corps);
     // Le chantier voit l'achat (budget et rentabilité).
     assert!(lire(&s, &format!("/chantiers/{chantier}/finances"), &cookie).await.corps.contains("Facture n° F-2026-77"));
 
@@ -362,13 +362,13 @@ async fn reception_releve_rattachement_et_export(options: PgPoolOptions, connexi
     assert_eq!(montant, -2_000);
     let r = lire(&s, "/achats/recues?vue=traitees&ok=filtre", &cookie).await;
     assert!(r.corps.contains("F-2026-77") && r.corps.contains("NC-3"));
-    assert!(lire(&s, "/achats/recues?ok=filtre", &cookie).await.corps.contains("Aucune facture à traiter"));
+    assert!(lire(&s, "/achats/recues?ok=filtre", &cookie).await.corps.contains("Aucune facture à rattacher"));
 
     // Annuler la répartition : l'achat quitte le chantier, la note est de nouveau à traiter.
     poster(&s, &format!("/achats/recues/{note}/annuler"), "", &cookie).await;
     let reste: i64 = sqlx::query_scalar("SELECT count(*) FROM chantier_achats WHERE facture_recue_id = $1").bind(note).fetch_one(&mut *db).await.unwrap();
     assert_eq!(reste, 0);
-    assert!(lire(&s, &format!("/achats/recues/{note}"), &cookie).await.corps.contains("Reste à répartir : -20,00"));
+    assert!(lire(&s, &format!("/achats/recues/{note}"), &cookie).await.corps.contains("Reste à rattacher : -20,00"));
 
     // Export pour le comptable : les factures reçues de la période, à part des ventes.
     let aujourdhui = chrono::Local::now().date_naive().to_string();

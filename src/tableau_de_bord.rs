@@ -230,11 +230,19 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     let recues = crate::factures_recues::nombre_a_traiter(&mut *db).await?;
     if recues > 0 {
         alertes.push(Alerte {
-            etiquette: "À traiter".to_string(),
+            etiquette: crate::factures_recues::mot_rattacher("À rattacher").to_string(),
             classe: "rv-pill rv-pill--todo".to_string(),
-            texte: format!("{} par Peppol à traiter (rattacher à un chantier ou classer).", crate::commun::nombre(recues, "facture fournisseur reçue", "factures fournisseurs reçues")),
+            texte: if crate::profil::actuel().achats {
+                format!(
+                    "{} par Peppol à rattacher à un {} (ou en frais généraux).",
+                    crate::commun::nombre(recues, "facture fournisseur reçue", "factures fournisseurs reçues"),
+                    crate::profil::mot("chantier")
+                )
+            } else {
+                format!("{} par Peppol à classer.", crate::commun::nombre(recues, "facture fournisseur reçue", "factures fournisseurs reçues"))
+            },
             lien: "/achats/recues".to_string(),
-            action: "Traiter",
+            action: if crate::profil::actuel().achats { "Rattacher" } else { "Classer" },
         });
     }
     let a_envoyer: i64 = sqlx::query_scalar("SELECT count(*) FROM factures WHERE statut = 'a_envoyer'").fetch_one(&mut *db).await?;

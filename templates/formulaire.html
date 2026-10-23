@@ -12,7 +12,7 @@
     <div class="u-titre">
       <a class="u-retour" href="{{ retour }}" aria-label="Retour à la liste" title="Retour à la liste">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
-        <h1>{{ titre }}</h1>
+        <h1 id="fiche-titre">{{ titre }}</h1>
         <div class="u-sous-titre">{% if est_contact %}Fiche d'une personne{% else %}Fiche d'une société{% endif %}</div>
       </div>
     </div>
@@ -30,7 +30,12 @@
 </div>
 {% endif %}
 
-<form id="fiche" method="post" action="{{ action }}" class="flex flex-col gap-4">
+{# Une fiche existante s'enregistre toute seule : le formulaire part 0,6 s après la dernière frappe (ou à la sortie d'un
+   champ), une demande à la fois ; htmx ne reprend de la réponse que la note de la barre du bas et le titre (le nom).
+   Une nouvelle fiche se crée par son bouton (on ne crée pas une fiche à moitié remplie). #}
+<form id="fiche" method="post" action="{{ action }}" class="flex flex-col gap-4"
+  {%- if existante %} hx-post="{{ action }}" hx-trigger="input delay:600ms, change" hx-sync="this:queue last"
+  hx-target="#etat-enregistrement" hx-select="#etat-enregistrement" hx-swap="outerHTML" hx-select-oob="#fiche-titre"{% endif %}>
 
   <details class="u-card" open>
     <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Informations générales</h2></summary>
@@ -162,7 +167,11 @@
 
 {% block barre %}
 <div class="u-barre">
+  {% if existante %}
+  {% call ui::enregistrement(enregistrement) %}{% endcall %}
+  {% else %}
   <a class="btn" href="{{ retour }}">Annuler</a>
-  <button class="btn btn-primary" type="submit" form="fiche">Enregistrer</button>
+  <button class="btn btn-primary" type="submit" form="fiche">{% if est_contact %}Créer le contact{% else %}Créer l'entreprise{% endif %}</button>
+  {% endif %}
 </div>
 {% endblock %}

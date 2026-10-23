@@ -8,10 +8,11 @@
 //! - **Archive** : le XML reçu est gardé tel quel avec son empreinte SHA-256, non modifiable (déclencheur), comme
 //!   l'archive des ventes ; le PDF joint par le fournisseur (sinon le rendu de Recommand) l'accompagne.
 //! - **Fournisseur** : retrouvé dans les entreprises par son numéro de TVA (ou son adresse Peppol), sinon créé.
-//! - **Boîte de réception** (Paiements › À payer › Reçues par Peppol) : à traiter / traitées ; une facture
-//!   se **rattache** à un ou plusieurs chantiers (elle devient un achat du chantier : budget et rentabilité à jour) ou
-//!   se classe **sans chantier** (frais généraux). Elle est traitée quand toute sa base HT est répartie (statut
-//!   calculé, jamais enregistré). Une note de crédit fournisseur compte en négatif.
+//! - **Boîte de réception** (Paiements › À payer) : à rattacher / rattachées (dans le code : à traiter / traitées) ;
+//!   une facture se **rattache** à un ou plusieurs chantiers (elle devient un achat du chantier : budget et rentabilité
+//!   à jour) ou se classe **sans chantier** (frais généraux). Elle est rattachée quand toute sa base HT l'est (statut
+//!   calculé, jamais enregistré). Une note de crédit fournisseur compte en négatif. Sans le module des achats (pas de
+//!   chantier où la mettre), les écrans disent « classer » (`mot_rattacher`).
 //! - **Export pour le comptable** : les factures reçues de la période (XML, PDF, récapitulatif), à part des ventes.
 //!
 //! **Sécurité** : le webhook est la seule page sans session qui écrit des données. Il refuse tout sans secret configuré
@@ -989,6 +990,8 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(r): Query<Retour>) ->
         "" => ("", true),
         _ => ("Pas contrôlée par Recommand", true),
     };
+    // Les messages disent « rattacher » avec le module des achats, « classer » sans lui (`mot_rattacher`).
+    let achats = crate::profil::actuel().achats;
     let page = PageRecue {
         id: f.id,
         genre: libelle_genre(&f.genre),
@@ -1046,16 +1049,19 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(r): Query<Retour>) ->
         aujourdhui: aujourdhui.format("%Y-%m-%d").to_string(),
         payer_ouvert: (r.payer == "1" || r.erreur.starts_with("paiement_")) && solde.reste_cents > 0,
         message_ok: match r.ok.as_str() {
-            "rattachee" => "La part est enregistrée.",
-            "annulee" => "La répartition est annulée : la facture est de nouveau à traiter.",
+            "rattachee" if achats => "La dépense est rattachée.",
+            "rattachee" => "La dépense est classée.",
+            "annulee" if achats => "Rattachement défait : la facture est de nouveau à rattacher.",
+            "annulee" => "Classement défait : la facture est de nouveau à classer.",
             "paiement" => "Le paiement est enregistré.",
             "payee" => "Le paiement est enregistré : la facture est payée.",
             "paiement_retire" => "Le paiement est retiré.",
             _ => "",
         },
         message_erreur: match r.erreur.as_str() {
-            "montant" => "La part n'est pas enregistrée : indiquez un montant HT positif, au plus le reste à répartir.",
-            "destination" => "Choisissez où va cette part.",
+            "montant" if achats => "Ce n'est pas rattaché : indiquez un montant HT positif, au plus le reste à rattacher.",
+            "montant" => "Ce n'est pas classé : indiquez un montant HT positif, au plus le reste à classer.",
+            "destination" => "Choisissez où va cette dépense.",
             "paiement_date" => "Le paiement n'est pas enregistré : la date est vide ou dans le futur.",
             "paiement_montant" => "Le paiement n'est pas enregistré : le montant doit être positif et ne pas dépasser le reste à payer.",
             "paiement_methode" => "Le paiement n'est pas enregistré : choisissez une méthode de paiement.",
@@ -1148,7 +1154,23 @@ async fn xml(mut db: Base, Path(id): Path<i64>) -> Result<Response, Erreur> {
 
 // ─── Pour les autres écrans ─────────────────────────────────────────────────
 
-/// Le nombre de factures reçues à traiter (tableau de bord, liste des achats).
+/// Les mots du classement d'une facture reçue, dans les mots du métier (audit du design du 23/10/2026 ; avant :
+/// « à traiter », « traitée », « répartir ») : avec le module des achats, on la **rattache** à un chantier ; sans lui (pas
+/// de chantier où la mettre), on la **classe**. Formes : « À rattacher », « à rattacher », « Rattachée », « Rattachées »,
+/// « Reste à rattacher ».
+pub fn mot_rattacher(forme: &str) -> &'static str {
+    const MOTS: [(&str, &str, &str); 5] = [
+        ("À rattacher", "À rattacher", "À classer"),
+        ("à rattacher", "à rattacher", "à classer"),
+        ("Rattachée", "Rattachée", "Classée"),
+        ("Rattachées", "Rattachées", "Classées"),
+        ("Reste à rattacher", "Reste à rattacher", "Reste à classer"),
+    ];
+    let achats = crate::profil::actuel().achats;
+    MOTS.iter().find(|m| m.0 == forme).map(|m| if achats { m.1 } else { m.2 }).unwrap_or("")
+}
+
+/// Le nombre de factures reçues à rattacher (tableau de bord, liste des achats).
 pub(crate) async fn nombre_a_traiter(db: &mut PgConnection) -> Result<i64, sqlx::Error> {
     sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT count(*) FROM factures_recues fr WHERE ({RESTE}) <> 0"))).fetch_one(db).await
 }

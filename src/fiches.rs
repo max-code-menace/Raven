@@ -231,7 +231,7 @@ struct Fiche {
 
 /// Ce que le navigateur envoie : tout en texte. Une case cochée envoie une valeur, une case
 /// décochée n'envoie rien.
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 #[serde(default)]
 pub struct FicheForm {
     nom: String,
@@ -356,88 +356,108 @@ struct Valeurs {
     telephone_secondaire: Option<String>,
 }
 
-fn valider(f: &FicheForm, genre: Genre, options: &Options) -> Result<Valeurs, Vec<String>> {
-    let mut erreurs = Vec::new();
-
-    let nom = f.nom.trim().to_string();
-    if nom.is_empty() {
-        erreurs.push("Le nom est obligatoire.".to_string());
+/// Les champs refusés d'une saisie, chacun avec son explication ; vide : tout est valable. Une seule liste pour la
+/// création (tout ou rien) et pour l'enregistrement automatique d'une fiche existante (`retenir`).
+fn refus(f: &FicheForm, genre: Genre, options: &Options) -> Vec<(&'static str, String)> {
+    let mut r = Vec::new();
+    if f.nom.trim().is_empty() {
+        r.push(("nom", "Le nom est obligatoire.".to_string()));
     }
-
-    for (texte, champ) in [(&f.email, "L'e-mail"), (&f.email_bis, "L'e-mail (bis)")] {
+    for (texte, champ, nom) in [(&f.email, "email", "L'e-mail"), (&f.email_bis, "email_bis", "L'e-mail (bis)")] {
         let t = texte.trim();
         if !t.is_empty() && !email_valide(t) {
-            erreurs.push(format!("{champ} n'est pas valide."));
+            r.push((champ, format!("{nom} n'est pas valide.")));
         }
     }
-
-    let franco_cents = match vide_en_none(&f.franco) {
-        None => None,
-        Some(t) => match euros_vers_centimes(&t) {
-            Some(c) => Some(c),
-            None => {
-                erreurs.push("Le franco doit être un montant en euros (exemple : 1 150,00).".to_string());
-                None
-            }
-        },
-    };
-
-    let profils: Vec<String> = f.profils.iter().filter(|p| !p.is_empty()).cloned().collect();
-    if profils.iter().any(|p| !PROFILS.iter().any(|(v, _)| v == p)) {
-        erreurs.push("Un des profils choisis n'existe pas.".to_string());
+    if vide_en_none(&f.franco).is_some_and(|t| euros_vers_centimes(&t).is_none()) {
+        r.push(("franco", "Le franco doit être un montant en euros (exemple : 1 150,00).".to_string()));
     }
-
-    let conditions_paiement_id = nombre(&f.conditions_paiement_id);
-    if let Some(id) = conditions_paiement_id
-        && !options.conditions.iter().any(|(i, _)| *i == id)
+    if f.profils.iter().filter(|p| !p.is_empty()).any(|p| !PROFILS.iter().any(|(v, _)| v == p)) {
+        r.push(("profils", "Un des profils choisis n'existe pas.".to_string()));
+    }
+    if nombre(&f.conditions_paiement_id).is_some_and(|id| !options.conditions.iter().any(|(i, _)| *i == id)) {
+        r.push(("conditions_paiement_id", "Cette condition de paiement n'existe pas.".to_string()));
+    }
+    if nombre(&f.taux_tva_id).is_some_and(|id| !options.taux_tva.iter().any(|(i, _)| *i == id)) {
+        r.push(("taux_tva_id", "Ce taux de TVA n'existe pas.".to_string()));
+    }
+    if genre.est_contact() && nombre(&f.entreprise_id).is_some_and(|id| !options.entreprises.iter().any(|(i, _)| *i == id)) {
+        r.push(("entreprise_id", "Cette entreprise n'existe pas.".to_string()));
+    }
+    if vide_en_none(&f.source).is_some_and(|s| !SOURCES.iter().any(|(v, _)| *v == s)) {
+        r.push(("source", "Cette source n'existe pas.".to_string()));
+    }
+    if let Some(texte) = vide_en_none(&f.peppol_id)
+        && let Err(e) = crate::peppol::lire(&texte)
     {
-        erreurs.push("Cette condition de paiement n'existe pas.".to_string());
+        r.push(("peppol_id", e));
     }
-    let taux_tva_id = nombre(&f.taux_tva_id);
-    if let Some(id) = taux_tva_id
-        && !options.taux_tva.iter().any(|(i, _)| *i == id)
-    {
-        erreurs.push("Ce taux de TVA n'existe pas.".to_string());
-    }
-    let entreprise_id = nombre(&f.entreprise_id);
-    if genre.est_contact()
-        && let Some(id) = entreprise_id
-        && !options.entreprises.iter().any(|(i, _)| *i == id)
-    {
-        erreurs.push("Cette entreprise n'existe pas.".to_string());
-    }
-
-    let source = vide_en_none(&f.source);
-    if source.as_deref().is_some_and(|s| !SOURCES.iter().any(|(v, _)| *v == s)) {
-        erreurs.push("Cette source n'existe pas.".to_string());
-    }
-    let peppol_id = match vide_en_none(&f.peppol_id) {
-        None => None,
-        Some(texte) => match crate::peppol::lire(&texte) {
-            Ok(i) => Some(i.to_string()),
-            Err(e) => {
-                erreurs.push(e);
-                None
-            }
-        },
-    };
     if !LANGUES.iter().any(|(v, _)| *v == f.langue) {
-        erreurs.push("Cette langue n'existe pas.".to_string());
+        r.push(("langue", "Cette langue n'existe pas.".to_string()));
     }
-    let civilite = vide_en_none(&f.civilite);
-    if civilite.as_deref().is_some_and(|c| !CIVILITES.iter().any(|(v, _)| *v == c)) {
-        erreurs.push("Cette civilité n'existe pas.".to_string());
+    if vide_en_none(&f.civilite).is_some_and(|c| !CIVILITES.iter().any(|(v, _)| *v == c)) {
+        r.push(("civilite", "Cette civilité n'existe pas.".to_string()));
     }
-    for pays in [&f.pays, &f.facturation_pays] {
+    for (pays, champ) in [(&f.pays, "pays"), (&f.facturation_pays, "facturation_pays")] {
         if !pays.is_empty() && !PAYS.iter().any(|(v, _)| v == pays) {
-            erreurs.push("Ce pays n'existe pas.".to_string());
-            break;
+            r.push((champ, "Ce pays n'existe pas.".to_string()));
         }
     }
+    r
+}
 
-    if !erreurs.is_empty() {
-        return Err(erreurs);
+/// Les explications des champs refusés, sans répéter deux fois la même.
+fn messages(refus: Vec<(&'static str, String)>) -> Vec<String> {
+    let mut m: Vec<String> = Vec::new();
+    for (_, texte) in refus {
+        if !m.contains(&texte) {
+            m.push(texte);
+        }
     }
+    m
+}
+
+/// L'enregistrement automatique d'une fiche existante (audit du design du 23/10/2026, « rien ne se perd ») : chaque
+/// valeur valable est gardée, une valeur refusée garde la précédente (`avant`) et son explication est rendue.
+fn retenir(saisie: &FicheForm, avant: &FicheForm, genre: Genre, options: &Options) -> (FicheForm, Vec<String>) {
+    let refuses = refus(saisie, genre, options);
+    let mut r = saisie.clone();
+    for (champ, _) in &refuses {
+        match *champ {
+            "nom" => r.nom = avant.nom.clone(),
+            "email" => r.email = avant.email.clone(),
+            "email_bis" => r.email_bis = avant.email_bis.clone(),
+            "franco" => r.franco = avant.franco.clone(),
+            "profils" => r.profils = avant.profils.clone(),
+            "conditions_paiement_id" => r.conditions_paiement_id = avant.conditions_paiement_id.clone(),
+            "taux_tva_id" => r.taux_tva_id = avant.taux_tva_id.clone(),
+            "entreprise_id" => r.entreprise_id = avant.entreprise_id.clone(),
+            "source" => r.source = avant.source.clone(),
+            "peppol_id" => r.peppol_id = avant.peppol_id.clone(),
+            "langue" => r.langue = avant.langue.clone(),
+            "civilite" => r.civilite = avant.civilite.clone(),
+            "pays" => r.pays = avant.pays.clone(),
+            "facturation_pays" => r.facturation_pays = avant.facturation_pays.clone(),
+            _ => {}
+        }
+    }
+    (r, messages(refuses))
+}
+
+fn valider(f: &FicheForm, genre: Genre, options: &Options) -> Result<Valeurs, Vec<String>> {
+    let refuses = refus(f, genre, options);
+    if !refuses.is_empty() {
+        return Err(messages(refuses));
+    }
+    let nom = f.nom.trim().to_string();
+    let franco_cents = vide_en_none(&f.franco).and_then(|t| euros_vers_centimes(&t));
+    let profils: Vec<String> = f.profils.iter().filter(|p| !p.is_empty()).cloned().collect();
+    let conditions_paiement_id = nombre(&f.conditions_paiement_id);
+    let taux_tva_id = nombre(&f.taux_tva_id);
+    let entreprise_id = nombre(&f.entreprise_id);
+    let source = vide_en_none(&f.source);
+    let peppol_id = vide_en_none(&f.peppol_id).and_then(|t| crate::peppol::lire(&t).ok()).map(|i| i.to_string());
+    let civilite = vide_en_none(&f.civilite);
 
     let identique = f.facturation_identique.is_some();
     // Si l'adresse de facturation est la même, on n'enregistre pas de seconde adresse.
@@ -749,6 +769,9 @@ async fn liste(
 #[template(path = "formulaire.html")]
 struct PageFormulaire {
     est_contact: bool,
+    /// Une fiche existante : elle s'enregistre toute seule ; une nouvelle fiche se crée par son bouton.
+    existante: bool,
+    enregistrement: crate::composants::Enregistrement,
     titre: String,
     action: String,
     retour: String,
@@ -776,6 +799,8 @@ fn page_formulaire(
     let facturation_pays = if form.facturation_pays.is_empty() { "BE".to_string() } else { form.facturation_pays.clone() };
     PageFormulaire {
         est_contact: genre.est_contact(),
+        existante: action != genre.base(),
+        enregistrement: crate::composants::Enregistrement::default(),
         titre,
         action,
         retour: genre.base().to_string(),
@@ -831,42 +856,44 @@ async fn creer(genre: Genre, mut db: Base, form: FicheForm) -> Result<Response, 
     }
 }
 
+/// Le titre d'une fiche existante : son nom (prénom compris pour un contact).
+fn titre_fiche(genre: Genre, f: &FicheForm) -> String {
+    let nom = if genre.est_contact() { format!("{} {}", f.prenom.trim(), f.nom.trim()) } else { f.nom.trim().to_string() };
+    let nom = nom.trim();
+    if nom.is_empty() { (if genre.est_contact() { "Contact" } else { "Entreprise" }).to_string() } else { nom.to_string() }
+}
+
 async fn page_modifier(genre: Genre, mut db: Base, id: i64) -> Result<Html<String>, Erreur> {
-    let fiche = charger_fiche(&mut *db, genre, id).await?.ok_or_else(Erreur::introuvable)?;
+    let fiche: FicheForm = charger_fiche(&mut *db, genre, id).await?.ok_or_else(Erreur::introuvable)?.into();
     let options = Options::charger(&mut *db, genre).await?;
-    let page = page_formulaire(
-        genre,
-        if genre.est_contact() { "Modifier le contact" } else { "Modifier l'entreprise" }.to_string(),
-        format!("{}/{id}", genre.base()),
-        fiche.into(),
-        Vec::new(),
-        &options,
-    );
+    let page = page_formulaire(genre, titre_fiche(genre, &fiche), format!("{}/{id}", genre.base()), fiche, Vec::new(), &options);
     Ok(Html(page.render()?))
 }
 
-async fn enregistrer_modification(genre: Genre, mut db: Base, id: i64, form: FicheForm) -> Result<Response, Erreur> {
+/// Enregistre une fiche existante. Le formulaire s'envoie tout seul (htmx) à chaque changement : chaque valeur valable
+/// est gardée, une valeur refusée garde la précédente avec son explication ; htmx ne reprend de la réponse que la note
+/// de la barre du bas et le titre. Sans htmx (formulaire envoyé en entier), même règle, puis retour à la liste ou 422.
+async fn enregistrer_modification(genre: Genre, mut db: Base, id: i64, entetes: HeaderMap, form: FicheForm) -> Result<Response, Erreur> {
+    let avant: FicheForm = charger_fiche(&mut *db, genre, id).await?.ok_or_else(Erreur::introuvable)?.into();
     let options = Options::charger(&mut *db, genre).await?;
-    match valider(&form, genre, &options) {
+    let (retenue, mut erreurs) = retenir(&form, &avant, genre, &options);
+    match valider(&retenue, genre, &options) {
         Ok(valeurs) => {
-            if modifier_en_base(&mut *db, genre, id, &valeurs).await? {
-                Ok(Redirect::to(genre.base()).into_response())
-            } else {
-                Err(Erreur::introuvable())
-            }
+            modifier_en_base(&mut *db, genre, id, &valeurs).await?;
         }
-        Err(erreurs) => {
-            let page = page_formulaire(
-                genre,
-                if genre.est_contact() { "Modifier le contact" } else { "Modifier l'entreprise" }.to_string(),
-                format!("{}/{id}", genre.base()),
-                form,
-                erreurs,
-                &options,
-            );
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
-        }
+        // Ne devrait pas arriver (chaque valeur refusée a repris la précédente) : rien n'est enregistré.
+        Err(autres) => erreurs.extend(autres.into_iter().filter(|e| !erreurs.contains(e)).collect::<Vec<_>>()),
     }
+    if crate::composants::par_htmx(&entetes) {
+        let mut page = page_formulaire(genre, titre_fiche(genre, &retenue), format!("{}/{id}", genre.base()), form, Vec::new(), &options);
+        page.enregistrement = crate::composants::Enregistrement::maintenant(&mut *db, erreurs).await?;
+        return Ok(Html(page.render()?).into_response());
+    }
+    if erreurs.is_empty() {
+        return Ok(Redirect::to(genre.base()).into_response());
+    }
+    let page = page_formulaire(genre, titre_fiche(genre, &retenue), format!("{}/{id}", genre.base()), form, erreurs, &options);
+    Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
 }
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
@@ -881,8 +908,8 @@ pub fn routes() -> Router<AppState> {
         .route("/entreprises/nouveau", get(|db: Base| nouveau(Genre::Entreprise, db)))
         .route(
             "/entreprises/{id}",
-            axum::routing::post(|db: Base, Path(id): Path<i64>, Form(f): Form<FicheForm>| {
-                enregistrer_modification(Genre::Entreprise, db, id, f)
+            axum::routing::post(|db: Base, Path(id): Path<i64>, h: HeaderMap, Form(f): Form<FicheForm>| {
+                enregistrer_modification(Genre::Entreprise, db, id, h, f)
             }),
         )
         .route(
@@ -897,8 +924,8 @@ pub fn routes() -> Router<AppState> {
         .route("/contacts/nouveau", get(|db: Base| nouveau(Genre::Contact, db)))
         .route(
             "/contacts/{id}",
-            axum::routing::post(|db: Base, Path(id): Path<i64>, Form(f): Form<FicheForm>| {
-                enregistrer_modification(Genre::Contact, db, id, f)
+            axum::routing::post(|db: Base, Path(id): Path<i64>, h: HeaderMap, Form(f): Form<FicheForm>| {
+                enregistrer_modification(Genre::Contact, db, id, h, f)
             }),
         )
         .route(

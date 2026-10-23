@@ -16,7 +16,7 @@
       </div>
     </div>
     <div class="u-actions">
-      <a class="btn" href="/achats/recues">Factures reçues par Peppol{% if a_traiter > 0 %} · {{ a_traiter }} à traiter{% endif %}</a>
+      <a class="btn" href="/achats/recues">Factures reçues par Peppol{% if a_traiter > 0 %} · {{ a_traiter }} {{ crate::factures_recues::mot_rattacher("à rattacher") }}{% endif %}</a>
       <details class="u-menu">
         <summary class="btn btn-primary">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</summary>
         <form method="post" action="/achats" class="u-menu-liste u-menu-form" style="min-width:340px">
