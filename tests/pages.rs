@@ -298,7 +298,9 @@ async fn modifier_une_entreprise(options: PgPoolOptions, connexion: PgConnectOpt
 
     let (statut, page) = lire(&s, &format!("/entreprises/{id}/modifier")).await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(page.contains("Modifier l&#39;entreprise") && page.contains("value=\"Dupont\""));
+    // Le titre d'une fiche existante est son nom ; elle s'enregistre toute seule (enregistrement automatique).
+    assert!(page.contains("<h1 id=\"fiche-titre\">Dupont</h1>") && page.contains("value=\"Dupont\""), "{page}");
+    assert!(page.contains(&format!("hx-post=\"/entreprises/{id}\"")) && !page.contains(">Enregistrer</button>"));
     assert!(page.contains("value=\"client\" checked"));
 
     let (statut, lieu, _) =
@@ -419,7 +421,7 @@ async fn modifier_un_contact_et_changer_d_entreprise(options: PgPoolOptions, con
     let (id,): (i64,) = sqlx::query_as("SELECT id FROM contacts").fetch_one(&pool).await.unwrap();
 
     let (_, page) = lire(&s, &format!("/contacts/{id}/modifier")).await;
-    assert!(page.contains("Modifier le contact"));
+    assert!(page.contains("<h1 id=\"fiche-titre\">Jean Dupont</h1>"), "{page}");
     assert!(page.contains(&format!("<option value=\"{a}\" selected>Premiere</option>")));
 
     let (statut, _, _) =

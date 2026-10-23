@@ -144,7 +144,7 @@
   <div class="u-card-h"><h2>{% if crate::profil::actuel().achats %}Rattacher à un {{ crate::profil::mot("chantier") }}{% else %}Classer la facture{% endif %}</h2></div>
   <div class="u-card-b" style="display:flex;flex-direction:column;gap:12px">
     {% if parts.is_empty() %}
-    <p class="u-petit" style="margin:0">{% if crate::profil::actuel().achats %}Rattachée à un {{ crate::profil::mot("chantier") }}, la facture devient un achat du {{ crate::profil::mot("chantier") }} : son budget d'achat et sa rentabilité sont mis à jour. Vous pouvez la répartir sur plusieurs {{ crate::profil::mot("chantiers") }}, ou la classer sans {{ crate::profil::mot("chantier") }} (frais généraux).{% else %}Classez la facture une fois vérifiée : elle passe dans « Classées ».{% endif %}</p>
+    <p class="u-petit" style="margin:0">{% if crate::profil::actuel().achats %}Rattachée à un {{ crate::profil::mot("chantier") }}, la facture devient un achat du {{ crate::profil::mot("chantier") }} : son budget d'achat et sa rentabilité sont mis à jour. Vous pouvez la partager entre plusieurs {{ crate::profil::mot("chantiers") }}, ou la classer sans {{ crate::profil::mot("chantier") }} (frais généraux).{% else %}Classez la facture une fois vérifiée : elle passe dans « Classées ».{% endif %}</p>
     {% else %}
     <table class="u-table">
       <thead><tr><th>Rattachée à</th><th>Type de dépense</th><th>Description</th><th class="n">Montant HT</th></tr></thead>
