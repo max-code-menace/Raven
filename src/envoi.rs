@@ -108,7 +108,7 @@ pub(crate) fn verifier(s: &Saisie) -> Result<(Vec<String>, Vec<String>), Vec<Str
 
 // ─── Devis et avenants ──────────────────────────────────────────────────────
 
-/// (statut, avenant, titre « Devis N° 2026-57 »).
+/// (statut, avenant, titre « Devis n° 2026-57 »).
 async fn infos_devis(db: &mut PgConnection, id: i64) -> Result<(String, bool, String), Erreur> {
     let ligne: Option<(String, Option<i64>, i64, i32)> =
         sqlx::query_as("SELECT statut::text, chantier_id, numero, extract(year FROM date_devis)::int FROM devis WHERE id = $1")
@@ -117,7 +117,7 @@ async fn infos_devis(db: &mut PgConnection, id: i64) -> Result<(String, bool, St
             .await?;
     let (statut, chantier, numero, annee) = ligne.ok_or_else(Erreur::introuvable)?;
     let avenant = chantier.is_some();
-    let titre = format!("{} N° {}", if avenant { "Avenant" } else { "Devis" }, crate::devis_lignes::numero_affiche(annee, numero, avenant));
+    let titre = format!("{} n° {}", if avenant { "Avenant" } else { "Devis" }, crate::devis_lignes::numero_affiche(annee, numero, avenant));
     Ok((statut, avenant, titre))
 }
 

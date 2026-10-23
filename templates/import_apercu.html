@@ -11,8 +11,8 @@
     <div class="u-titre">
       <a class="u-retour" href="/devis/{{ id }}/import" aria-label="Choisir un autre fichier" title="Choisir un autre fichier">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
-        <h1>Aperçu de l'import - {{ titre }}</h1>
-        <div class="u-sous-titre">{{ nom_fichier }} · {{ nombre_lots }} lot(s), {{ nombre_postes }} poste(s) · rien n'est encore ajouté</div>
+        <h1>Aperçu de l'import · {{ titre }}</h1>
+        <div class="u-sous-titre">{{ nom_fichier }} · {{ crate::commun::nombre(nombre_lots, "lot", "lots") }}, {{ crate::commun::nombre(nombre_postes, "poste", "postes") }} · rien n'est encore ajouté</div>
       </div>
     </div>
   </div>
@@ -63,12 +63,12 @@
   <div class="u-card-h"><h2>Importer</h2></div>
   <div class="u-card-b">
     {% if lignes_existantes > 0 %}
-    <span class="text-[13.5px]">{% if avenant %}L'avenant{% else %}Le devis{% endif %} a déjà {{ lignes_existantes }} ligne(s).</span>
-    <label class="flex gap-2 items-center text-[13.5px]"><input class="radio radio-sm" type="radio" name="mode" value="ajouter" checked> Ajouter les lignes à la suite</label>
-    <label class="flex gap-2 items-center text-[13.5px]"><input class="radio radio-sm" type="radio" name="mode" value="remplacer"> Remplacer les lignes existantes</label>
+    <span class="text-[13px]">{% if avenant %}L'avenant{% else %}Le devis{% endif %} a déjà {{ crate::commun::nombre(lignes_existantes, "ligne", "lignes") }}.</span>
+    <label class="flex gap-2 items-center text-[13px]"><input class="radio radio-sm" type="radio" name="mode" value="ajouter" checked> Ajouter les lignes à la suite</label>
+    <label class="flex gap-2 items-center text-[13px]"><input class="radio radio-sm" type="radio" name="mode" value="remplacer"> Remplacer les lignes existantes</label>
     {% else %}
     <input type="hidden" name="mode" value="ajouter">
-    <span class="text-[13.5px]">Les {{ lignes.len() }} lignes seront ajoutées {% if avenant %}à l'avenant{% else %}au devis{% endif %}. Vous pourrez tout modifier ensuite dans l'Encodage.</span>
+    <span class="text-[13px]">Les {{ lignes.len() }} lignes seront ajoutées {% if avenant %}à l'avenant{% else %}au devis{% endif %}. Vous pourrez tout modifier ensuite dans l'Encodage.</span>
     {% endif %}
   </div>
 </form>
@@ -78,6 +78,6 @@
 <div class="u-barre">
   <form class="mr-auto" method="post" action="/devis/{{ id }}/import/{{ import }}/abandonner"><button class="btn" type="submit">Abandonner</button></form>
   <a class="btn" href="/devis/{{ id }}/import">Choisir un autre fichier</a>
-  <button class="btn btn-primary" type="submit" form="importer"{% if taux_manquant %} disabled{% endif %}>Importer {{ lignes.len() }} ligne(s)</button>
+  <button class="btn btn-primary" type="submit" form="importer"{% if taux_manquant %} disabled{% endif %}>Importer {{ crate::commun::nombre(lignes.len(), "ligne", "lignes") }}</button>
 </div>
 {% endblock %}

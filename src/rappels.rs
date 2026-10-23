@@ -175,21 +175,21 @@ impl Retour {
         let n = |t: &str| t.parse::<u32>().unwrap_or(0);
         let mut morceaux = Vec::new();
         if n(&self.envoyes) > 0 {
-            morceaux.push(format!("{} rappel(s) envoyé(s)", n(&self.envoyes)));
+            morceaux.push(crate::commun::nombre(n(&self.envoyes), "rappel envoyé", "rappels envoyés"));
         }
         if n(&self.enregistres) > 0 {
-            morceaux.push(format!("{} rappel(s) enregistré(s) en mode test (rien n'est parti)", n(&self.enregistres)));
+            morceaux.push(format!("{} en mode test (rien n'est parti)", crate::commun::nombre(n(&self.enregistres), "rappel enregistré", "rappels enregistrés")));
         }
         if n(&self.echecs) > 0 {
-            morceaux.push(format!("{} échec(s) : voir Réglages › E-mails", n(&self.echecs)));
+            morceaux.push(format!("{} : voir Réglages › E-mails", crate::commun::nombre(n(&self.echecs), "échec", "échecs")));
         }
         if n(&self.sans_email) > 0 {
-            morceaux.push(format!("{} facture(s) sans e-mail du client : rien envoyé", n(&self.sans_email)));
+            morceaux.push(format!("{} sans e-mail du client : rien envoyé", crate::commun::nombre(n(&self.sans_email), "facture", "factures")));
         }
         if n(&self.incomplets) > 0 {
             morceaux.push(format!(
-                "{} facture(s) non relancée(s) : il manque le numéro d'entreprise, un e-mail ou un téléphone de la société (Réglages › Société), mentions obligatoires d'un rappel",
-                n(&self.incomplets)
+                "{} : il manque le numéro d'entreprise, un e-mail ou un téléphone de la société (Réglages › Société), mentions obligatoires d'un rappel",
+                crate::commun::nombre(n(&self.incomplets), "facture non relancée", "factures non relancées")
             ));
         }
         if morceaux.is_empty() { String::new() } else { format!("{}.", morceaux.join(" · ")) }
@@ -436,7 +436,7 @@ mod tests {
     #[test]
     fn le_message_apres_envoi() {
         let r = Retour { envoyes: "2".into(), sans_email: "1".into(), ..Default::default() };
-        assert_eq!(r.message(), "2 rappel(s) envoyé(s) · 1 facture(s) sans e-mail du client : rien envoyé.");
+        assert_eq!(r.message(), "2\u{a0}rappels envoyés · 1\u{a0}facture sans e-mail du client : rien envoyé.");
         assert_eq!(Retour::default().message(), "");
     }
 }

@@ -86,7 +86,7 @@
           {% if acomptes.visible %}
           <div>
             <span class="u-lbl">Acomptes</span>
-            <a class="u-lien" href="#acomptes">{% call ui::icone("plus", 14) %}{% endcall %}{% if acomptes.factures.is_empty() %}Ajouter un acompte{% else %}{{ acomptes.factures.len() }} acompte(s) · en ajouter un{% endif %}</a>
+            <a class="u-lien" href="#acomptes">{% call ui::icone("plus", 14) %}{% endcall %}{% if acomptes.factures.is_empty() %}Ajouter un acompte{% else %}{{ crate::commun::nombre(acomptes.factures.len(), "acompte", "acomptes") }} · en ajouter un{% endif %}</a>
           </div>
           {% endif %}
         </div>
@@ -204,10 +204,7 @@
 {% endif %}
 {% endblock %}
 
+{# La barre du bas ne garde que la note d'enregistrement : les actions sont en haut (une seule action principale). #}
 {% block barre %}
-<div class="u-barre">
-  {% if modifiable %}{% call ui::enregistrement(enregistrement) %}{% endcall %}{% endif %}
-  <a class="btn" href="{{ barre.retour }}">Fermer</a>
-  <a class="btn btn-primary" href="/devis/{{ id }}/apercu">Aperçu et PDF</a>
-</div>
+{% if modifiable %}<div class="u-barre">{% call ui::enregistrement(enregistrement) %}{% endcall %}</div>{% endif %}
 {% endblock %}

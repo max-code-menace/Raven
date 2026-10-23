@@ -105,7 +105,7 @@ pub struct FactureReprise {
     /// La référence du chantier dans Vertuoza (« PL45 »).
     #[serde(default)]
     pub chantier: String,
-    /// Nombre de jours des conditions de paiement (7 = « 7 jour(s) après date de facturation »).
+    /// Nombre de jours des conditions de paiement (7 = « 7 jours après date de facturation »).
     #[serde(default)]
     pub conditions_jours: Option<i32>,
     #[serde(default)]
@@ -173,12 +173,12 @@ impl std::fmt::Display for Rapport {
                 self.devis, self.avenants, self.chantiers, self.devis_deja, self.factures_rattachees
             )?;
             for (statut, (n, ht)) in &self.devis_par_statut {
-                writeln!(f, "  {statut} : {n} pièce(s), {} HT", format_euros(*ht))?;
+                writeln!(f, "  {statut} : {}, {} HT", crate::commun::nombre(n, "pièce", "pièces"), format_euros(*ht))?;
             }
             writeln!(f, "  Devis et avenants acceptés repris : {} HT", format_euros(self.accepte_ht_cents))?;
         }
         for ((annee, serie), (n, ht, ttc)) in &self.par_annee {
-            writeln!(f, "  {annee} · {serie} : {n} pièce(s), {} HT, {} TTC", format_euros(*ht), format_euros(*ttc))?;
+            writeln!(f, "  {annee} · {serie} : {}, {} HT, {} TTC", crate::commun::nombre(n, "pièce", "pièces"), format_euros(*ht), format_euros(*ttc))?;
         }
         writeln!(f, "Reste à recevoir sur les factures reprises : {}", format_euros(self.a_recevoir_cents))?;
         if !self.clients_crees.is_empty() {

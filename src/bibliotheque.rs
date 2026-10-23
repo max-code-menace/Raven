@@ -61,13 +61,16 @@ pub(crate) fn marge_e5(achat_e5: i64, vente_e5: i64) -> Option<i64> {
     })
 }
 
-/// Le prix de vente depuis le prix d'achat et la marge sur le prix de vente (en %, 1/100 000), arrondi au
-/// 1/100 000 d'euro. `None` pour une marge de 100 % ou plus (aucun prix ne la donne).
+/// Le prix de vente depuis le prix d'achat et la marge sur le prix de vente (en %, 1/100 000), arrondi au centime
+/// (avant l'audit du design du 23/10/2026 : au 1/100 000 d'euro, d'où des prix affichés « 984,61538 € »). `None` pour
+/// une marge de 100 % ou plus (aucun prix ne la donne).
 pub(crate) fn vente_depuis_marge(achat_e5: i64, marge_e5: i64) -> Option<i64> {
     let d = 10_000_000 - i128::from(marge_e5);
     (d > 0).then(|| {
         let n = i128::from(achat_e5) * 10_000_000;
-        ((2 * n + d).div_euclid(2 * d)) as i64
+        // 1 centime = 1 000 en 1/100 000 d'euro ; arrondi au plus proche.
+        let centimes = (2 * n + d * 1000).div_euclid(2 * d * 1000);
+        (centimes * 1000) as i64
     })
 }
 
@@ -616,8 +619,10 @@ mod tests {
         assert_eq!(marge_texte(Some(2_900_000), None), "—", "prix de vente à compléter");
         // 28 € avec 37,5 % de marge sur le prix de vente : 28 ÷ 0,625 = 44,80 €.
         assert_eq!(vente_depuis_marge(2_800_000, 3_750_000), Some(4_480_000));
-        // 10 € avec 33 % : 14,925… → 14,92537 €.
-        assert_eq!(vente_depuis_marge(1_000_000, 3_300_000), Some(1_492_537));
+        // 10 € à 33 % de marge : 14,925 37 € arrondi au centime.
+        assert_eq!(vente_depuis_marge(1_000_000, 3_300_000), Some(1_493_000));
+        // 640 € à 35 % : 984,615 38 € → 984,62 € (le prix à 5 décimales relevé par l'audit).
+        assert_eq!(vente_depuis_marge(64_000_000, 3_500_000), Some(98_462_000));
         assert_eq!(vente_depuis_marge(1_000_000, 0), Some(1_000_000));
         assert_eq!(vente_depuis_marge(1_000_000, 10_000_000), None);
     }

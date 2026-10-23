@@ -285,8 +285,9 @@ fn message(r: &Retour) -> String {
     match r.ok.as_str() {
         "publie" if r.ouvrages + r.bibliotheques == 0 => "Rien à publier.".to_string(),
         "publie" => format!(
-            "Mise à jour publiée : {} ouvrage(s) et {} bibliothèque(s). Les organisations concernées voient « nouveaux ouvrages disponibles ».",
-            r.ouvrages, r.bibliotheques
+            "Mise à jour publiée : {} et {}. Les organisations concernées voient « nouveaux ouvrages disponibles ».",
+            crate::commun::nombre(r.ouvrages, "ouvrage", "ouvrages"),
+            crate::commun::nombre(r.bibliotheques, "bibliothèque", "bibliothèques")
         ),
         "cree" => "Bibliothèque créée : elle sera proposée aux organisations à la prochaine publication.".to_string(),
         "modifie" => "Enregistré.".to_string(),

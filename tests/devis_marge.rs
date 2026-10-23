@@ -199,9 +199,13 @@ async fn le_prix_d_achat_s_enregistre_et_la_marge_de_la_ligne_est_renvoyee(optio
     // Vendu 100 € l'unité, acheté 80 € : bénéfice 20 €, soit 20 % du prix de vente, coefficient 1,25.
     let maj = remplir(&s, d, l, "quantite=1&prix_unitaire=100&prix_achat=80").await;
     assert!(maj.contains(&format!("<span id=\"marge-{l}\" hx-swap-oob=\"true\">20,00\u{a0}€ (20 %)</span>")), "{maj}");
-    assert!(maj.contains("<span id=\"marge-totale\" hx-swap-oob=\"true\">20,00\u{a0}€</span>"));
+    // Le bénéfice du devis a changé : il s'éclaire (classe rv-maj).
+    assert!(maj.contains("<span id=\"marge-totale\" hx-swap-oob=\"true\" class=\"rv-maj\">20,00\u{a0}€</span>"), "{maj}");
     assert!(maj.contains("<span id=\"marge-vente\" hx-swap-oob=\"true\">20 %</span>"));
     assert!(maj.contains("<span id=\"coefficient-moyen\" hx-swap-oob=\"true\">1,25</span>"));
+    // Changer la désignation ne change aucun montant : rien ne s'éclaire en jaune.
+    let maj = remplir(&s, d, l, "description=Tuiles").await;
+    assert!(!maj.contains("rv-maj"), "{maj}");
     assert!(maj.contains(&format!("id=\"coef-{l}\" hx-swap-oob=\"true\"")) && maj.contains("name=\"coefficient\" value=\"\" placeholder=\"1,25\""));
     // Le prix de vente n'est pas renvoyé (le champ pourrait être en cours de saisie).
     assert!(!maj.contains(&format!("id=\"prix-{l}\"")));
@@ -319,7 +323,7 @@ async fn les_lignes_sans_prix_d_achat_sont_signalees(options: PgPoolOptions, con
     let l = ajouter_ligne(&pool, &s, d, "ouvrage").await;
     remplir(&s, d, l, "quantite=1&prix_unitaire=100").await;
     let (_, page) = lire(&s, &format!("/devis/{d}/totaux")).await;
-    assert!(page.contains("Postes libres / Ouvrages") && page.contains("1 ligne(s) chiffrée(s) sans prix d'achat"));
+    assert!(page.contains("Postes libres / Ouvrages") && page.contains("1\u{a0}ligne chiffrée sans prix d'achat"));
 }
 
 #[sqlx::test]

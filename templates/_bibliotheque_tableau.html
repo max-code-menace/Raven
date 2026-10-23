@@ -42,8 +42,7 @@
   </table>
 </div>
 <div class="u-pied">
-  {% call ui::par_page() %}{% endcall %}
-  <span>{{ liste.total }} ouvrage(s)</span>
+  <span>{{ crate::commun::nombre(liste.total, "ouvrage", "ouvrages") }}</span>
   <div class="u-pages">
     {% if liste.page > 1 %}
     <a href="/bibliotheque?{{ liste.requete }}&page={{ liste.page - 1 }}" hx-get="/bibliotheque?{{ liste.requete }}&page={{ liste.page - 1 }}" hx-target="#liste" hx-push-url="true" aria-label="Page précédente">←</a>

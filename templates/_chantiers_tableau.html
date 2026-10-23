@@ -3,7 +3,7 @@
   {% for l in liste.lignes %}
   <tr class="is-link">
     <td class="rv-num"><a class="rv-lien" href="/chantiers/{{ l.id }}">{{ l.numero }}</a></td>
-    <td class="rv-num rv-mut">{{ l.debut }}</td>
+    <td class="rv-date">{{ l.debut }}</td>
     <td><a class="rv-lien" href="/chantiers/{{ l.id }}">{{ l.reference }}</a></td>
     <td>{{ l.client }}</td>
     <td class="rv-mut">{{ l.adresse }}</td>

@@ -13,7 +13,9 @@ use crate::{AppState, Erreur, calcul, commun::format_euros};
 
 // ─── Pastilles de statut ────────────────────────────────────────────────────
 
-/// Une pastille : le mot exact du statut et sa variante (`rv-pill--draft`, `--done`, `--late`, `--refused`, ou neutre).
+/// Une pastille : le mot exact du statut et sa variante. Une règle pour tous les statuts (audit du design du 23/10/2026) :
+/// jaune (`rv-pill--todo`) = à l'utilisateur de jouer, contour encre (neutre) = on attend quelqu'un d'autre,
+/// vert (`--done`) = fini, rouge (`--late`, `--refused`) = problème, gris (`--draft`) = brouillon.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pastille {
     pub mot: String,
@@ -21,6 +23,7 @@ pub struct Pastille {
 }
 
 const BROUILLON: &str = "rv-pill--draft";
+const A_FAIRE: &str = "rv-pill--todo";
 const NEUTRE: &str = "";
 const ACQUIS: &str = "rv-pill--done";
 const A_CORRIGER: &str = "rv-pill--late";
@@ -39,7 +42,9 @@ pub fn pastille_devis(code: &str) -> Pastille {
         "accepte" => ACQUIS,
         "refuse" => REFUSE,
         "echec_envoi" => A_CORRIGER,
-        "a_envoyer" | "envoi_en_cours" | "envoye" | "signe" => NEUTRE,
+        // À envoyer : c'est à l'utilisateur ; signé en ligne : il doit encore l'accepter.
+        "a_envoyer" | "signe" => A_FAIRE,
+        "envoi_en_cours" | "envoye" => NEUTRE,
         _ => BROUILLON,
     };
     pastille(crate::devis::statut(code).0, classe)
@@ -52,7 +57,8 @@ pub fn pastille_facture(code: &str) -> Pastille {
         "payee" => ACQUIS,
         "en_retard" => A_CORRIGER,
         "creditee" => REFUSE,
-        "a_envoyer" | "envoyee" | "partielle" => NEUTRE,
+        "a_envoyer" => A_FAIRE,
+        "envoyee" | "partielle" => NEUTRE,
         _ => BROUILLON,
     };
     pastille(crate::paiements::etat(code).0, classe)
@@ -258,6 +264,10 @@ mod tests {
         assert_eq!(pastille_facture("payee").classe, "rv-pill--done");
         assert_eq!(pastille_devis("brouillon").classe, "rv-pill--draft");
         assert_eq!(pastille_devis("refuse").classe, "rv-pill--refused");
+        // À envoyer (à faire) et Envoyé (on attend le client) ne se ressemblent plus.
+        assert_eq!(pastille_devis("a_envoyer").classe, "rv-pill--todo");
+        assert_eq!(pastille_devis("envoye").classe, "");
+        assert_eq!(pastille_facture("a_envoyer").classe, "rv-pill--todo");
         assert_eq!(pastille_devis("envoye").classe, "");
         assert_eq!(pastille_devis("inconnu").mot, "Inconnu");
     }

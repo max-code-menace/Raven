@@ -4,12 +4,19 @@
 {% block title %}{{ titre }} · {{ entreprise.nom }}{% endblock %}
 
 {% block content %}
+{% if a_payer %}
+{# Le montant à payer d'abord, en grand, sur le même jaune que le total du PDF. #}
+<section class="c-a-payer" aria-label="Montant à payer">
+  <span>Reste à payer{% if !echeance.is_empty() %} avant le {{ echeance }}{% endif %}</span>
+  <b>{{ reste }}</b>
+</section>
+{% endif %}
 <section class="u-card">
   <div class="u-card-h"><h2>{% call ui::icone("finances", 17) %}{% endcall %}{{ titre }}</h2>
     {% if note_credit %}<span class="u-pastille s-termine">Note de crédit</span>
     {% else if payee %}<span class="u-pastille s-accepte">Payée</span>
     {% else if en_retard %}<span class="u-pastille s-retard">Échue</span>
-    {% else if a_payer %}<span class="u-pastille s-envoye">À payer</span>
+    {% else if a_payer %}<span class="u-pastille s-a-envoyer">À payer</span>
     {% else %}<span class="u-pastille s-termine">Soldée</span>{% endif %}
   </div>
   <div class="u-card-b">
@@ -24,8 +31,8 @@
   <div class="u-ligne-montant"><span>TVA</span><span>{{ tva }}</span></div>
   <div class="u-ligne-montant" style="font-weight:600"><span>Total TTC</span><span>{{ ttc }}</span></div>
   {% if !note_credit %}
-  <div class="u-ligne-montant"><span>Déjà payé</span><span style="color:#1C6B3C">{{ paye }}</span></div>
-  <div class="u-ligne-montant" style="font-weight:600;background:#F2F8F8;border-radius:0 0 12px 12px"><span>Reste à payer</span><span>{{ reste }}</span></div>
+  <div class="u-ligne-montant"><span>Déjà payé</span><span style="color:var(--ok)">{{ paye }}</span></div>
+  <div class="u-ligne-montant" style="font-weight:600;background:var(--acc-wash);border-radius:0 0 4px 4px"><span>Reste à payer</span><span>{{ reste }}</span></div>
   {% endif %}
 </section>
 
@@ -34,17 +41,19 @@
 {% if a_payer %}
 <section class="u-card">
   <div class="u-card-h"><h2>Payer par virement</h2></div>
-  <div class="u-card-b items-center text-center">
+  <div class="u-card-b">
     {% if !qr.is_empty() %}
-    <div class="c-qr">{{ qr|safe }}</div>
-    <p class="u-petit">Scannez ce QR code avec l'application de votre banque : le montant, le compte et la communication sont déjà remplis.</p>
+    <div class="c-qr">{{ qr|safe }}<p class="u-petit">Scannez ce QR code avec l'application de votre banque : le montant, le compte et la communication sont déjà remplis.</p></div>
     {% endif %}
+    <div class="c-virement">
+      <div><span class="u-cle">Bénéficiaire</span>{{ entreprise.nom }}</div>
+      {% if !iban.is_empty() %}<div><span class="u-cle">IBAN</span><span class="c-copier">{{ iban }}</span></div>{% endif %}
+      {% if !vcs.is_empty() %}<div><span class="u-cle">Communication structurée</span><span class="c-copier">{{ vcs }}</span></div>{% endif %}
+      <div><span class="u-cle">Montant</span><span class="c-copier">{{ reste }}</span></div>
+      {% if !bic.is_empty() %}<div><span class="u-cle">BIC</span><span class="mono">{{ bic }}</span></div>{% endif %}
+      <p class="u-petit u-muet" style="margin:0">Touchez l'IBAN ou la communication pour les sélectionner en entier, puis collez-les dans votre application bancaire.</p>
+    </div>
   </div>
-  <div class="u-ligne-montant"><span>Montant</span><strong>{{ reste }}</strong></div>
-  <div class="u-ligne-montant"><span>Bénéficiaire</span><span>{{ entreprise.nom }}</span></div>
-  {% if !iban.is_empty() %}<div class="u-ligne-montant"><span>IBAN</span><span class="mono">{{ iban }}</span></div>{% endif %}
-  {% if !bic.is_empty() %}<div class="u-ligne-montant"><span>BIC</span><span class="mono">{{ bic }}</span></div>{% endif %}
-  {% if !vcs.is_empty() %}<div class="u-ligne-montant"><span>Communication structurée</span><span class="mono">{{ vcs }}</span></div>{% endif %}
 </section>
 {% else if payee %}
 <div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span>Cette facture est payée. Merci !</span></div>

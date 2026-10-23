@@ -20,7 +20,7 @@
 
 {% block content %}
 {% if let Some((ajoutes, deja)) = resultat %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span><strong>{{ ajoutes }} ouvrage(s) ajouté(s)</strong> à la bibliothèque{% if *deja > 0 %} · {{ deja }} déjà présent(s), non ajouté(s) une seconde fois{% endif %}. <a href="/bibliotheque">Voir la bibliothèque</a></span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span><strong>{{ crate::commun::nombre(ajoutes, "ouvrage ajouté", "ouvrages ajoutés") }}</strong> à la bibliothèque{% if *deja > 0 %} · {{ crate::commun::nombre(deja, "déjà présent, non ajouté", "déjà présents, non ajoutés") }} une seconde fois{% endif %}. <a href="/bibliotheque">Voir la bibliothèque</a></span></div>
 {% endif %}
 {% if !erreur.is_empty() %}
 <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
@@ -28,7 +28,7 @@
 {% if !ecartees.is_empty() %}
 <section class="u-card">
   <div class="u-card-h"><h2>{% call ui::icone("attention", 17) %}{% endcall %}Lignes écartées <span class="u-compte">{{ ecartees.len() }}</span></h2></div>
-  <div class="u-card-b text-[13.5px]">
+  <div class="u-card-b text-[13px]">
     {% for e in ecartees %}<span>{{ e }}</span>{% endfor %}
   </div>
 </section>
@@ -46,7 +46,7 @@
   </form>
   <aside class="u-card">
     <div class="u-card-h"><h2>Colonnes reconnues</h2></div>
-    <div class="u-card-b text-[13.5px]">
+    <div class="u-card-b text-[13px]">
       <span><b>Description</b> (obligatoire), <b>Type</b>, <b>Catégorie</b>, <b>Fournisseur</b>, <b>Unité</b>, <b>Prix d'achat</b>, <b>Marge</b>, <b>Prix de vente</b> : la ligne d'en-tête est retrouvée par le titre des colonnes. La marge est en % du prix de vente.</span>
       <span>Sans prix de vente, il est calculé depuis le prix d'achat et la marge (marge vide = 0 %).</span>
       <span>Type : Fourniture, Main d'œuvre, Sous-traitant, Équipements, Poste libre ; sinon Ouvrage.</span>

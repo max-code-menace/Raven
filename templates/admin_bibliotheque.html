@@ -17,7 +17,7 @@
 <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{% if erreur == "nom" %}Indiquez un nom (100 caractères au maximum).{% else if erreur == "genre" %}Choisissez le type.{% else if erreur == "unite" %}L'unité est trop longue (20 caractères au maximum).{% else %}La description est obligatoire (5 000 caractères au maximum).{% endif %}</span></div>
 {% endif %}
 {% if en_attente > 0 %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("bibliotheque", 18) %}{% endcall %}<span class="flex-1">{{ en_attente }} ajout(s) en attente dans le catalogue.</span>
+<div role="status" class="u-bandeau ok">{% call ui::icone("bibliotheque", 18) %}{% endcall %}<span class="flex-1">{{ crate::commun::nombre(en_attente, "ajout", "ajouts") }} en attente dans le catalogue.</span>
   <form method="post" action="/admin/catalogue/publier"><button class="btn btn-sm btn-primary" type="submit">Publier</button></form></div>
 {% endif %}
 

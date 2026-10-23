@@ -280,7 +280,7 @@ pub async fn importer(tx: &mut Transaction<'_, Postgres>, pieces: &[DevisReprise
             None => None,
         };
         if p.conditions_jours.is_some() && conditions.is_none() {
-            rapport.alertes.push(format!("{nom} : conditions de paiement de {} jour(s) inconnues, laissées vides.", p.conditions_jours.unwrap_or_default()));
+            rapport.alertes.push(format!("{nom} : conditions de paiement de {} inconnues, laissées vides.", crate::commun::nombre(p.conditions_jours.unwrap_or_default(), "jour", "jours")));
         }
         // La TVA par défaut du devis : celle du fichier, sinon celle de la première ligne chiffrée.
         let tva_defaut = p

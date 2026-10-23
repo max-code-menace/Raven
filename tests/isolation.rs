@@ -230,6 +230,7 @@ async fn adresses_de_a(pool: &PgPool) -> Vec<(&'static str, String)> {
         "/factures/recurrences", "/achats", "/achats/recues", "/achats/recues?vue=toutes&ok=filtre", "/achats/recues?vue=a_payer&ok=filtre", "/achats/recues?vue=payees&ok=filtre", "/parametres/societe", "/parametres/emails", "/parametres/societe/logo",
         "/parametres/societe/conditions-generales", "/parametres/equipe", "/parametres/metier", "/parametres/peppol", "/parametres/bibliotheques", "/bibliotheque?vue=supprimes", "/bibliotheque?vue=a_completer", "/bibliotheque?vue=miens",
         "/admin", "/admin/catalogue", "/admin/organisations", "/admin/catalogue/graphisme.graphisme", "/demarrage", "/devis?q=Toit", "/factures?q=L63", "/entreprises?q=Parc", "/contacts?q=Lamb",
+        "/recherche", "/recherche?q=Toit", "/recherche?q=L63", "/recherche?q=Lambert", "/recherche?q=2026-59", "/recherche?q=Parc",
     ] {
         deux("GET", chemin.to_string());
     }
@@ -345,7 +346,11 @@ async fn b_ne_voit_ni_ne_modifie_rien_de_a_sur_aucune_page(options: PgPoolOption
     let mut fuites = Vec::new();
     for (methode, chemin) in &adresses {
         let r = envoyer(&site, methode, chemin, &cookie).await;
-        let texte = String::from_utf8_lossy(&r.corps);
+        let mut texte = String::from_utf8_lossy(&r.corps).into_owned();
+        // La recherche répète ce que B a tapé (« Résultats pour « Lambert » ») : ce mot vient de B, pas de A.
+        if let Some(q) = chemin.strip_prefix("/recherche?q=") {
+            texte = texte.replace(q, "");
+        }
         if let Some(t) = textes.iter().find(|t| texte.contains(t.as_str())) {
             fuites.push(format!("{methode} {chemin} montre « {t} »"));
         }
@@ -388,7 +393,7 @@ async fn une_nouvelle_organisation_a_tout_ce_qu_il_faut_et_sa_propre_numerotatio
     for chemin in [
         "/", "/devis", "/factures", "/chantiers", "/entreprises", "/entreprises/nouveau", "/contacts", "/contacts/nouveau", "/bibliotheque",
         "/bibliotheque/nouveau", "/statistiques", "/exports", "/factures/rappels", "/factures/recurrences", "/achats", "/parametres/societe",
-        "/parametres/emails",
+        "/parametres/emails", "/recherche", "/recherche?q=Lambert",
     ] {
         let r = envoyer(&site, "GET", chemin, &cookie).await;
         assert_eq!(r.statut, StatusCode::OK, "GET {chemin}");

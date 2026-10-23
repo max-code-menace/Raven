@@ -1,4 +1,4 @@
-// Tests des onglets Totaux (ajustement) et Visualisation (aperçu).
+// Tests des onglets Totaux (ajustement) et Aperçu.
 
 mod commun;
 

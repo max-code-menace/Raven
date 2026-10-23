@@ -10,7 +10,7 @@
     <div class="u-titre">
       <a class="u-retour" href="/factures/{{ id }}" aria-label="Retour à la facture" title="Retour à la facture">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
-        <h1>{% if existe %}Récurrence{% else %}Création d'une récurrence{% endif %} - {{ titre }}</h1>
+        <h1>{% if existe %}Récurrence{% else %}Nouvelle récurrence{% endif %} · {{ titre }}</h1>
         <div class="u-sous-titre"><span>{{ client }}</span><span>{{ montant_ttc }} TTC</span></div>
       </div>
     </div>
@@ -72,7 +72,7 @@
   </form>
   {% if existe %}
   <form class="flex justify-end px-[18px] pb-4" method="post" action="/factures/{{ id }}/recurrence/supprimer">
-    <button class="btn btn-ghost text-[#953A0A]" type="submit">Arrêter la récurrence (les factures déjà créées restent)</button>
+    <button class="btn btn-ghost text-[color:var(--bad)]" type="submit">Arrêter la récurrence (les factures déjà créées restent)</button>
   </form>
   {% endif %}
 </section>

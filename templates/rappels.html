@@ -56,7 +56,7 @@
           <td>{% if l.email.is_empty() %}<input type="checkbox" class="checkbox checkbox-sm" disabled aria-label="Pas d'e-mail pour ce client">{% else %}<input type="checkbox" class="checkbox checkbox-sm" name="facture" value="{{ l.id }}" checked aria-label="Relancer la facture {{ l.numero }}">{% endif %}</td>
           <td class="mono nw"><a href="/factures/{{ l.id }}">{{ l.numero }}</a></td>
           <td class="nw">{{ l.date }}</td>
-          <td>{{ l.client }}{% if l.email.is_empty() %}<small class="block text-[#953A0A]">pas d'e-mail : complétez la fiche du client</small>{% else %}<small class="block u-muet">{{ l.email }}</small>{% endif %}</td>
+          <td>{{ l.client }}{% if l.email.is_empty() %}<small class="block text-[color:var(--bad)]">pas d'e-mail : complétez la fiche du client</small>{% else %}<small class="block u-muet">{{ l.email }}</small>{% endif %}</td>
           <td>{{ l.reference }}</td>
           <td class="n">{{ l.reste }}</td>
           <td class="nw"><span class="u-pastille s-retard">{{ l.jours_retard }} j</span></td>

@@ -37,7 +37,7 @@
       <span><span class="u-cle">État</span>{% if envoi_actif %}Les e-mails partent vraiment.{% else %}Aucune clé : les e-mails sont seulement enregistrés ci-dessous, rien ne part.{% endif %}</span>
     </div>
     <div>
-      <span><span class="u-cle">Expéditeur</span>{% if expediteur.is_empty() %}<span class="text-[#953A0A]">À compléter : e-mail de la société (Réglages › Société)</span>{% else %}{{ expediteur }}{% endif %}</span>
+      <span><span class="u-cle">Expéditeur</span>{% if expediteur.is_empty() %}<span class="text-[color:var(--bad)]">À compléter : e-mail de la société (Réglages › Société)</span>{% else %}{{ expediteur }}{% endif %}</span>
       <span><span class="u-cle">Adresse des liens envoyés aux clients</span><span class="mono">{{ adresse_publique }}</span></span>
     </div>
     <div>
@@ -94,7 +94,7 @@
   <div class="u-card-h"><h2>{% call ui::icone("attention", 17) %}{% endcall %}Rappels : ce qu'on peut réclamer</h2></div>
   <div class="u-card-b">
     <p class="u-petit u-muet" style="margin:0">Chaque rappel se termine par des mentions légales que le serveur ajoute et que vous ne pouvez pas retirer (créancier, facture, montant dû, délai de 14 jours dès le lendemain de l'envoi). Ces réglages décident de ce qu'elles annoncent. <strong>Envers un particulier</strong> (client sans numéro de TVA) : le rappel est gratuit, et une indemnité ou des intérêts ne sont annoncés que si vos conditions générales les prévoient. <strong>Envers une entreprise</strong> (client avec un numéro de TVA) : intérêts légaux et 40 € d'indemnité forfaitaire sont annoncés (loi du 2 août 2002).</p>
-    <label class="flex items-start gap-2 text-[13.5px]">
+    <label class="flex items-start gap-2 text-[13px]">
       <input class="checkbox checkbox-sm" type="checkbox" name="indemnite" {% if rappel_indemnite %}checked{% endif %}>
       <span>Mes conditions générales prévoient une indemnité de retard pour les particuliers (barème légal : 20 € jusqu'à 150 €, 30 € + 10 % de la tranche de 150 à 500 €, 65 € + 5 % au-delà, 2 000 € au plus).</span>
     </label>
@@ -102,7 +102,7 @@
       <span class="u-lbl">Intérêts de retard prévus envers les particuliers, % par an (vide : aucun){% if !taux_plafond.is_empty() %} · plafond légal du moment : {{ taux_plafond }} %{% endif %}</span>
       <input class="input input-bordered" type="text" name="interets" value="{{ rappel_interets }}" inputmode="decimal" placeholder="par exemple 8">
     </label>
-    <label class="flex items-start gap-2 text-[13.5px]">
+    <label class="flex items-start gap-2 text-[13px]">
       <input class="checkbox checkbox-sm" type="checkbox" name="pme" {% if rappel_pme %}checked{% endif %}>
       <span>Mon entreprise est une PME (art. 1:24 du Code des sociétés et des associations) : les intérêts peuvent courir dès le début du délai de 14 jours, mais ne se réclament qu'après son expiration sans paiement.</span>
     </label>
@@ -138,7 +138,7 @@
               <div class="u-adresse mt-2 whitespace-pre-line">{{ e.corps }}</div>
               {% if !e.pieces.is_empty() %}<div class="u-petit u-muet mt-1">Pièce jointe : {{ e.pieces }}</div>{% endif %}
             </details>
-            {% if !e.erreur.is_empty() %}<div class="u-petit text-[#8E2B22]">{{ e.erreur }}</div>{% endif %}
+            {% if !e.erreur.is_empty() %}<div class="u-petit text-[color:var(--bad)]">{{ e.erreur }}</div>{% endif %}
           </td>
           <td><span class="u-pastille {{ e.classe }}">{{ e.statut }}</span></td>
         </tr>

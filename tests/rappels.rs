@@ -112,7 +112,7 @@ async fn les_factures_a_relancer_et_l_envoi_groupe(options: PgPoolOptions, conne
     let genre: String = sqlx::query_scalar("SELECT genre FROM facture_evenements WHERE facture_id = $1 ORDER BY id DESC LIMIT 1").bind(a).fetch_one(&pool).await.unwrap();
     assert_eq!(genre, "rappel");
     let (_, page) = lire(&s, "/factures/rappels?envoyes=0&enregistres=1&echecs=0&sans_email=1&incomplets=0").await;
-    assert!(page.contains("1 rappel(s) enregistré(s) en mode test"));
+    assert!(page.contains("1\u{a0}rappel enregistré en mode test"));
     // Relancée aujourd'hui : Alpha passe dans « Autres », prochain rappel dans 14 jours.
     let (relancer, autres) = page.split_once("Autres factures en retard").unwrap();
     assert!(!relancer.contains("Alpha SA") && autres.contains("Alpha SA") && autres.contains("1 rappel, le"));

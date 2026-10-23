@@ -60,7 +60,7 @@
       {% if !bloc_fixe.is_empty() %}
       <div class="form-control">
         <span class="u-lbl">Mentions légales, ajoutées automatiquement à la fin du message (non modifiables)</span>
-        <pre class="u-petit" style="white-space:pre-wrap;margin:0;padding:10px 12px;background:#F1F2EF;border:1px solid #C9CCC6;border-radius:6px;font-family:inherit">{{ bloc_fixe }}</pre>
+        <pre class="u-petit" style="white-space:pre-wrap;margin:0;padding:10px 12px;background:var(--soft);border:1px solid var(--line-field);border-radius:4px;font-family:inherit">{{ bloc_fixe }}</pre>
       </div>
       {% endif %}
     </div>
@@ -70,15 +70,15 @@
     <section class="u-card">
       <div class="u-card-h"><h2>Pièce jointe</h2></div>
       <div class="u-card-b">
-        {% for p in pieces %}<div class="flex gap-2 items-center text-[13.5px]">{% call ui::icone("pdf", 16) %}{% endcall %}<span>{{ p }}</span></div>{% endfor %}
+        {% for p in pieces %}<div class="flex gap-2 items-center text-[13px]">{% call ui::icone("pdf", 16) %}{% endcall %}<span>{{ p }}</span></div>{% endfor %}
       </div>
     </section>
     {% if !avertissements.is_empty() %}
     <section class="u-card">
-      <div class="u-card-h"><h2>À vérifier</h2><span class="u-pastille s-a-envoyer">{{ avertissements.len() }} point(s)</span></div>
+      <div class="u-card-h"><h2>À vérifier</h2><span class="u-pastille s-a-envoyer">{{ crate::commun::nombre(avertissements.len(), "point", "points") }}</span></div>
       <div class="u-card-b">
         {% for m in avertissements %}
-        <div class="flex gap-2 items-start text-[13.5px]"><span class="text-[#953A0A] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
+        <div class="flex gap-2 items-start text-[13px]"><span class="text-[color:var(--ink)] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
         {% endfor %}
       </div>
     </section>

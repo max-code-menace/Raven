@@ -191,13 +191,13 @@ async fn importer_le_modele_dans_un_nouveau_devis(options: PgPoolOptions, connex
     let (_, page) = lire(&s, &lieu).await;
     for attendu in [
         "Devis RG.xlsx",
-        "3 lot(s), 5 poste(s)",
+        "3\u{a0}lots, 5\u{a0}postes",
         &format!("Même total que le fichier : 6\u{a0}680,00{E} HT."),
         "Taux réduit",
         "Option : Plafonnage des pignons",
         "Chape pour passages techniques\nFourniture et pose d&#39;une chape adhérente.",
         "Ligne 61 : pas de prix unitaire",
-        "Importer 12 ligne(s)",
+        "Importer 12\u{a0}lignes",
     ] {
         assert!(page.contains(attendu) || page.contains(&attendu.replace("&#39;", "'")), "{attendu}");
     }
@@ -225,9 +225,9 @@ async fn importer_le_modele_dans_un_nouveau_devis(options: PgPoolOptions, connex
     let (ht, ttc): (i64, i64) = sqlx::query_as("SELECT montant_ht_cents, montant_ttc_cents FROM devis WHERE id = $1").bind(id).fetch_one(&pool).await.unwrap();
     assert_eq!((ht, ttc), (668_000, 708_080), "6 680,00 € HT + 6 % = 7 080,80 € TTC");
     let detail: String = sqlx::query_scalar("SELECT detail FROM devis_evenements WHERE devis_id = $1 AND genre = 'import'").bind(id).fetch_one(&pool).await.unwrap();
-    assert!(detail.contains("12 ligne(s) importée(s) depuis « Devis RG.xlsx »"));
+    assert!(detail.contains("12\u{a0}lignes importées depuis « Devis RG.xlsx »"));
     let (_, page) = lire(&s, &format!("/devis/{id}/encodage?import=12")).await;
-    assert!(page.contains("Import Excel terminé : 12 ligne(s) ajoutée(s).") && page.contains("Importer depuis Excel"));
+    assert!(page.contains("Import Excel terminé : 12\u{a0}lignes ajoutées.") && page.contains("Importer depuis Excel"));
     // L'aperçu a disparu.
     assert_eq!(lire(&s, &format!("/devis/{id}/import/{import}")).await.0, StatusCode::NOT_FOUND);
 
@@ -235,7 +235,7 @@ async fn importer_le_modele_dans_un_nouveau_devis(options: PgPoolOptions, connex
     let (_, lieu, _) = televerser(&s, &format!("/devis/{id}/import"), "Devis RG.xlsx", &modele()).await;
     let lieu = lieu.unwrap();
     let (_, page) = lire(&s, &lieu).await;
-    assert!(page.contains("a déjà 12 ligne(s)") && page.contains("value=\"remplacer\""));
+    assert!(page.contains("a déjà 12\u{a0}lignes") && page.contains("value=\"remplacer\""));
     poster(&s, &format!("/devis/{id}/import/{}", import_depuis(&lieu)), "mode=remplacer").await;
     let nombre: i64 = sqlx::query_scalar("SELECT count(*) FROM devis_lignes WHERE devis_id = $1").bind(id).fetch_one(&pool).await.unwrap();
     assert_eq!(nombre, 12);
@@ -277,7 +277,7 @@ async fn un_avenant_en_moins_depuis_excel(options: PgPoolOptions, connexion: PgC
     assert_eq!(code, StatusCode::SEE_OTHER);
     let lieu = lieu.unwrap();
     let (_, page) = lire(&s, &lieu).await;
-    assert!(page.contains("Avenant N° 2") && page.contains(&format!("Même total que le fichier : -330,00{E} HT.")));
+    assert!(page.contains("Avenant n° 2") && page.contains(&format!("Même total que le fichier : -330,00{E} HT.")));
     assert_eq!(poster(&s, &format!("/devis/{avenant}/import/{}", import_depuis(&lieu)), "mode=ajouter").await.0, StatusCode::SEE_OTHER);
     let ht: i64 = sqlx::query_scalar("SELECT montant_ht_cents FROM devis WHERE id = $1").bind(avenant).fetch_one(&pool).await.unwrap();
     assert_eq!(ht, -33_000, "un avenant en moins");

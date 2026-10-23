@@ -13,18 +13,25 @@
 </head>
 {# Les écrans passés au nouveau design posent « rv-papier » dans le bloc fond : page blanche, marges du design system. #}
 <body class="{% block fond %}{% endblock %}">
+<a class="rv-evitement" href="#contenu">Aller au contenu</a>
 <div class="u-app">
   {# Menu du design de Raven (ordinateur seulement pour l'instant) : huit espaces, puis Données et le compte. Chaque écran allume son espace par un bloc nav_… qui écrit aria-current="page"
      (plusieurs blocs par espace : les écrans gardent leurs noms d'avant). Les éditeurs replient le menu en rail
      en donnant « rv-side--rail » au bloc rail. #}
   <nav class="rv-side {% block rail %}{% endblock %}" aria-label="Menu principal">
     <a class="rv-brand" href="/" title="Tableau de bord"><i>R</i><span class="rv-brand-nom">RAVEN</span></a>
+    {# Recherche partout (devis, factures, chantiers, contacts) ; Alt+K y mène au clavier. En rail : l'icône seule. #}
+    <form class="rv-side-recherche" method="get" action="/recherche" role="search">
+      {% call ui::icone("recherche", 16) %}{% endcall %}
+      <input type="search" name="q" placeholder="Rechercher" accesskey="k" aria-label="Rechercher partout : numéro, référence, client (Alt+K)">
+    </form>
+    <a class="rv-nav rv-nav-recherche" href="/recherche" title="Rechercher">{% call ui::icone("recherche", 19) %}{% endcall %}<span class="rv-nav-txt">Rechercher</span></a>
     <a class="rv-nav" {% block nav_tableau %}{% endblock %} href="/" title="Tableau de bord">{% call ui::icone("accueil", 19) %}{% endcall %}<span class="rv-nav-txt">Tableau de bord</span></a>
     <a class="rv-nav" {% block nav_devis %}{% endblock %} href="/devis" title="Devis">{% call ui::icone("devis", 19) %}{% endcall %}<span class="rv-nav-txt">Devis</span></a>
     <a class="rv-nav" {% block nav_factures %}{% endblock %} {% block nav_notes %}{% endblock %} {% block nav_recurrences %}{% endblock %} href="/factures" title="Factures">{% call ui::icone("factures", 19) %}{% endcall %}<span class="rv-nav-txt">Factures</span></a>
     <a class="rv-nav" {% block nav_rappels %}{% endblock %} {% block nav_recues %}{% endblock %} {% block nav_achats %}{% endblock %} href="/factures/rappels" title="Paiements">{% call ui::icone("paiements", 19) %}{% endcall %}<span class="rv-nav-txt">Paiements</span></a>
     <a class="rv-nav" {% block nav_chantiers %}{% endblock %} href="/chantiers" title="{{ crate::profil::mot("Chantiers") }}">{% call ui::icone("chantiers", 19) %}{% endcall %}<span class="rv-nav-txt">{{ crate::profil::mot("Chantiers") }}</span></a>
-    <a class="rv-nav" {% block nav_entreprises %}{% endblock %} {% block nav_contacts %}{% endblock %} href="/entreprises" title="Clients">{% call ui::icone("clients", 19) %}{% endcall %}<span class="rv-nav-txt">Clients</span></a>
+    <a class="rv-nav" {% block nav_entreprises %}{% endblock %} {% block nav_contacts %}{% endblock %} href="/entreprises" title="Contacts">{% call ui::icone("clients", 19) %}{% endcall %}<span class="rv-nav-txt">Contacts</span></a>
     <a class="rv-nav" {% block nav_bibliotheque %}{% endblock %} href="/bibliotheque" title="Bibliothèque">{% call ui::icone("bibliotheque", 19) %}{% endcall %}<span class="rv-nav-txt">Bibliothèque</span></a>
     <a class="rv-nav" {% block nav_statistiques %}{% endblock %} href="/statistiques" title="Statistiques">{% call ui::icone("statistiques", 19) %}{% endcall %}<span class="rv-nav-txt">Statistiques</span></a>
     <div class="rv-eyebrow rv-side-groupe">Données</div>
@@ -41,7 +48,7 @@
   <div class="u-page">
     {# En-tête blanc : icône ou retour, titre, statut, actions, onglets. #}
     {% block entete %}{% endblock %}
-    <main class="u-body">
+    <main class="u-body" id="contenu" tabindex="-1">
       {% block content %}{% endblock %}
     </main>
     {# Barre d'actions collée en bas des éditeurs. #}

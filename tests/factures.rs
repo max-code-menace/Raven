@@ -144,7 +144,7 @@ async fn une_facture_simple_de_bout_en_bout(options: PgPoolOptions, connexion: P
     let (_, page) = lire(&s, &format!("/factures/{id}?ok=validee")).await;
     let vcs = vcs_125(&pool).await;
     let annee: i32 = sqlx::query_scalar("SELECT extract(year FROM now() AT TIME ZONE 'Europe/Brussels')::int").fetch_one(&pool).await.unwrap();
-    let titre = format!("Facture N° {annee}-125");
+    let titre = format!("Facture n° {annee}-125");
     for attendu in [titre.as_str(), vcs.as_str(), "Marquer comme envoyée", "Client SA"] {
         assert!(page.contains(attendu), "{attendu}");
     }
@@ -306,7 +306,8 @@ async fn l_en_tete_s_enregistre_tout_seul_et_valider_suit(options: PgPoolOptions
     // Ni client ni conditions : « Valider… » est grisé ; plus de bouton « Enregistrer les informations ».
     let (_, page) = lire(&s, &format!("/factures/{id}")).await;
     assert!(page.contains(&format!("hx-post=\"/factures/{id}\"")) && !page.contains("Enregistrer les informations"));
-    assert!(morceau(&page, "id=\"facture-barre\"", "</div>").contains("disabled title=\"Complétez d'abord"));
+    let barre = morceau(&page, "id=\"facture-barre\"", "</div>");
+    assert!(barre.contains("Pour valider :") && barre.contains("disabled>Valider et envoyer…"), "{barre}");
 
     // Le formulaire part tout seul : la barre renvoyée (que htmx remplace) dit « Enregistré » et propose « Valider et
     // envoyer » (par e-mail : l'envoi par Peppol n'est pas configuré pendant les tests), le bloc « Avant de valider » est
@@ -396,14 +397,14 @@ async fn la_liste_filtre_et_totalise(options: PgPoolOptions, connexion: PgConnec
 
     let (code, page) = lire(&s, "/factures").await;
     assert_eq!(code, StatusCode::OK);
-    for attendu in ["Factures et notes de crédit", "125", "Client SA", "Petits travaux", "121,00\u{a0}€", "2 pièce(s)", "Brouillon"] {
+    for attendu in ["Factures et notes de crédit", "125", "Client SA", "Petits travaux", "121,00\u{a0}€", "2\u{a0}factures", "Brouillon"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     let (_, _, tableau) =
         envoyer(&s, Request::builder().uri("/factures?statut=brouillon").header("hx-request", "true").body(Body::empty()).unwrap()).await;
-    assert!(!tableau.contains("<html") && tableau.contains("1 pièce(s)") && !tableau.contains("Client SA"));
+    assert!(!tableau.contains("<html") && tableau.contains("1\u{a0}facture") && !tableau.contains("Client SA"));
     let (_, page) = lire(&s, "/factures?q=Client").await;
-    assert!(page.contains("1 pièce(s)"));
+    assert!(page.contains("1\u{a0}facture"));
 }
 
 /// La communication structurée de la facture n° 125 de l'année en cours (numérotation annuelle).

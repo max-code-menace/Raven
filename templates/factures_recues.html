@@ -16,6 +16,7 @@
       </div>
     </div>
     <div class="u-actions">
+      {% if crate::profil::actuel().achats %}<a class="btn" href="/achats">Achats saisis à la main</a>{% endif %}
       {% if reception %}
       <form method="post" action="/achats/recues/relever" style="margin:0">
         <button class="btn btn-primary" type="submit">Relever</button>
@@ -23,10 +24,6 @@
       {% endif %}
     </div>
   </div>
-  <nav class="u-onglets" aria-label="Factures fournisseurs">
-    <a class="actif" href="/achats/recues">Reçues par Peppol</a>
-    {% if crate::profil::actuel().achats %}<a href="/achats">Achats des {{ crate::profil::mot("chantiers") }}</a>{% endif %}
-  </nav>
 </header>
 {% endblock %}
 
@@ -49,39 +46,38 @@
     </label>
     <button class="btn" type="submit">Rechercher</button>
   </form>
-  <nav class="u-onglets" style="margin:0 16px" aria-label="Afficher">
-    <a {% if vue == "a_traiter" %}class="actif" {% endif %}href="/achats/recues?vue=a_traiter&amp;ok=filtre">À traiter <small>{{ a_traiter }}</small></a>
-    <a {% if vue == "traitees" %}class="actif" {% endif %}href="/achats/recues?vue=traitees&amp;ok=filtre">Traitées <small>{{ traitees }}</small></a>
-    <a {% if vue == "a_payer" %}class="actif" {% endif %}href="/achats/recues?vue=a_payer&amp;ok=filtre">À payer <small>{{ a_payer }}</small></a>
-    <a {% if vue == "payees" %}class="actif" {% endif %}href="/achats/recues?vue=payees&amp;ok=filtre">Payées <small>{{ payees }}</small></a>
-    <a {% if vue == "toutes" %}class="actif" {% endif %}href="/achats/recues?vue=toutes&amp;ok=filtre">Toutes <small>{{ toutes }}</small></a>
+  {# Un seul rang de filtres en pastilles avec leur nombre (audit du design du 23/10/2026 : plus d'onglets sur trois étages). #}
+  <nav class="u-vues" aria-label="Afficher">
+    <a {% if vue == "a_payer" %}class="actif" aria-current="page" {% endif %}href="/achats/recues?vue=a_payer&amp;ok=filtre">À payer <small>{{ a_payer }}</small></a>
+    <a {% if vue == "a_traiter" %}class="actif" aria-current="page" {% endif %}href="/achats/recues?vue=a_traiter&amp;ok=filtre">À traiter <small>{{ a_traiter }}</small></a>
+    <a {% if vue == "payees" %}class="actif" aria-current="page" {% endif %}href="/achats/recues?vue=payees&amp;ok=filtre">Payées <small>{{ payees }}</small></a>
+    <a {% if vue == "traitees" %}class="actif" aria-current="page" {% endif %}href="/achats/recues?vue=traitees&amp;ok=filtre">Traitées <small>{{ traitees }}</small></a>
+    <a {% if vue == "toutes" %}class="actif" aria-current="page" {% endif %}href="/achats/recues?vue=toutes&amp;ok=filtre">Toutes <small>{{ toutes }}</small></a>
   </nav>
   <div class="overflow-x-auto">
     <table class="u-table">
-      <thead><tr><th>Reçue le</th><th>Fournisseur</th><th>Pièce</th><th>Date</th><th>Échéance</th><th class="n">Montant HT</th><th class="n">Montant TTC</th><th>Classement</th><th>Paiement</th><th></th></tr></thead>
+      <thead><tr><th>Fournisseur</th><th>Pièce</th><th>Échéance</th><th class="n">Montant TTC</th><th>Classement</th><th>Paiement</th><th class="u-acts"><span class="sr-only">Ouvrir</span></th></tr></thead>
       <tbody>
         {% for f in lignes %}
         <tr>
-          <td class="nw">{{ f.recue }}</td>
-          <td><a class="font-medium" href="/achats/recues/{{ f.id }}">{{ f.fournisseur }}</a></td>
-          <td class="nw">{{ f.genre }}{% if !f.numero.is_empty() %} n° {{ f.numero }}{% endif %}</td>
-          <td class="nw">{{ f.date }}</td>
+          {# Montant HT et date de réception en deuxième ligne : la liste tient sans défiler de côté à 1366 px. #}
+          <td><a class="font-medium u-coupe" href="/achats/recues/{{ f.id }}" title="{{ f.fournisseur }}">{{ f.fournisseur }}</a><small class="u-sous">reçue le {{ f.recue }}</small></td>
+          <td class="nw">{{ f.genre }}{% if !f.numero.is_empty() %} n° {{ f.numero }}{% endif %}<small class="u-sous">du {{ f.date }}</small></td>
           <td class="nw">{{ f.echeance }}</td>
-          <td class="n">{{ f.ht }}</td>
-          <td class="n">{{ f.ttc }}</td>
+          <td class="n">{{ f.ttc }}<small class="u-sous">{{ f.ht }} HT</small></td>
           <td class="nw">{% if f.a_traiter %}<span class="u-pastille s-a-envoyer">À traiter</span><br><small class="u-muet">reste {{ f.reste }} HT</small>{% else %}<span class="u-pastille s-accepte">Traitée</span>{% endif %}</td>
           <td class="nw">{% if !f.paiement.is_empty() %}<span class="u-pastille {{ f.paiement_classe }}">{{ f.paiement }}</span>{% if !f.paiement_detail.is_empty() %}<br><small class="u-muet">{{ f.paiement_detail }}</small>{% endif %}{% endif %}</td>
-          <td class="nw"><a class="btn btn-sm" href="/achats/recues/{{ f.id }}">Ouvrir</a></td>
+          <td class="nw u-acts"><a class="btn btn-sm" href="/achats/recues/{{ f.id }}">Ouvrir</a></td>
         </tr>
         {% else %}
-        <tr class="vide"><td colspan="10">{% if vue == "a_traiter" %}Aucune facture à traiter.{% else if vue == "a_payer" %}Aucune facture à payer.{% else %}Aucune facture reçue.{% endif %}</td></tr>
+        <tr class="vide"><td colspan="7">{% if vue == "a_traiter" %}Aucune facture à traiter.{% else if vue == "a_payer" %}Aucune facture à payer.{% else %}Aucune facture reçue.{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   <div class="u-pied">
-    <span>{{ lignes.len() }} facture(s){% if lignes.len() >= 200 %} · les 200 plus récentes affichées{% endif %}</span>
-    <span>Total à payer TTC : <strong>{{ total_a_payer }}</strong>{% if nombre_en_retard > 0 %} · dont en retard : <strong style="color:#953A0A">{{ total_en_retard }}</strong> ({{ nombre_en_retard }}){% endif %}</span>
+    <span>{{ crate::commun::nombre(lignes.len(), "facture", "factures") }}{% if lignes.len() >= 200 %} · les 200 plus récentes affichées{% endif %}</span>
+    <span>Total à payer TTC : <strong>{{ total_a_payer }}</strong>{% if nombre_en_retard > 0 %} · dont en retard : <strong style="color:var(--bad)">{{ total_en_retard }}</strong> ({{ nombre_en_retard }}){% endif %}</span>
   </div>
 </section>
 {% endblock %}

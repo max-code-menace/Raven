@@ -159,8 +159,8 @@ impl Options {
             .into_iter()
             .map(|(id, genre_cond, jours)| {
                 let texte = match genre_cond.as_str() {
-                    "apres_facturation" => format!("{jours} jour(s) après date de facturation"),
-                    "fin_de_mois" => format!("{jours} jour(s) fin du mois"),
+                    "apres_facturation" => format!("{} après date de facturation", crate::commun::nombre(jours, "jour", "jours")),
+                    "fin_de_mois" => format!("{} fin du mois", crate::commun::nombre(jours, "jour", "jours")),
                     _ => "Paiement comptant".to_string(),
                 };
                 (id, texte)

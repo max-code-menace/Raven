@@ -126,7 +126,7 @@ async fn crediter_entierement_une_facture(options: PgPoolOptions, connexion: PgC
     assert_eq!(compteur, 125, "une note de crédit ne consomme pas de numéro de facture");
 
     let (_, page) = lire(&s, &format!("/factures/{note}")).await;
-    let titre = format!("Note de crédit N° {annee}-6");
+    let titre = format!("Note de crédit n° {annee}-6");
     for attendu in [titre.as_str(), cite.as_str()] {
         assert!(page.contains(attendu), "{attendu}");
     }
@@ -139,7 +139,7 @@ async fn crediter_entierement_une_facture(options: PgPoolOptions, connexion: PgC
 
     // Dans la liste, la note de crédit compte en négatif : total TTC = 0.
     let (_, liste) = lire(&s, "/factures").await;
-    assert!(liste.contains("NC 6") && liste.contains("-1\u{a0}020,98\u{a0}€"));
+    assert!(liste.contains("NC 20") && liste.contains("-6</a>") && liste.contains("-1\u{a0}020,98\u{a0}€"), "numéro avec l'année : NC 2026-6");
     assert!(liste.contains("Total TTC <strong>0,00\u{a0}€</strong>"));
 }
 

@@ -70,7 +70,7 @@ async fn importer_entreprises_puis_contacts(options: PgPoolOptions, connexion: P
     let (_, lieu, _) = televerser(&s, "/contacts/import", contacts.as_bytes()).await;
     assert_eq!(lieu.as_deref(), Some("/contacts/import?ajoutees=0&deja=3"));
     let (code, _, page) = televerser(&s, "/contacts/import", "Nom;E-mail\nAnne Claes;pas-un-mail\n".as_bytes()).await;
-    assert!(code == StatusCode::OK && page.contains("1 fiche(s) ajoutée(s)") && page.contains("pas-un-mail"));
+    assert!(code == StatusCode::OK && page.contains("1\u{a0}fiche ajoutée") && page.contains("pas-un-mail"));
     let (code, _, _) = televerser(&s, "/contacts/import", b"a;b\n1;2\n").await;
     assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
 }

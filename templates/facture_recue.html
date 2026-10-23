@@ -79,8 +79,8 @@
     <section class="u-card" id="paiement">
       <div class="u-card-h"><h2>Paiement</h2><span class="u-pastille {{ paiement_classe }}">{{ paiement }}</span></div>
       <div class="u-ligne-montant"><span>À payer (TTC)</span><span>{{ a_payer }}</span></div>
-      <div class="u-ligne-montant"><span>Payé</span><span style="color:#1C6B3C">{{ paye }}</span></div>
-      <div class="u-ligne-montant" style="font-weight:600;background:#F2F8F8"><span>Reste à payer</span><span>{{ reste_a_payer }}</span></div>
+      <div class="u-ligne-montant"><span>Payé</span><span style="color:var(--ok)">{{ paye }}</span></div>
+      <div class="u-ligne-montant" style="font-weight:600;background:var(--acc-wash)"><span>Reste à payer</span><span>{{ reste_a_payer }}</span></div>
       {% for p in paiements %}
       <div class="u-ligne-montant items-center">
         <span>{{ p.date }} · {{ p.methode }}{% if !p.remarque.is_empty() %}<small class="block u-muet">{{ p.remarque }}</small>{% endif %}</span>
@@ -97,13 +97,13 @@
       {% else %}
       <div class="u-ligne-montant u-muet">Aucun paiement enregistré.</div>
       {% endfor %}
-      <div class="u-card-b" style="border-top:1px solid #E9EBE7">
-        <div><span class="u-cle">Échéance</span>{% if echeance.is_empty() %}<span class="u-muet">pas indiquée par le fournisseur</span>{% else %}<span{% if en_retard %} style="color:#953A0A;font-weight:600"{% endif %}>{{ echeance }}{% if en_retard %} · {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %} de retard{% endif %}</span>{% endif %}</div>
+      <div class="u-card-b" style="border-top:1px solid var(--line)">
+        <div><span class="u-cle">Échéance</span>{% if echeance.is_empty() %}<span class="u-muet">pas indiquée par le fournisseur</span>{% else %}<span{% if en_retard %} style="color:var(--bad);font-weight:600"{% endif %}>{{ echeance }}{% if en_retard %} · {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %} de retard{% endif %}</span>{% endif %}</div>
         {% if !iban.is_empty() %}<div><span class="u-cle">IBAN du fournisseur</span><span class="mono">{{ iban }}</span></div>{% endif %}
         {% if !communication.is_empty() %}<div><span class="u-cle">Communication</span><span class="mono">{{ communication }}</span></div>{% endif %}
         {% if a_payer_encore %}
         <details class="u-card" style="box-shadow:none"{% if payer_ouvert %} open{% endif %}>
-          <summary class="u-card-h" style="padding:9px 12px"><span class="u-chevron flex">{% call ui::icone("bas", 14) %}{% endcall %}</span><h2 style="font-size:13.5px">Ajouter un paiement</h2></summary>
+          <summary class="u-card-h" style="padding:10px 12px"><span class="u-chevron flex">{% call ui::icone("bas", 14) %}{% endcall %}</span><h2 style="font-size:var(--t-md)">Ajouter un paiement</h2></summary>
           <form method="post" action="/achats/recues/{{ id }}/paiements" class="u-card-b">
             <div class="u-segment" role="radiogroup" aria-label="Type de paiement">
               <label class="flex items-center gap-1 px-2 text-[13px] whitespace-nowrap"><input class="radio radio-xs" type="radio" name="genre" value="complet" checked> Complet</label>

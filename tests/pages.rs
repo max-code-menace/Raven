@@ -68,7 +68,7 @@ async fn la_page_d_accueil_s_affiche(options: PgPoolOptions, connexion: PgConnec
     assert_eq!(statut, StatusCode::OK);
     assert!(corps.contains("RAVEN") && !corps.contains("Ubifacture"));
     assert!(corps.contains("href=\"/entreprises\""));
-    assert!(lire(&site(&pool), "/entreprises").await.1.contains("href=\"/contacts\""), "Clients › Contacts");
+    assert!(lire(&site(&pool), "/entreprises").await.1.contains("href=\"/contacts\""), "Contacts › Contacts");
 }
 
 #[sqlx::test]
@@ -94,7 +94,7 @@ async fn liste_vide_au_depart(options: PgPoolOptions, connexion: PgConnectOption
     let (statut, corps) = lire(&site(&pool), "/entreprises").await;
     assert_eq!(statut, StatusCode::OK);
     assert!(corps.contains("Aucune entreprise trouvée."));
-    assert!(corps.contains("0 résultat(s)"));
+    assert!(corps.contains("0\u{a0}résultat"));
 }
 
 #[sqlx::test]
@@ -105,7 +105,7 @@ async fn le_formulaire_de_creation_s_affiche(options: PgPoolOptions, connexion: 
     assert!(corps.contains("Nouvelle entreprise"));
     assert!(corps.contains("name=\"profils\""));
     assert!(corps.contains("Taux réduit (6,00 %)"));
-    assert!(corps.contains("10 jour(s) fin du mois"));
+    assert!(corps.contains("10\u{a0}jours fin du mois"));
     assert!(corps.contains("Paiement comptant"));
     // Une entreprise n'a ni prénom ni civilité.
     assert!(!corps.contains("name=\"prenom\""));
@@ -140,7 +140,7 @@ async fn creer_une_entreprise_avec_plusieurs_profils(options: PgPoolOptions, con
     assert!(corps.contains("Client"));
     assert!(corps.contains("Fournisseur - Matériaux"));
     assert!(corps.contains("Rue du Pont 12, 1390 Grez-Doiceau, Belgique"));
-    assert!(corps.contains("1 résultat(s)"));
+    assert!(corps.contains("1\u{a0}résultat"));
 }
 
 #[sqlx::test]
@@ -278,7 +278,7 @@ async fn pagination_vingt_par_page(options: PgPoolOptions, connexion: PgConnectO
     let s = site(&pool);
     let (_, p1) = lire(&s, "/entreprises").await;
     assert!(p1.contains("Entreprise 01") && p1.contains("Entreprise 20") && !p1.contains("Entreprise 21"));
-    assert!(p1.contains("25 résultat(s)") && p1.contains("Page 1 / 2"));
+    assert!(p1.contains("25\u{a0}résultats") && p1.contains("Page 1 / 2"));
     let (_, p2) = lire(&s, "/entreprises?page=2").await;
     assert!(p2.contains("Entreprise 21") && p2.contains("Entreprise 25") && !p2.contains("Entreprise 20"));
     // Une page trop grande ou absurde ramène à une page valide.
@@ -445,7 +445,7 @@ async fn le_menu_a_huit_espaces_qui_menent_tous_a_un_ecran(options: PgPoolOption
     let (statut, page) = lire(&s, "/").await;
     assert_eq!(statut, StatusCode::OK);
     let mut avant = 0;
-    for libelle in ["Tableau de bord", "Devis", "Factures", "Paiements", "Chantiers", "Clients", "Bibliothèque", "Statistiques", "Importer", "Exporter", "Réglages", "Se déconnecter"] {
+    for libelle in ["Tableau de bord", "Devis", "Factures", "Paiements", "Chantiers", "Contacts", "Bibliothèque", "Statistiques", "Importer", "Exporter", "Réglages", "Se déconnecter"] {
         let position = page.find(&format!("<span class=\"rv-nav-txt\">{libelle}</span>")).unwrap_or_else(|| panic!("{libelle} absent du menu"));
         assert!(position > avant, "{libelle} n'est pas à sa place");
         avant = position;
@@ -475,7 +475,7 @@ async fn le_menu_a_huit_espaces_qui_menent_tous_a_un_ecran(options: PgPoolOption
     let (_, page) = lire(&s, "/parametres/emails").await;
     assert!(page.contains("href=\"/parametres/peppol\">Peppol") && page.contains("is-on\" href=\"/parametres/emails\""));
     let (_, page) = lire(&s, "/contacts").await;
-    assert!(page.contains("<h1>Clients</h1>") && page.contains("href=\"/entreprises\">Entreprises"));
+    assert!(page.contains("<h1>Contacts</h1>") && page.contains("href=\"/entreprises\">Entreprises"));
 
     // L'éditeur de devis replie le menu en rail.
     let (_, lieu, _) = poster(&s, "/devis", "").await;
@@ -497,7 +497,7 @@ async fn la_page_des_composants_montre_chaque_composant(options: PgPoolOptions, 
         "class=\"rv-btn rv-btn--ghost rv-btn--sm\"",
         "<a class=\"rv-btn\" href=\"/composants\">",
         "rv-btn--icon\" type=\"submit\" aria-label=\"Supprimer le brouillon\"",
-        "disabled title=\"Choisissez d&#39;abord un client.\"",
+        "disabled>Valider la facture</button><span class=\"rv-raison\">Choisissez d&#39;abord un client.</span>",
     ] {
         assert!(page.contains(attendu), "bouton : {attendu}");
     }

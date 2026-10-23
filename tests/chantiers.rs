@@ -189,7 +189,7 @@ async fn la_fiche_reprend_le_devis(options: PgPoolOptions, connexion: PgConnectO
 
     let (statut, page) = lire(&s, &format!("/chantiers/{id}")).await;
     assert_eq!(statut, StatusCode::OK);
-    for attendu in ["Chantier N° 1", "En cours", "L63", "Client A", "Rue des Tests 12, 1000 Bruxelles", "N° 2026-57", "accepté le 05/10/2026", "10\u{a0}384,13\u{a0}€"] {
+    for attendu in ["Chantier n° 1", "En cours", "L63", "Client A", "Rue des Tests 12, 1000 Bruxelles", "n° 2026-57", "accepté le 05/10/2026", "10\u{a0}384,13\u{a0}€"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     assert!(page.contains(&format!("href=\"/devis/{d}\"")));

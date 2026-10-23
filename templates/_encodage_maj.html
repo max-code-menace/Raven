@@ -1,7 +1,7 @@
 {# Réponse à htmx après la modification d'une ligne : on ne remplace que les totaux et le message. #}
 <div id="encodage-erreur" hx-swap-oob="true">{% if !enc.message.is_empty() %}<div class="rv-banner rv-banner--bad" role="alert"><span>{{ enc.message }}</span></div>{% endif %}</div>
 {% for l in enc.lignes %}
-{% if l.est_chiffre %}<span id="total-{{ l.id }}" hx-swap-oob="true">{{ l.total }}</span>{% endif %}
+{% if l.est_chiffre %}<span id="total-{{ l.id }}" hx-swap-oob="true"{% if enc.ligne_changee == Some(*l.id) %} class="rv-maj"{% endif %}>{{ l.total }}</span>{% endif %}
 {% if l.est_chiffre && enc.marge_activee %}<span id="marge-{{ l.id }}" hx-swap-oob="true">{{ l.marge }}</span>
 {% let oob = true %}{% include "_encodage_coef.html" %}{% endif %}
 {% if l.est_chiffre && enc.prix_change == Some(*l.id) %}{% let oob = true %}{% include "_encodage_prix.html" %}{% endif %}
@@ -11,8 +11,9 @@
 {% if l.est_titre %}<span id="soustotal-{{ l.id }}" hx-swap-oob="true">{{ l.sous_total }}</span>{% endif %}
 {% endfor %}
 {% if let Some(r) = enc.rentabilite %}
-<span id="marge-totale" hx-swap-oob="true">{{ r.total.marge }}</span>
+<span id="marge-totale" hx-swap-oob="true"{% if enc.totaux_changes %} class="rv-maj"{% endif %}>{{ r.total.marge }}</span>
 <span id="marge-vente" hx-swap-oob="true">{{ enc.marge_sur_vente }}</span>
 <span id="coefficient-moyen" hx-swap-oob="true">{{ enc.coefficient_moyen }}</span>
 {% endif %}
-<div id="totaux" hx-swap-oob="true">{% include "_encodage_totaux.html" %}</div>
+{# Les totaux qui ont changé s'éclairent en jaune puis s'effacent (classe rv-maj, _styles.html). #}
+<div id="totaux" hx-swap-oob="true"{% if enc.totaux_changes %} class="rv-maj"{% endif %}>{% include "_encodage_totaux.html" %}</div>

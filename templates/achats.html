@@ -16,6 +16,7 @@
       </div>
     </div>
     <div class="u-actions">
+      <a class="btn" href="/achats/recues">Factures reçues par Peppol{% if a_traiter > 0 %} · {{ a_traiter }} à traiter{% endif %}</a>
       <details class="u-menu">
         <summary class="btn btn-primary">{% call ui::icone("plus", 16) %}{% endcall %}Nouveau</summary>
         <form method="post" action="/achats" class="u-menu-liste u-menu-form" style="min-width:340px">
@@ -56,10 +57,6 @@
       </details>
     </div>
   </div>
-  <nav class="u-onglets" aria-label="Factures fournisseurs">
-    <a href="/achats/recues">Reçues par Peppol{% if a_traiter > 0 %} <small>{{ a_traiter }} à traiter</small>{% endif %}</a>
-    <a class="actif" href="/achats">Achats des {{ crate::profil::mot("chantiers") }}</a>
-  </nav>
 </header>
 {% endblock %}
 
@@ -98,7 +95,7 @@
     </table>
   </div>
   <div class="u-pied">
-    <span>{{ nombre }} achat(s){% if nombre > 200 %} · les 200 plus récents affichés{% endif %}</span>
+    <span>{{ crate::commun::nombre(nombre, "achat", "achats") }}{% if nombre > 200 %} · les 200 plus récents affichés{% endif %}</span>
     <div class="u-totaux"><div><small>Total HT</small><b>{{ total }}</b></div></div>
   </div>
 </section>

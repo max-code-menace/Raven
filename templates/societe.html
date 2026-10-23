@@ -42,13 +42,16 @@
       <h3>Logo</h3>
       <p class="u-petit u-muet">Image PNG ou JPEG, 1 Mo maximum.</p>
       {% if a_un_logo %}
-      <img src="/parametres/societe/logo?v={{ version_logo }}" alt="Logo de la société" class="max-h-24 w-auto self-start rounded-lg border border-[#E1E3DF] bg-white p-2">
+      <img src="/parametres/societe/logo?v={{ version_logo }}" alt="Logo de la société" class="max-h-24 w-auto self-start rounded border border-[color:var(--line)] bg-white p-2">
       {% else %}
       <p class="u-muet">Aucun logo.</p>
       {% endif %}
-      <form method="post" action="/parametres/societe/logo/envoyer" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
-        <input type="file" name="fichier" accept="image/png,image/jpeg" class="file-input file-input-bordered file-input-sm w-full max-w-xs">
-        <button type="submit" class="btn btn-sm">Envoyer</button>
+      {# Choisir ou glisser le fichier suffit : htmx l'envoie aussitôt (sans htmx, le bouton reste). #}
+      <form method="post" action="/parametres/societe/logo/envoyer" enctype="multipart/form-data"
+        hx-post="/parametres/societe/logo/envoyer" hx-encoding="multipart/form-data" hx-trigger="change" hx-target=".u-app" hx-select=".u-app" hx-swap="outerHTML">
+        <label class="u-depot">{% call ui::icone("importer", 20) %}{% endcall %}<span>Glissez votre logo ici ou <u>choisissez un fichier</u></span>
+          <input type="file" name="fichier" accept="image/png,image/jpeg" aria-label="Logo (PNG ou JPEG)"></label>
+        <noscript><button type="submit" class="btn btn-sm">Envoyer</button></noscript>
       </form>
       {% if a_un_logo %}
       <form method="post" action="/parametres/societe/logo/retirer">
@@ -64,9 +67,11 @@
       {% else %}
       <p class="u-muet">Aucun fichier.</p>
       {% endif %}
-      <form method="post" action="/parametres/societe/conditions-generales/envoyer" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
-        <input type="file" name="fichier" accept="application/pdf" class="file-input file-input-bordered file-input-sm w-full max-w-xs">
-        <button type="submit" class="btn btn-sm">Envoyer</button>
+      <form method="post" action="/parametres/societe/conditions-generales/envoyer" enctype="multipart/form-data"
+        hx-post="/parametres/societe/conditions-generales/envoyer" hx-encoding="multipart/form-data" hx-trigger="change" hx-target=".u-app" hx-select=".u-app" hx-swap="outerHTML">
+        <label class="u-depot">{% call ui::icone("pdf", 20) %}{% endcall %}<span>Glissez le PDF ici ou <u>choisissez un fichier</u></span>
+          <input type="file" name="fichier" accept="application/pdf" aria-label="Conditions générales (PDF)"></label>
+        <noscript><button type="submit" class="btn btn-sm">Envoyer</button></noscript>
       </form>
       {% if conditions_generales.is_some() %}
       <form method="post" action="/parametres/societe/conditions-generales/retirer">
@@ -176,6 +181,5 @@
 {% block barre %}
 <div class="u-barre">
   {% call ui::enregistrement(enregistrement) %}{% endcall %}
-  <a class="btn" href="/">Fermer</a>
 </div>
 {% endblock %}

@@ -1,6 +1,6 @@
 <div id="apercu" class="u-bandeau {% if apercu.nombre > 0 %}ok{% else %}alerte{% endif %}" style="margin:0">
   <span>
-    <strong>{{ apercu.nombre }} occurrence(s) trouvée(s)</strong>{% if !apercu.rythme.is_empty() %} · {{ apercu.rythme }}{% endif %}
-    {% if !apercu.dates.is_empty() %}<br><span class="u-petit">{{ apercu.dates|join(" · ") }}{% if apercu.autres > 0 %} · et {{ apercu.autres }} autre(s){% endif %}</span>{% endif %}
+    <strong>{{ crate::commun::nombre(apercu.nombre, "occurrence trouvée", "occurrences trouvées") }}</strong>{% if !apercu.rythme.is_empty() %} · {{ apercu.rythme }}{% endif %}
+    {% if !apercu.dates.is_empty() %}<br><span class="u-petit">{{ apercu.dates|join(" · ") }}{% if apercu.autres > 0 %} · et {{ crate::commun::nombre(apercu.autres, "autre", "autres") }}{% endif %}</span>{% endif %}
   </span>
 </div>

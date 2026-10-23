@@ -12,14 +12,30 @@
   --ink: #111110;
   --ink-hover: #2b2b28;
   --on-ink: #ffffff;
-  --mut: #6a6a64;
+  /* Audit du 23/10/2026 : tout ce qui se clique ou se remplit a un contour d'au moins 3:1 (WCAG 1.4.11) ; le jaune
+     de l'action principale est plein avec un bord encre (avant : jaune à 45 %, 1,2:1 sur blanc). */
+  --mut: #5c5c57;
   --line: #e3e3de;
-  --line-field: #bdbdb6;
-  --acc-fill: rgba(248, 210, 0, 0.45);
-  --acc-hover: rgba(248, 210, 0, 0.6);
+  --line-field: #8a8a83;
+  --hover: #efeee6;
+  --acc-fill: #f8d200;
+  --acc-hover: #ebc700;
+  --acc-press: #d9b800;
   --acc-line: rgba(205, 145, 0, 0.85);
   --acc-bd: rgba(248, 210, 0, 0.7);
-  --acc-wash: rgba(248, 210, 0, 0.2);
+  --acc-wash: #fef6cc;
+  /* Six tailles de texte, pas une de plus. */
+  --t-xs: 12px;
+  --t-sm: 13px;
+  --t-md: 14px;
+  --t-lg: 16px;
+  --t-xl: 20px;
+  --t-xxl: 28px;
+  /* Mouvement : 120 ms pour un survol, 140 ms pour ce qui s'ouvre, 900 ms pour « ça a changé ici ». */
+  --ease-in: cubic-bezier(.2, 0, 0, 1);
+  --duree-survol: 120ms;
+  --duree-ouverture: 140ms;
+  --duree-changement: 900ms;
   --scrim: rgba(17, 17, 16, 0.45);
   --ok: #1a7f37;
   --ok-wash: #e9f6ed;
@@ -33,7 +49,7 @@
   --space-6: 24px;
   --space-7: 32px;
   --space-8: 40px;
-  --pad-card: 22px;
+  --pad-card: 24px;
   --radius: 4px;
   --radius-tag: 3px;
   --radius-pill: 999px;
@@ -54,78 +70,92 @@
 .rv-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .rv-mut { color: var(--mut); }
 .rv-r { text-align: right; }
-:where(.rv-btn, .rv-tab, .rv-seg button, .rv-nav, .rv-kpi, .rv-input, .rv-qt-ln):focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+/* Un seul anneau de focus pour tout le site (2 px blanc, 2 px encre), au clavier. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
+/* Mouvement : survols doux, et rien du tout pour qui l'a demandé. */
+:where(.rv-btn, .rv-nav, .rv-tab, .rv-cell, .rv-input, .rv-menu-item, .rv-table td, .btn, .input, .select, .u-mi, .u-table td) { transition: background-color var(--duree-survol) ease-out, border-color var(--duree-survol) ease-out, color var(--duree-survol) ease-out, box-shadow var(--duree-survol) ease-out; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; } }
 
 /* Button */
-.rv-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--size-control); padding: 0 18px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: 600 14px/1 var(--font-sans); white-space: nowrap; cursor: pointer; text-decoration: none; }
+.rv-btn { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--size-control); padding: 0 18px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: 600 var(--t-md)/1 var(--font-sans); white-space: nowrap; cursor: pointer; text-decoration: none; }
 .rv-btn:hover { background: var(--soft); }
-.rv-btn--acc { background: var(--acc-fill); border-color: var(--acc-line); }
+.rv-btn:active { transform: translateY(1px); background: var(--hover); }
+.rv-btn--acc { background: var(--acc-fill); border-color: var(--ink); color: var(--ink); }
 .rv-btn--acc:hover { background: var(--acc-hover); }
+.rv-btn--acc:active { background: var(--acc-press); }
 .rv-btn--ink { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 .rv-btn--ink:hover { background: var(--ink-hover); }
-.rv-btn--ghost { border-color: var(--line); }
+.rv-btn--ink:active { background: var(--ink-hover); }
+.rv-btn--ghost { border-color: var(--line-field); }
 .rv-btn--ghost:hover { border-color: var(--ink); background: var(--paper); }
-.rv-btn--sm { height: var(--size-control-sm); padding: 0 12px; font-size: 13px; }
+.rv-btn--sm { height: var(--size-control-sm); padding: 0 12px; font-size: var(--t-sm); }
 .rv-btn--icon { width: var(--size-control-sm); height: var(--size-control-sm); padding: 0; border-color: transparent; }
-.rv-btn--icon:hover { border-color: var(--line); }
-.rv-btn:disabled { opacity: .4; cursor: not-allowed; }
+.rv-btn--icon:hover { border-color: var(--line-field); }
+.rv-btn:disabled, .rv-btn[aria-disabled="true"] { opacity: .4; cursor: not-allowed; transform: none; }
 .rv-btn svg { flex: none; }
+/* La raison d'un bouton inactif, écrite sous lui (une info-bulle ne se voit ni au clavier ni au doigt). */
+.rv-raison { font: 400 var(--t-sm)/1.4 var(--font-sans); color: var(--mut); }
 
-/* Status pill */
-.rv-pill { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border: 1px solid var(--ink); border-radius: var(--radius-pill); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
-.rv-pill--draft { border-color: var(--line); color: var(--mut); }
+/* Status pill. Une règle pour tous les statuts : jaune = à vous de jouer, contour encre = on attend quelqu'un,
+   vert = fini, rouge = problème, gris = brouillon. */
+.rv-pill { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border: 1px solid var(--ink); border-radius: var(--radius-pill); font: 500 var(--t-xs)/1 var(--font-sans); white-space: nowrap; }
+.rv-pill--draft { background: var(--hover); border-color: transparent; color: var(--mut); }
+.rv-pill--todo { background: var(--acc-wash); border-color: var(--ink); color: var(--ink); font-weight: 600; }
 .rv-pill--done { background: var(--ok-wash); border-color: var(--ok); color: var(--ok); font-weight: 600; }
 .rv-pill--late { background: var(--bad-wash); border-color: var(--bad); color: var(--bad); font-weight: 600; }
-.rv-pill--refused { border-color: var(--bad); color: var(--bad); text-decoration: line-through; }
+.rv-pill--refused { background: var(--bad-wash); border-color: var(--bad); color: var(--bad); }
 
 /* Tag & Flag */
-.rv-tag { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-tag); background: var(--paper); color: var(--mut); font: 500 12px/1 var(--font-mono); white-space: nowrap; }
+.rv-tag { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--radius-tag); background: var(--paper); color: var(--mut); font: 500 var(--t-xs)/1 var(--font-mono); white-space: nowrap; }
 .rv-tag--ink { border-color: var(--ink); color: var(--ink); }
-.rv-flag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border: 1px dashed var(--acc-line); border-radius: var(--radius-tag); background: var(--acc-wash); color: var(--ink); font: 500 10.5px/1 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.rv-flag { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border: 1px solid var(--ink); border-radius: var(--radius-pill); background: var(--acc-wash); color: var(--ink); font: 600 var(--t-xs)/1 var(--font-sans); white-space: nowrap; }
 
 /* Field */
 .rv-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.rv-label { font: 600 13px/1.3 var(--font-sans); color: var(--ink); }
-.rv-input { box-sizing: border-box; height: var(--size-field); width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--line-field); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: 400 15px/1.2 var(--font-sans); }
+.rv-label { font: 600 var(--t-sm)/1.3 var(--font-sans); color: var(--ink); }
+.rv-input { box-sizing: border-box; height: var(--size-field); width: 100%; min-width: 0; padding: 0 12px; border: 1px solid var(--line-field); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: 400 var(--t-lg)/1.2 var(--font-sans); }
 .rv-input:hover { border-color: var(--ink); }
 .rv-input:focus { outline: none; border-color: var(--ink); box-shadow: var(--focus-ring); }
-.rv-input--sm { height: var(--size-field-sm); padding: 0 10px; font-size: 14px; }
+.rv-input--sm { height: var(--size-field-sm); padding: 0 10px; font-size: var(--t-md); }
 .rv-input--num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.rv-hint { font: 400 12.5px/1.4 var(--font-sans); color: var(--mut); }
+.rv-hint { font: 400 var(--t-sm)/1.4 var(--font-sans); color: var(--mut); }
 
 /* Card & eyebrow */
 .rv-card { box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); padding: var(--pad-card); }
-.rv-eyebrow { font: 600 12px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mut); }
+.rv-eyebrow { font: 600 var(--t-xs)/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mut); }
 
 /* Tabs */
 .rv-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); }
-.rv-tab { height: var(--size-control); padding: 0 14px; margin-bottom: -1px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--mut); font: 500 14.5px/1 var(--font-sans); white-space: nowrap; cursor: pointer; }
+.rv-tab { height: var(--size-control); padding: 0 14px; margin-bottom: -1px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--mut); font: 500 var(--t-md)/1 var(--font-sans); white-space: nowrap; cursor: pointer; }
+.rv-tab:hover { color: var(--ink); border-bottom-color: var(--line-field); }
 .rv-tab.is-on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
-.rv-tab small { margin-left: 6px; padding: 1px 7px; border: 1px solid var(--line); border-radius: var(--radius-pill); font: 500 11px var(--font-mono); }
+.rv-tab small { margin-left: 6px; padding: 1px 7px; border: 1px solid var(--line-field); border-radius: var(--radius-pill); font: 500 var(--t-xs) var(--font-mono); }
 
 /* Segmented */
 .rv-seg { display: inline-flex; border: 1px solid var(--ink); border-radius: var(--radius); overflow: hidden; }
-.rv-seg button { height: 42px; padding: 0 18px; border: 0; border-right: 1px solid var(--ink); background: var(--paper); color: var(--ink); font: 500 14px/1 var(--font-sans); white-space: nowrap; cursor: pointer; }
+.rv-seg button { height: 42px; padding: 0 18px; border: 0; border-right: 1px solid var(--ink); background: var(--paper); color: var(--ink); font: 500 var(--t-md)/1 var(--font-sans); white-space: nowrap; cursor: pointer; }
 .rv-seg button:last-child { border-right: 0; }
 .rv-seg button.is-on { background: var(--ink); color: var(--on-ink); }
-.rv-seg--sm button { height: 32px; padding: 0 12px; font-size: 13px; }
+.rv-seg--sm button { height: 32px; padding: 0 12px; font-size: var(--t-sm); }
 
 /* KPI tile */
-.rv-kpi { box-sizing: border-box; display: block; width: 100%; padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); color: var(--ink); text-align: left; }
-.rv-kpi small { display: block; margin-bottom: 10px; font: 500 12px/1.3 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--mut); }
-.rv-kpi b { display: block; font: 500 26px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rv-kpi span { display: block; margin-top: 8px; font-size: 13px; color: var(--mut); }
-.rv-kpi--plate { background: var(--acc-fill); border-color: var(--acc-line); }
+.rv-kpi { box-sizing: border-box; display: block; width: 100%; padding: 20px 24px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); color: var(--ink); text-align: left; }
+.rv-kpi small { display: block; margin-bottom: 10px; font: 600 var(--t-xs)/1.3 var(--font-sans); letter-spacing: .04em; text-transform: uppercase; color: var(--mut); }
+.rv-kpi b { display: block; font: 500 var(--t-xxl)/1.1 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rv-kpi span { display: block; margin-top: 8px; font-size: var(--t-sm); color: var(--mut); }
+.rv-kpi--plate { background: var(--acc-fill); border-color: var(--ink); }
 .rv-kpi--plate small, .rv-kpi--plate span { color: var(--ink); }
 
-/* Table */
+/* Table. Intitulés de colonnes en Archivo (le mono est réservé aux nombres). */
 .rv-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
-.rv-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
-.rv-table th { padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--soft); color: var(--mut); text-align: left; font: 500 11.5px/1.3 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
-.rv-table td { height: var(--size-row); box-sizing: border-box; padding: 0 14px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+.rv-table { width: 100%; border-collapse: collapse; font-size: var(--t-md); }
+.rv-table th { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--soft); color: var(--mut); text-align: left; font: 600 var(--t-xs)/1.3 var(--font-sans); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.rv-table td { height: var(--size-row); box-sizing: border-box; padding: 0 16px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
 .rv-table tr:last-child td { border-bottom: 0; }
 .rv-table tr.is-link { cursor: pointer; }
-.rv-table tr.is-link:hover td { background: var(--soft); }
+.rv-table tbody tr:hover td { background: var(--hover); }
+.rv-table tbody tr:hover td:first-child { box-shadow: inset 2px 0 0 var(--ink); }
+.rv-table tbody tr.rv-vide:hover td { background: none; box-shadow: none; }
 
 /* Progress bar */
 .rv-bar { height: 8px; min-width: 90px; border-radius: 4px; background: var(--line); overflow: hidden; }
@@ -134,40 +164,40 @@
 /* Navigation */
 .rv-side { box-sizing: border-box; width: var(--size-sidebar); display: flex; flex-direction: column; gap: 2px; padding: 22px 14px 16px; border-right: 1px solid var(--line); background: var(--paper); }
 .rv-brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 22px; font: 700 15px/1 var(--font-sans); letter-spacing: .22em; }
-.rv-brand i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-tag); background: var(--ink); color: var(--on-ink); font: 700 14px/1 var(--font-sans); font-style: normal; letter-spacing: 0; }
-.rv-nav { box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; height: var(--size-control); padding: 0 12px; border: 0; border-left: 3px solid transparent; border-radius: var(--radius); background: none; color: var(--ink); font: 500 15px/1 var(--font-sans); text-align: left; text-decoration: none; white-space: nowrap; cursor: pointer; }
-.rv-nav:hover { background: var(--soft); }
-.rv-nav.is-on { background: var(--soft); font-weight: 600; border-left-color: var(--ink); }
+.rv-brand i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-tag); background: var(--ink); color: var(--on-ink); font: 700 var(--t-md)/1 var(--font-sans); font-style: normal; letter-spacing: 0; }
+.rv-nav { box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; height: var(--size-control); padding: 0 12px; border: 0; border-left: 3px solid transparent; border-radius: var(--radius); background: none; color: var(--ink); font: 500 var(--t-md)/1 var(--font-sans); text-align: left; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.rv-nav:hover { background: var(--hover); }
+.rv-nav.is-on { background: var(--hover); font-weight: 600; border-left-color: var(--ink); }
 .rv-side--rail { width: var(--size-rail); padding: 18px 8px; align-items: center; }
 .rv-side--rail .rv-brand { padding: 0 0 18px; }
 .rv-side--rail .rv-nav { width: var(--size-control); justify-content: center; padding: 0; }
 
 /* Totals */
 .rv-totals { display: flex; flex-direction: column; }
-.rv-totals-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 7px 0; }
+.rv-totals-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; }
 .rv-totals-row > :first-child { color: var(--mut); }
 .rv-totals-row > :last-child { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rv-totals-sub { padding-left: 12px; font-size: 13.5px; }
+.rv-totals-sub { padding-left: 12px; font-size: var(--t-sm); }
 .rv-totals-sum { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--ink); font-weight: 700; }
 .rv-totals-sum > :first-child { color: var(--ink); }
 
 /* Margin indicator */
-.rv-margin { font: 500 13px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--mut); white-space: nowrap; }
+.rv-margin { font: 500 var(--t-sm)/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--mut); white-space: nowrap; }
 .rv-margin--low { color: var(--bad); font-weight: 600; padding-bottom: 2px; border-bottom: 1.5px dashed var(--bad); }
 .rv-margin--good { color: var(--ok); font-weight: 600; }
 
 /* Quote tree — l'éditeur de devis structuré */
-.rv-qt { border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); font-size: 14px; }
+.rv-qt { border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); font-size: var(--t-md); }
 .rv-qt-row { display: grid; grid-template-columns: 24px 48px minmax(0, 1fr) 52px 76px 52px 96px 104px 60px 36px; column-gap: 6px; align-items: center; min-height: var(--size-row-dense); padding: 0 8px; border-bottom: 1px solid var(--line); }
 .rv-qt-row:last-child { border-bottom: 0; }
-.rv-qt-head { min-height: 38px; background: var(--soft); color: var(--mut); font: 500 11.5px/1.3 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
-.rv-qt-ch { background: var(--soft); font-weight: 700; font-size: 15px; }
+.rv-qt-head { min-height: 38px; background: var(--soft); color: var(--mut); font: 600 var(--t-xs)/1.3 var(--font-sans); letter-spacing: .04em; text-transform: uppercase; }
+.rv-qt-ch { background: var(--soft); font-weight: 700; font-size: var(--t-lg); }
 .rv-qt-ln .rv-qt-ref, .rv-qt-ch .rv-qt-ref { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.rv-qt-ref { color: var(--mut); font-size: 13px; }
+.rv-qt-ref { color: var(--mut); font-size: var(--t-sm); }
 .rv-qt-ch .rv-qt-ref { color: var(--ink); }
 .rv-qt-desc { min-width: 0; }
-.rv-qt-desc small { display: block; margin-top: 2px; color: var(--mut); font-size: 12.5px; line-height: 1.4; }
-.rv-qt-cmp { min-height: 34px; background: var(--paper); color: var(--mut); font-size: 13px; }
+.rv-qt-desc small { display: block; margin-top: 2px; color: var(--mut); font-size: var(--t-sm); line-height: 1.4; }
+.rv-qt-cmp { min-height: 34px; background: var(--paper); color: var(--mut); font-size: var(--t-sm); }
 .rv-qt-cmp .rv-qt-desc { padding-left: 18px; border-left: 1px solid var(--line); }
 .rv-qt-opt { background: var(--acc-wash); }
 .rv-qt-opt .rv-qt-total { color: var(--mut); text-decoration: line-through; text-decoration-color: var(--mut); }
@@ -179,11 +209,11 @@
 .rv-qt-code { margin-left: 2px; color: var(--mut); font: 400 12px/1 var(--font-mono); white-space: nowrap; }
 .rv-qt-n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rv-qt-add { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 10px 8px; border-top: 1px solid var(--line); }
-.rv-qt-metre { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; width: 100%; height: 32px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-tag); background: transparent; color: var(--ink); font: 400 14px/1 var(--font-mono); font-variant-numeric: tabular-nums; cursor: pointer; }
+.rv-qt-metre { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; width: 100%; height: 32px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-tag); background: transparent; color: var(--ink); font: 400 var(--t-md)/1 var(--font-mono); font-variant-numeric: tabular-nums; cursor: pointer; }
 .rv-qt-metre:hover { border-color: var(--line-field); background: var(--paper); }
 .rv-qt-metre[aria-expanded="true"] { border-color: var(--line-field); background: var(--soft); }
 .rv-qt-metre svg { flex: none; color: var(--mut); }
-.rv-qt-msr { min-height: 34px; color: var(--mut); font-size: 13px; background: var(--soft); }
+.rv-qt-msr { min-height: 34px; color: var(--mut); font-size: var(--t-sm); background: var(--soft); }
 .rv-qt-msr .rv-qt-desc { padding-left: 18px; border-left: 1px dashed var(--line-field); }
 .rv-qt-msr-sum { color: var(--ink); font-weight: 600; }
 
@@ -191,14 +221,15 @@
 .rv-cell { box-sizing: border-box; width: 100%; min-width: 0; height: 32px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-tag); background: transparent; color: inherit; font: inherit; }
 .rv-cell::placeholder { color: var(--mut); opacity: 1; }
 .rv-cell:hover { border-color: var(--line-field); background: var(--paper); }
+.rv-cell:active { border-color: var(--ink); }
 .rv-cell:focus { outline: none; border-color: var(--ink); background: var(--paper); box-shadow: var(--focus-ring); }
 .rv-cell--num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .rv-cell--strong { font-weight: 600; }
-.rv-cell--sub { height: 24px; font-size: 12.5px; color: var(--mut); }
-.rv-cell--tag { width: 100%; padding: 0 4px; color: var(--mut); font: 500 12.5px/1 var(--font-mono); text-align: left; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.rv-cell--sub { height: 28px; font-size: var(--t-sm); color: var(--mut); }
+.rv-cell--tag { width: 100%; padding: 0 4px; color: var(--mut); font: 500 var(--t-sm)/1 var(--font-sans); text-align: left; appearance: none; -webkit-appearance: none; cursor: pointer; }
 
 /* Banner — ce qui demande l'attention, sans rouge */
-.rv-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 12px 16px; border: 1px dashed var(--acc-line); border-radius: var(--radius); background: var(--acc-wash); color: var(--ink); font-size: 14px; }
+.rv-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 12px 16px; border: 1px dashed var(--acc-line); border-radius: var(--radius); background: var(--acc-wash); color: var(--ink); font-size: var(--t-md); }
 .rv-banner > :first-child { flex: 1 1 320px; min-width: 0; }
 .rv-banner b { font-weight: 600; }
 .rv-banner--bad { border: 1px solid var(--bad); background: var(--bad-wash); }
@@ -208,7 +239,7 @@
 
 /* Erreur de saisie */
 .rv-input.is-error { border-color: var(--bad); background: var(--bad-wash); }
-.rv-error { font: 600 12.5px/1.4 var(--font-sans); color: var(--bad); }
+.rv-error { font: 600 var(--t-sm)/1.4 var(--font-sans); color: var(--bad); }
 
 /* Band — bande de synthèse en colonnes séparées par des filets */
 .rv-band { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--paper); }
@@ -218,16 +249,16 @@
 
 /* Category list — catégories à gauche d'une liste */
 .rv-cats { display: flex; flex-direction: column; gap: 2px; }
-.rv-cats .rv-nav { font-size: 14.5px; }
+.rv-cats .rv-nav { font-size: var(--t-md); }
 .rv-cats .rv-nav .rv-tag { margin-left: auto; height: 22px; padding: 0 7px; }
 
 /* Menu — actions secondaires derrière un bouton « … » */
 .rv-menu-wrap { position: relative; display: inline-flex; }
 .rv-menu { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; min-width: 260px; box-sizing: border-box; padding: 6px; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--paper); box-shadow: var(--shadow-menu); display: flex; flex-direction: column; }
-.rv-menu-item { box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 0 10px; border: 0; border-radius: var(--radius-tag); background: none; color: var(--ink); font: 500 14px/1.2 var(--font-sans); text-align: left; text-decoration: none; white-space: nowrap; cursor: pointer; }
-.rv-menu-item:hover { background: var(--soft); }
+.rv-menu-item { box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 0 10px; border: 0; border-radius: var(--radius-tag); background: none; color: var(--ink); font: 500 var(--t-md)/1.2 var(--font-sans); text-align: left; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.rv-menu-item:hover { background: var(--hover); }
 .rv-menu-item:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); }
-.rv-menu-item small { margin-left: auto; padding-left: 16px; color: var(--mut); font: 400 12px/1 var(--font-mono); }
+.rv-menu-item small { margin-left: auto; padding-left: 16px; color: var(--mut); font: 400 var(--t-xs)/1 var(--font-sans); }
 .rv-menu-sep { height: 1px; margin: 6px 4px; background: var(--line); }
 
 /* ── Ajouts propres à l'application (pas dans bundle.css) ──────────────── */
@@ -256,7 +287,7 @@ a.rv-kpi { text-decoration: none; }
 a.rv-kpi:hover { color: var(--ink); border-color: var(--ink); }
 a.rv-kpi.rv-kpi--plate:hover { background: var(--acc-hover); }
 .rv-table tr.rv-vide td { height: auto; padding: 28px 14px; text-align: center; color: var(--mut); white-space: normal; }
-.rv-totals-hors { margin-top: 12px; color: var(--mut); font-size: 13px; }
+.rv-totals-hors { margin-top: 12px; color: var(--mut); font-size: var(--t-sm); }
 .rv-totals-hors:empty { display: none; }
 /* Écrans de consultation (étape 3) : page blanche, titre de 30 px, zone de travail jusqu'à size-content. */
 body.rv-papier { background: var(--paper); }
@@ -264,12 +295,12 @@ body.rv-papier { background: var(--paper); }
 .rv-tete { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px 24px;
   padding: 32px 40px 16px; max-width: var(--size-content); }
 .rv-tete-texte { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.rv-tete h1 { margin: 0; font: 700 30px/1.15 var(--font-sans); letter-spacing: -.01em; }
+.rv-tete h1 { margin: 0; font: 700 var(--t-xxl)/1.15 var(--font-sans); letter-spacing: -.01em; }
 .rv-tete p { margin: 0; color: var(--mut); }
 .rv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .rv-actions form, .rv-outils form { margin: 0; }
 .rv-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.rv-section > h2 { margin: 0; font: 700 17px/1.35 var(--font-sans); }
+.rv-section > h2 { margin: 0; font: 700 var(--t-lg)/1.35 var(--font-sans); }
 .rv-deux { display: flex; flex-wrap: wrap; gap: var(--space-6); align-items: flex-start; }
 .rv-deux > * { flex: 1 1 360px; min-width: 0; }
 .rv-tuiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-5); }
@@ -278,8 +309,8 @@ body.rv-papier { background: var(--paper); }
 .rv-recherche { position: relative; flex: 0 1 360px; }
 .rv-recherche svg { position: absolute; left: 13px; top: 14px; color: var(--mut); pointer-events: none; }
 .rv-recherche .rv-input { padding-left: 38px; }
-.rv-filtre { gap: 6px; text-decoration: none; height: 30px; }
-.rv-filtre:hover { color: var(--ink); background: var(--soft); }
+.rv-filtre { gap: 6px; text-decoration: none; height: 32px; }
+.rv-filtre:hover { color: var(--ink); background: var(--hover); }
 /* Menus « … » et panneau de filtres ouverts par <details> (pas de JavaScript). */
 details.rv-menu-wrap > summary { list-style: none; }
 details.rv-menu-wrap > summary::-webkit-details-marker { display: none; }
@@ -287,16 +318,22 @@ details.rv-menu-wrap > summary::-webkit-details-marker { display: none; }
 .rv-menu--form { padding: 16px; gap: 14px; min-width: 320px; white-space: normal; }
 .rv-menu form { margin: 0; }
 .rv-coches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
-.rv-coche { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.rv-coche { display: flex; align-items: center; gap: 8px; font-size: var(--t-md); cursor: pointer; }
 .rv-coche input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
 .rv-table .rv-statut { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.rv-table .rv-statut small { font: 400 12px/1 var(--font-mono); color: var(--mut); }
+.rv-table .rv-statut small { font: 400 var(--t-xs)/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--mut); }
 .rv-table td a.rv-lien { color: var(--ink); font-weight: 600; text-decoration: none; }
 .rv-table td a.rv-lien:hover { text-decoration: underline; }
 .rv-table .rv-ligne-actions { display: inline-flex; gap: 2px; }
 /* En-tête d'une fiche (devis, étape 4) : retour, titre et pastille, contexte, actions, onglets. */
-.rv-tete--fiche { padding-top: 24px; }
-.rv-retour { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--mut); text-decoration: none; }
+/* En-tête compact d'une fiche (devis, avenant) : retour carré, titre de 20 px, contexte, actions ; ≈ 80 px de haut
+   au lieu de 130, pour voir plus de lignes du devis sur un écran de 768 px. */
+.rv-tete--fiche { padding-top: 16px; padding-bottom: 12px; align-items: center; }
+.rv-tete--fiche h1 { font-size: var(--t-xl); }
+.rv-tete--fiche .rv-tete-texte { gap: 4px; }
+.rv-retour--carre { width: 36px; height: 36px; justify-content: center; border: 1px solid var(--line-field); border-radius: var(--radius); color: var(--ink); }
+.rv-retour--carre:hover { border-color: var(--ink); background: var(--soft); }
+.rv-retour { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-md); font-weight: 600; color: var(--mut); text-decoration: none; }
 .rv-retour:hover { color: var(--ink); }
 .rv-tete-titre { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .rv-tete p a { color: var(--ink); }
@@ -307,22 +344,24 @@ details.rv-menu-wrap > summary::-webkit-details-marker { display: none; }
 .rv-menu-form { display: flex; flex-direction: column; gap: 12px; padding: 12px 10px; white-space: normal; min-width: 280px; }
 /* Lignes d'un devis (étape 4) : grille QuoteTree avec les colonnes de Raven (ordre, N°, désignation, type, qté, unité,
    PU HT, [achat U., coef.], TVA, total HT, [bénéfice], suppression). */
+/* Audit du 23/10/2026 : la désignation prend la place (au moins 240 px à 1366 px avec l'option marge,
+   ≈ 560 px sans) ; les colonnes Type et TVA ne gardent que ce qu'il faut pour « QF » et « 0 % autoliq. ». */
 .rv-qt--enc { min-width: 980px; }
-.rv-qt--enc .rv-qt-row { grid-template-columns: 26px 52px minmax(0, 1fr) 104px 84px 70px 104px 112px 112px 40px; align-items: start; padding-top: 4px; padding-bottom: 4px; }
-.rv-qt--enc.rv-qt--marge { min-width: 1060px; }
-.rv-qt--enc.rv-qt--marge .rv-qt-row { grid-template-columns: 26px 52px minmax(0, 1fr) 104px 84px 70px 104px 104px 72px 112px 112px 136px 40px; }
+.rv-qt--enc .rv-qt-row { grid-template-columns: 60px 44px minmax(300px, 1fr) 52px 84px 56px 92px 76px 108px 36px; align-items: start; padding-top: 4px; padding-bottom: 4px; }
+.rv-qt--enc.rv-qt--marge { min-width: 1204px; }
+.rv-qt--enc.rv-qt--marge .rv-qt-row { grid-template-columns: 60px 44px minmax(240px, 1fr) 52px 84px 56px 92px 92px 60px 76px 108px 116px 36px; }
 .rv-qt--enc .rv-qt-head { align-items: center; }
 .rv-qt--enc .rv-qt-large { grid-column: 3 / -3; }
 .rv-qt--enc.rv-qt--marge .rv-qt-large { grid-column: 3 / -4; }
 .rv-qt--enc .rv-qt-ref, .rv-qt--enc .rv-qt-type, .rv-qt--enc .rv-qt-n { padding-top: 8px; }
 .rv-qt--enc .rv-qt-desc { display: flex; flex-direction: column; gap: 0; }
-.rv-qt--enc .rv-qt-type { color: var(--mut); font-size: 12.5px; }
+.rv-qt--enc .rv-qt-type { color: var(--mut); font-size: var(--t-sm); }
 .rv-qt--enc .rv-qt-sous .rv-cell { font-weight: 600; }
 .rv-qt--enc .rv-qt-txt .rv-qt-desc { font-style: normal; }
 /* Étape 4-3 : le coefficient se lit dans le texte d'aide d'un champ vide (voir _encodage_coef.html). */
 .rv-qt-coef::placeholder { color: var(--ink); opacity: 1; }
 .rv-qt-coef:focus::placeholder { color: var(--mut); }
-.rv-qt-benef { font-size: 12.5px; color: var(--mut); white-space: normal; line-height: 1.3; }
+.rv-qt-benef { font-size: var(--t-xs); color: var(--mut); white-space: normal; line-height: 1.3; }
 textarea.rv-cell { height: auto; min-height: 32px; padding: 6px; line-height: 1.4; resize: none; field-sizing: content; }
 textarea.rv-cell:focus { resize: vertical; }
 /* Une remarque vide ne se montre qu'au survol de sa ligne ou pendant la saisie ; en lecture seule, pas du tout. */
@@ -334,11 +373,13 @@ textarea.rv-cell:focus { resize: vertical; }
 .rv-cell:disabled { color: inherit; cursor: default; opacity: 1; }
 .rv-cell:disabled:hover { border-color: transparent; background: transparent; }
 /* Étape 4-2 : type de quantité, quantité avec son métré, lignes de mesures. */
-.rv-qt-genre { color: var(--mut); font: 400 11.5px/1.3 var(--font-mono); padding: 0 6px; }
+.rv-qt-genre { color: var(--mut); font: 400 var(--t-xs)/1.3 var(--font-sans); padding: 0 6px; }
 .rv-qt-qte { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .rv-qt-qte .rv-cell { flex: 1; min-width: 0; }
-.rv-qt-metre-ajout { flex: none; display: grid; place-items: center; width: 20px; height: 26px; padding: 0; border: 0; background: none; color: var(--mut); cursor: pointer; opacity: 0; }
+/* Le bouton du métré reste visible (à 45 %) pour qu'on découvre le métré ; plein au survol de la ligne. */
+.rv-qt-metre-ajout { flex: none; display: grid; place-items: center; width: 28px; height: 32px; padding: 0; border: 0; border-radius: var(--radius-tag); background: none; color: var(--mut); cursor: pointer; opacity: .45; }
 .rv-qt--enc .rv-qt-row:hover .rv-qt-metre-ajout, .rv-qt-metre-ajout:focus-visible { opacity: 1; }
+.rv-qt-metre-ajout:hover { background: var(--hover); }
 .rv-qt-metre-ajout:hover { color: var(--ink); }
 .rv-qt--enc .rv-qt-metre { border-style: dashed; border-color: var(--line-field); }
 .rv-qt--enc .rv-qt-msr { align-items: center; padding-top: 2px; padding-bottom: 2px; }
@@ -349,40 +390,60 @@ textarea.rv-cell:focus { resize: vertical; }
 .rv-qt-mesure .rv-btn { flex: none; }
 .rv-qt-mesure .rv-coche { flex: none; white-space: nowrap; }
 .rv-qt-mesure .rv-cell--num { width: 76px; height: 28px; }
-.rv-qt-mesure .rv-coche { font-size: 13px; }
-.rv-qt-ordre { display: flex; flex-direction: column; align-items: center; padding-top: 4px; }
-.rv-qt-ordre button { width: 22px; height: 15px; padding: 0; border: 0; background: none; color: var(--mut); font-size: 10px; line-height: 1; cursor: pointer; }
-.rv-qt-ordre button:hover { color: var(--ink); }
-.rv-qt-ordre button:disabled { color: var(--line); cursor: default; }
+.rv-qt-mesure .rv-coche { font-size: var(--t-sm); }
+/* Monter / descendre : deux boutons de 28 × 28 px côte à côte (avant : 22 × 15 px empilés). */
+.rv-qt-ordre { display: flex; flex-direction: row; align-items: center; gap: 2px; padding-top: 2px; }
+.rv-qt-ordre button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-tag); background: none; color: var(--mut); font-size: var(--t-xs); line-height: 1; cursor: pointer; }
+.rv-qt-ordre button:hover { color: var(--ink); background: var(--hover); }
+.rv-qt-ordre button:disabled { color: var(--line); cursor: default; background: none; }
+/* Une ligne en train d'être supprimée pâlit pendant la demande. */
+.rv-qt-row:has(button.htmx-request[aria-label^="Supprimer"]) { opacity: .35; transition: opacity 150ms ease-in; }
 .rv-pied-tete { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .rv-pied-champ { display: flex; align-items: center; gap: 8px; }
-.rv-totals-ttc > :last-child { font-size: 20px; }
+.rv-totals-ttc > :last-child { font-size: var(--t-xl); }
 /* Tableau de bord : bande de quatre chiffres, alertes, ouvertures. */
-.rv-band-val { font: 500 22px/1.1 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rv-band-val { font: 500 var(--t-xl)/1.1 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rv-band-val--bad { color: var(--bad); }
 .rv-band-cell a.rv-hint { color: var(--mut); text-decoration: none; }
 .rv-band-cell a.rv-hint:hover { color: var(--ink); text-decoration: underline; }
 .rv-table td.rv-alerte { white-space: normal; font-weight: 600; padding-top: 10px; padding-bottom: 10px; }
-.rv-ouverture { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 14px; }
-.rv-ouverture:hover { color: var(--ink); background: var(--soft); }
-.rv-ouverture small { color: var(--mut); font-size: 12px; white-space: nowrap; }
+.rv-alerte-action { min-width: 120px; }
+.rv-ouverture { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: var(--t-md); }
+.rv-ouverture:hover { color: var(--ink); background: var(--hover); }
+.rv-ouverture small { color: var(--mut); font-size: var(--t-xs); white-space: nowrap; }
 /* Barres du chiffre d'affaires par mois (Statistiques) : en encre, un mois négatif en rouge. */
 .rv-barres { display: flex; align-items: flex-end; gap: 6px; height: 180px; border-bottom: 1px solid var(--ink); }
 .rv-barre { flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center; }
 .rv-barre i { display: block; width: 100%; max-width: 40px; background: var(--ink); border-radius: 2px 2px 0 0; }
 .rv-barre i.rv-barre--neg { background: var(--bad); }
-.rv-barres-mois { display: flex; gap: 6px; font: 500 11px var(--font-mono); color: var(--mut); }
+.rv-barres-mois { display: flex; gap: 6px; font: 500 var(--t-xs) var(--font-sans); font-variant-numeric: tabular-nums; color: var(--mut); }
 .rv-barres-mois span { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* Un menu « … » ouvert dans un tableau défilant ne doit pas être coupé. */
 .rv-table-wrap:has(details[open]) { overflow: visible; }
 /* Texte lu seulement par les lecteurs d'écran. */
 .rv-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* Pied d'une liste : nombre, totaux, pages. */
-.rv-pied { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 12px 2px 0; color: var(--mut); font-size: 13.5px; }
+.rv-pied { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; padding: 12px 2px 0; color: var(--mut); font-size: var(--t-sm); }
 .rv-pied-totaux { display: flex; flex-wrap: wrap; gap: 24px; }
-.rv-pied-totaux b { margin-left: 6px; color: var(--ink); font: 600 14px var(--font-mono); font-variant-numeric: tabular-nums; }
+.rv-pied-totaux b { margin-left: 6px; color: var(--ink); font: 600 var(--t-md) var(--font-mono); font-variant-numeric: tabular-nums; }
 .rv-pages { display: flex; align-items: center; gap: 6px; }
 /* Onglets d'un espace (Factures, Paiements, Réglages), en haut de l'en-tête. */
 .u-top > .rv-tabs:first-child { margin: -8px 0 14px; }
 
+</style>
+<style>
+/* Recherche partout (audit du 23/10/2026) : champ en haut du menu ; dans le rail, l'icône seule mène à /recherche. */
+.rv-side-recherche { position: relative; margin: 0 0 12px; }
+.rv-side-recherche svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--mut); pointer-events: none; }
+.rv-side-recherche input { box-sizing: border-box; width: 100%; height: 40px; padding: 0 10px 0 36px; border: 1px solid var(--line-field); border-radius: var(--radius);
+  background: var(--paper); color: var(--ink); font: 400 var(--t-md)/1 var(--font-sans); }
+.rv-side-recherche input::placeholder { color: var(--mut); opacity: 1; }
+.rv-side-recherche input:hover { border-color: var(--ink); }
+.rv-side-recherche input:focus { outline: none; border-color: var(--ink); box-shadow: var(--focus-ring); }
+.rv-nav-recherche { display: none; }
+.rv-side--rail .rv-side-recherche { display: none; }
+.rv-side--rail .rv-nav.rv-nav-recherche { display: flex; }
+.rv-recherche-detail { display: block; margin-top: 2px; font-size: var(--t-xs); color: var(--mut); }
+/* Les dates des listes : chiffres alignés, en Archivo (le mono est réservé aux montants et aux numéros). */
+.rv-date { color: var(--mut); font-variant-numeric: tabular-nums; white-space: nowrap; }
 </style>

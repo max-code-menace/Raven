@@ -10,9 +10,10 @@
   <script src="https://cdn.tailwindcss.com"></script>
   {% include "_raven.html" %}
   {% include "_styles.html" %}
+  <style>header .btn-ghost:hover { background: var(--ink-hover); color: var(--on-ink); }</style>
 </head>
 <body>
-<header class="flex flex-wrap items-center gap-4 px-6 py-3 text-white" style="background:var(--u-menu)">
+<header class="flex flex-wrap items-center gap-4 px-6 py-3 text-white" style="background:var(--ink)">
   <span class="font-semibold">Raven · back office</span>
   <nav class="flex gap-1" aria-label="Back office">
     <a class="btn btn-sm btn-ghost text-white{% block nav_catalogue %}{% endblock %}" href="/admin/catalogue">Catalogue</a>

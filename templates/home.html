@@ -20,22 +20,22 @@
   <div class="rv-band-cell">
     <div class="rv-eyebrow">En retard</div>
     <b class="rv-band-val{% if factures_retard.nombre > 0 %} rv-band-val--bad{% endif %}">{{ factures_retard.montant }}</b>
-    <a class="rv-hint" href="/factures/rappels"><span class="rv-num">{{ factures_retard.nombre }}</span> facture(s) TTC · voir les rappels</a>
+    <a class="rv-hint" href="/factures/rappels">{{ crate::commun::nombre(factures_retard.nombre, "facture", "factures") }}, TTC · voir les rappels</a>
   </div>
   <div class="rv-band-cell">
     <div class="rv-eyebrow">Reste à encaisser</div>
     <b class="rv-band-val">{{ factures_a_encaisser.montant }}</b>
-    <a class="rv-hint" href="/factures"><span class="rv-num">{{ factures_a_encaisser.nombre }}</span> facture(s) pas encore soldée(s), TTC</a>
+    <a class="rv-hint" href="/factures">{{ crate::commun::nombre(factures_a_encaisser.nombre, "facture pas encore soldée", "factures pas encore soldées") }}, TTC</a>
   </div>
   <div class="rv-band-cell">
     <div class="rv-eyebrow">Reste à facturer</div>
     <b class="rv-band-val">{{ chantiers_reste_a_facturer }}</b>
-    <a class="rv-hint" href="/chantiers">HT · <span class="rv-num">{{ chantiers_en_cours }}</span> {{ crate::profil::mot("chantier") }}(s) en cours</a>
+    <a class="rv-hint" href="/chantiers">HT · {{ crate::commun::nombre(chantiers_en_cours, crate::profil::mot("chantier"), crate::profil::mot("chantiers")) }} en cours</a>
   </div>
   <div class="rv-band-cell">
     <div class="rv-eyebrow">Devis en attente de réponse</div>
     <b class="rv-band-val">{{ devis_attente.montant }}</b>
-    <a class="rv-hint" href="/devis?statut=envoye&statut=envoi_en_cours&statut=signe">HT · <span class="rv-num">{{ devis_attente.nombre }}</span> devis envoyé(s) ou signé(s)</a>
+    <a class="rv-hint" href="/devis?statut=envoye&statut=envoi_en_cours&statut=signe">HT · {{ crate::commun::nombre(devis_attente.nombre, "devis envoyé ou signé", "devis envoyés ou signés") }}</a>
   </div>
 </section>
 
@@ -46,7 +46,7 @@
     <tr>
       <td style="width:150px"><span class="{{ a.classe }}">{{ a.etiquette }}</span></td>
       <td class="rv-alerte">{{ a.texte }}</td>
-      <td class="rv-r"><a class="rv-btn rv-btn--sm{% if !loop.first %} rv-btn--ghost{% endif %}" href="{{ a.lien }}">{{ a.action }}</a></td>
+      <td class="rv-r"><a class="rv-btn rv-btn--sm rv-alerte-action" href="{{ a.lien }}">{{ a.action }}</a></td>
     </tr>
     {% else %}
     {% call ui::ligne_vide(3, "Rien à signaler : aucune facture à relancer, aucun devis en attente d'action.") %}{% endcall %}

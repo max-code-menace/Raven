@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}Facturer · {{ crate::profil::mot("Chantier") }} N° {{ numero }} · Raven{% endblock %}
+{% block title %}Facturer · {{ crate::profil::mot("Chantier") }} n° {{ numero }} · Raven{% endblock %}
 {% block nav_chantiers %}aria-current="page"{% endblock %}
 
 {% block entete %}
@@ -11,7 +11,7 @@
       <a class="u-retour" href="/chantiers/{{ id }}" aria-label="Retour au {{ crate::profil::mot("chantier") }}" title="Retour au {{ crate::profil::mot("chantier") }}">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
         <h1>Facturer</h1>
-        <div class="u-sous-titre"><span>{{ crate::profil::mot("Chantier") }} N° {{ numero }}{% if !reference.is_empty() %} · {{ reference }}{% endif %}</span></div>
+        <div class="u-sous-titre"><span>{{ crate::profil::mot("Chantier") }} n° {{ numero }}{% if !reference.is_empty() %} · {{ reference }}{% endif %}</span></div>
       </div>
     </div>
   </div>
@@ -68,7 +68,7 @@
           <option value="montant">€ HT</option>
         </select>
       </div>
-      <button class="btn btn-primary btn-sm self-end" type="submit">Créer l'acompte</button>
+      <button class="btn btn-sm self-end" type="submit">Créer l'acompte</button>
     </form>
   </section>
 
@@ -80,13 +80,13 @@
       <p class="u-petit u-muet" style="margin:0">Déjà avancé : {{ avance }}{% if !pourcentage_avance.is_empty() %} ({{ pourcentage_avance }}){% endif %} · reste à avancer : {{ reste_a_avancer }} HT</p>
       {% if let Some(a) = avancement_a_facturer %}
       <form method="post" action="/chantiers/{{ id }}/avancements/{{ a.id }}/facturer" class="self-end" style="margin:0">
-        <button class="btn btn-primary btn-sm" type="submit">Facturer l'avancement n° {{ a.numero }} ({{ a.montant }} HT)</button>
+        <button class="btn btn-sm" type="submit">Facturer l'avancement n° {{ a.numero }} ({{ a.montant }} HT)</button>
       </form>
       {% else if let Some(en_cours) = avancement_en_cours %}
-      <a class="btn btn-primary btn-sm self-end" href="/chantiers/{{ id }}/avancements/{{ en_cours }}">Reprendre l'avancement en cours</a>
+      <a class="btn btn-sm self-end" href="/chantiers/{{ id }}/avancements/{{ en_cours }}">Reprendre l'avancement en cours</a>
       {% else %}
       <form method="post" action="/chantiers/{{ id }}/avancements" class="self-end" style="margin:0">
-        <button class="btn btn-primary btn-sm" type="submit">Saisir l'avancement</button>
+        <button class="btn btn-sm" type="submit">Saisir l'avancement</button>
       </form>
       {% endif %}
     </div>
@@ -98,14 +98,14 @@
     <form method="post" action="/chantiers/{{ id }}/factures/finale" class="u-card-b">
       <p class="u-petit" style="margin:0">Les travaux sont terminés : facturer le solde ({{ reste_a_avancer }} HT), acomptes déjà facturés déduits.</p>
       {% if avancement_en_cours.is_some() %}
-      <p class="u-petit" style="margin:0;color:#953A0A">Terminez d'abord l'état d'avancement en cours.</p>
+      <p class="u-petit" style="margin:0;color:var(--bad)">Terminez d'abord l'état d'avancement en cours.</p>
       <button class="btn btn-sm self-end" type="button" disabled>Créer la facture finale</button>
       {% else if facture_brouillon.is_some() %}
-      <p class="u-petit" style="margin:0;color:#953A0A">Validez ou supprimez d'abord la facture en brouillon.</p>
+      <p class="u-petit" style="margin:0;color:var(--bad)">Validez ou supprimez d'abord la facture en brouillon.</p>
       <button class="btn btn-sm self-end" type="button" disabled>Créer la facture finale</button>
       {% else %}
       <p class="u-petit u-muet" style="margin:0">Ensuite, plus d'acompte ni d'état d'avancement sur ce {{ crate::profil::mot("chantier") }}.</p>
-      <button class="btn btn-primary btn-sm self-end" type="submit">Créer la facture finale</button>
+      <button class="btn btn-sm self-end" type="submit">Créer la facture finale</button>
       {% endif %}
     </form>
   </section>

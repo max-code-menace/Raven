@@ -13,7 +13,7 @@
     {% if etat == "signe" %}<span class="u-pastille s-signe">Signé</span>
     {% else if etat == "accepte" %}<span class="u-pastille s-accepte">Accepté</span>
     {% else if etat == "refuse" %}<span class="u-pastille s-refuse">Plus valable</span>
-    {% else %}<span class="u-pastille s-envoye">À signer</span>{% endif %}
+    {% else %}<span class="u-pastille s-a-envoyer">À signer</span>{% endif %}
   </div>
   <div class="u-card-b">
     <div class="grid gap-3 grid-cols-2">
@@ -24,10 +24,10 @@
   </div>
   <div class="u-ligne-montant"><span>Total HT</span><span>{{ ht }}</span></div>
   <div class="u-ligne-montant"><span>TVA</span><span>{{ tva }}</span></div>
-  <div class="u-ligne-montant" style="font-weight:600;background:#F2F8F8;border-radius:0 0 12px 12px"><span>Total TTC</span><span>{{ ttc }}</span></div>
+  <div class="u-ligne-montant" style="font-weight:600;background:var(--acc-wash);border-radius:0 0 4px 4px"><span>Total TTC</span><span>{{ ttc }}</span></div>
 </section>
 
-<a class="btn btn-primary w-full" href="/client/devis/{{ jeton }}/pdf" target="_blank" rel="noopener">{% call ui::icone("pdf", 16) %}{% endcall %}Lire le devis complet (PDF)</a>
+<a class="btn w-full" href="/client/devis/{{ jeton }}/pdf" target="_blank" rel="noopener">{% call ui::icone("pdf", 16) %}{% endcall %}Lire le devis complet (PDF)</a>
 
 {% if etat == "signable" %}
 <form class="u-card" id="signer" method="post" action="/client/devis/{{ jeton }}">

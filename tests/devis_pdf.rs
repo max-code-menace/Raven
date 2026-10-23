@@ -1,4 +1,4 @@
-// Tests du PDF du devis (Typst) et de l'onglet Visualisation.
+// Tests du PDF du devis (Typst) et de l'onglet Aperçu.
 
 mod commun;
 
@@ -182,7 +182,7 @@ async fn le_pdf_reprend_les_informations_et_les_lignes(options: PgPoolOptions, c
         "\"Ubique SRL\"", "\"Rue du Bâtiment 5\"", "\"4000 Liège\"", "\"BE0123456789\"", "\"BE68 5390 0754 7034\"",
         "\"Dupont SRL\"", "\"Rue Neuve 12\"", "\"1000 Bruxelles\"", "\"BE0987654321\"",
         "\"Fourniture des matériaux\"", "\"Volet roulant\"", "\"2,5\"", "\"pce\"", "\"19,99\u{a0}€\"", "\"6 %\"", "\"49,98\u{a0}€\"",
-        "\"7 jour(s) après date de facturation\"", "\"Acompte de 30 %\"", "\"Chantier accessible\"",
+        "\"7\u{a0}jours après date de facturation\"", "\"Acompte de 30 %\"", "\"Chantier accessible\"",
         "\"52,98\u{a0}€\"",
     ] {
         assert!(source.contains(texte), "{texte}");
@@ -262,7 +262,7 @@ async fn l_ajustement_figure_dans_le_pdf(options: PgPoolOptions, connexion: PgCo
     assert!(source.contains("a_ajustement: true") && source.contains("\"Remise commerciale\"") && source.contains("\"-10,00\u{a0}€\""));
 }
 
-// ─── L'onglet Visualisation ─────────────────────────────────────────────────
+// ─── L'onglet Aperçu ─────────────────────────────────────────────────
 
 #[sqlx::test]
 async fn l_onglet_montre_le_pdf_et_les_boutons(options: PgPoolOptions, connexion: PgConnectOptions) {
@@ -271,7 +271,7 @@ async fn l_onglet_montre_le_pdf_et_les_boutons(options: PgPoolOptions, connexion
     let d = devis_complet(&pool).await;
     let (statut, html) = page(&site(&pool), &format!("/devis/{d}/apercu")).await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(html.contains(&format!("<iframe class=\"w-full rounded-box bg-white shadow\" style=\"height: 80vh\" src=\"/devis/{d}/pdf\"")));
+    assert!(html.contains(&format!("<iframe class=\"w-full rounded bg-white border border-[color:var(--line)]\" style=\"height: 80vh\" src=\"/devis/{d}/pdf\"")));
     assert!(html.contains(&format!("href=\"/devis/{d}/pdf?telecharger=1\"")) && html.contains("Télécharger le PDF"));
     assert!(html.contains(&format!("rv-tab is-on\" href=\"/devis/{d}/apercu\"")));
     assert_eq!(page(&site(&pool), "/devis/999/apercu").await.0, StatusCode::NOT_FOUND);

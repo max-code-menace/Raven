@@ -95,7 +95,7 @@ async fn la_page_montre_le_numero_et_le_statut(options: PgPoolOptions, connexion
     entreprise(&pool, "Dupont SRL").await;
     let (statut, page) = lire(&site(&pool), &format!("/devis/{id}")).await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(page.contains("Devis N° 20") && page.contains("-1</h1>"));
+    assert!(page.contains("Devis n° 20") && page.contains("-1</h1>"));
     assert!(page.contains("Brouillon"));
     assert!(page.contains("Dupont SRL (entreprise)"));
     // Plus de bouton « Enregistrer » : le formulaire s'envoie tout seul et la barre du bas le dit.
@@ -168,7 +168,7 @@ async fn un_brouillon_se_remplit_petit_a_petit_et_une_valeur_refusee_garde_l_anc
     };
 
     // Enregistrement automatique : la référence est gardée alors que le client, le taux et les conditions manquent encore
-    // (ils sont rappelés avant l'envoi, onglet Visualisation).
+    // (ils sont rappelés avant l'envoi, onglet Aperçu).
     let (statut, lieu, _) =
         poster(&s, &format!("/devis/{id}"), "reference=C44+Volet&responsable=&date_devis=2026-10-15&facturation_identique=on&chantier_identique=on").await;
     assert_eq!((statut, lieu), (StatusCode::SEE_OTHER, Some(format!("/devis/{id}?ok=1"))));
