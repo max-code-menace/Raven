@@ -181,6 +181,24 @@ fn pages() -> Router<AppState> {
         .merge(societe::routes())
 }
 
+/// Une modification envoyée (POST) va jusqu'au bout même si le navigateur quitte la page entre-temps. Sans cela, un
+/// changement tapé juste avant de cliquer sur un autre onglet était perdu : le navigateur abandonne la demande en
+/// partant, et le serveur arrêtait alors son travail en route (constaté le 23/10/2026 sur les lignes du devis). Le
+/// traitement continue dans sa propre tâche ; seule la réponse, que plus personne n'attend, est perdue. Posé à
+/// l'extérieur de tout (connexion, organisation, profil compris) pour que la tâche emporte tout le contexte de la page.
+async fn jusqu_au_bout(requete: axum::extract::Request, suite: axum::middleware::Next) -> Response {
+    if requete.method() != axum::http::Method::POST {
+        return suite.run(requete).await;
+    }
+    match tokio::spawn(suite.run(requete)).await {
+        Ok(reponse) => reponse,
+        Err(e) => {
+            eprintln!("Demande interrompue : {e}");
+            Erreur::interne().into_response()
+        }
+    }
+}
+
 /// Le site sans connexion, **pour les tests des écrans** : toutes les pages travaillent dans l'organisation n° 1.
 /// Jamais servi par `main.rs`.
 pub fn app(state: AppState) -> Router {
@@ -196,6 +214,7 @@ pub fn app(state: AppState) -> Router {
                 profil::avec(profil, suite.run(requete)).await
             },
         ))
+        .layer(axum::middleware::from_fn(jusqu_au_bout))
         .with_state(state)
 }
 
@@ -207,5 +226,6 @@ pub fn application(state: AppState) -> Router {
         // Le back office de Raven (étape 4-3) : sa propre connexion (`administration::Admin`), aucune organisation.
         .merge(administration::routes())
         .layer(axum::middleware::from_fn_with_state(state.clone(), connexion::exiger_connexion))
+        .layer(axum::middleware::from_fn(jusqu_au_bout))
         .with_state(state)
 }
