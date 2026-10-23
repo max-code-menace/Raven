@@ -12,7 +12,7 @@
     <div class="u-titre">
       <a class="u-retour" href="/factures" aria-label="Retour aux factures" title="Retour aux factures">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
-        <h1>{% if brouillon %}Modifier{% else %}Consulter{% endif %} - {{ titre }}</h1>
+        <h1>{{ titre }}</h1>
         <div class="u-sous-titre">
           <span class="u-pastille {{ classe_statut }}">{{ statut }}</span>
           {% if !detail_statut.is_empty() %}<span>{{ detail_statut }}</span>{% endif %}
@@ -20,9 +20,24 @@
         </div>
       </div>
     </div>
+    {# Une seule action pleine, qui suit l'état de la pièce (audit du design du 23/10/2026) : un brouillon se valide en bas
+       (« Valider et envoyer », à côté de la note d'enregistrement) ; une pièce validée pas encore envoyée s'envoie ; une
+       facture envoyée attend son paiement ; une pièce soldée n'a plus d'action pleine. #}
     <div class="u-actions">
-      {% if montants.a_recevoir %}
+      {% if !brouillon %}
+      {% if peut_marquer_envoyee %}
+      {% match peppol %}{% when Some with (p) %}{% if p.peut_envoyer() %}
+      <form method="post" action="/factures/{{ id }}/peppol"><button class="btn btn-primary" type="submit">Envoyer par Peppol</button></form>
+      {% else %}
+      <a class="btn btn-primary" href="/factures/{{ id }}/email">Envoyer par e-mail</a>
+      {% endif %}{% when None %}
+      <a class="btn btn-primary" href="/factures/{{ id }}/email">Envoyer par e-mail</a>
+      {% endmatch %}
+      {% if montants.a_recevoir %}<a class="btn" href="/factures/{{ id }}?payer=1#paiement">Ajouter le paiement</a>{% endif %}
+      {% else if montants.a_recevoir %}
       <a class="btn btn-primary" href="/factures/{{ id }}?payer=1#paiement">Ajouter le paiement</a>
+      {% endif %}
+      <a class="btn" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
       {% endif %}
       <details class="u-menu">
         <summary class="btn">Actions{% call ui::icone("bas", 14) %}{% endcall %}</summary>
@@ -44,9 +59,13 @@
             <button class="u-mi" type="submit">Envoyer par Peppol</button>
           </form>
           {% endif %}{% when None %}{% endmatch %}
+          {% if peut_marquer_envoyee %}
+          <form method="post" action="/factures/{{ id }}/envoyee">
+            <button class="u-mi" type="submit">Marquer comme envoyée (envoi fait autrement)</button>
+          </form>
+          {% endif %}
           <a class="u-mi" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
           <a class="u-mi" href="/factures/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
-          {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
         </div>
       </details>
     </div>
@@ -56,7 +75,7 @@
     <a class="tab tab-active" href="#informations">Informations</a>
     <a class="tab" href="#lignes">Encodage</a>
     <a class="tab" href="#totaux-facture">Totaux</a>
-    <a class="tab" href="/factures/{{ id }}/pdf" target="_blank">Visualisation</a>
+    <a class="tab" href="/factures/{{ id }}/pdf" target="_blank">Aperçu</a>
     {% if !brouillon %}<a class="tab" href="#historique">Historique</a>{% endif %}
   </nav>
 </header>
@@ -79,18 +98,18 @@
 {% if etat == "en_retard" %}
 <div role="status" class="u-bandeau alerte">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
-  <span class="flex-1"><strong>En retard de {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %}.</strong> Reste à recevoir : {{ montants.reste }}.{% if let Some((texte, _)) = rappel %} {{ texte }}{% endif %} On ne modifie pas une pièce validée.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
-  <a class="btn btn-sm{% if let Some((_, du)) = rappel %}{% if *du %} btn-primary{% endif %}{% endif %}" href="/factures/{{ id }}/rappel">{% call ui::icone("cloche", 14) %}{% endcall %}Envoyer un rappel</a>
+  <span class="flex-1"><strong>En retard de {{ jours_retard }} jour{% if jours_retard > 1 %}s{% endif %}.</strong> Reste à recevoir : {{ montants.reste }}.{% if let Some((texte, _)) = rappel %} {{ texte }}{% endif %} Elle ne se modifie plus : pour la corriger, faites une note de crédit.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
+  <a class="btn btn-sm" href="/factures/{{ id }}/rappel">{% call ui::icone("cloche", 14) %}{% endcall %}Envoyer un rappel</a>
 </div>
 {% else if etat == "payee" %}
 <div role="status" class="u-bandeau ok">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
-  <span class="flex-1"><strong>Payée.</strong> On ne modifie pas une pièce validée.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
+  <span class="flex-1"><strong>Payée.</strong> Elle ne se modifie plus : pour la corriger, faites une note de crédit.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
 </div>
 {% else %}
 <div role="status" class="u-bandeau">
   {% call ui::icone("cadenas", 18) %}{% endcall %}
-  <span class="flex-1"><strong>Pièce verrouillée.</strong> On ne modifie pas une pièce validée.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
+  <span class="flex-1"><strong>{% if genre == "Note de crédit" %}Note de crédit validée{% else %}Facture validée{% endif %} : elle ne se modifie plus.</strong> Pour la corriger, faites une note de crédit.</span>{% if peut_crediter %}<form method="post" action="/factures/{{ id }}/crediter"><button class="btn btn-sm" type="submit" title="Une facture validée ne se modifie pas : la note de crédit l'annule en tout ou en partie">Corriger (note de crédit)</button></form>{% endif %}
 </div>
 {% endif %}
 {% endif %}
@@ -134,7 +153,7 @@
             </label>
           </div>
         </div>
-        <div class="u-deux" style="border-top:1px solid #E9EBE7">
+        <div class="u-deux" style="border-top:1px solid var(--line)">
           <div class="u-col">
             <h3>Informations de facturation</h3>
             <label class="form-control">
@@ -195,7 +214,7 @@
     {% if brouillon %}
     <section class="u-card" id="avant-valider">
       <div class="u-card-h"><h2>Avant de valider</h2>
-        {% if a_completer.is_empty() %}<span class="u-pastille s-accepte">prête</span>{% else %}<span class="u-pastille s-a-envoyer">{{ a_completer.len() }} point(s)</span>{% endif %}
+        {% if a_completer.is_empty() %}<span class="u-pastille s-accepte">prête</span>{% else %}<span class="u-pastille s-a-envoyer">{{ crate::commun::nombre(a_completer.len(), "point", "points") }}</span>{% endif %}
       </div>
       <div class="u-card-b">
         {% if a_completer.is_empty() %}
@@ -203,7 +222,7 @@
         {% else %}
         <p class="u-petit font-semibold">À compléter avant de valider :</p>
         {% for m in a_completer %}
-        <div class="flex gap-2 items-start text-[13.5px]"><span class="text-[#953A0A] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
+        <div class="flex gap-2 items-start text-[13px]"><span class="text-[color:var(--ink)] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
         {% endfor %}
         <p class="u-petit u-muet" style="margin:8px 0 0">Les informations s'enregistrent toutes seules : cette liste se met à jour pendant que vous les remplissez.</p>
         {% endif %}
@@ -219,8 +238,8 @@
       <div class="u-card-h"><h2>Montants</h2></div>
       <div class="u-ligne-montant" style="font-weight:600"><span>Total TTC</span><span>{{ montants.ttc }}</span></div>
       {% if montants.a_des_credits %}<div class="u-ligne-montant"><span>Crédité (notes de crédit)</span><span>-{{ montants.credite }}</span></div>{% endif %}
-      <div class="u-ligne-montant"><span>Payé</span><span style="color:#1C6B3C">{{ montants.paye }}</span></div>
-      <div class="u-ligne-montant" style="font-weight:600;background:#F2F8F8;border-radius:0 0 12px 12px"><span>Reste à recevoir</span><span>{{ montants.reste }}</span></div>
+      <div class="u-ligne-montant"><span>Payé</span><span style="color:var(--ok)">{{ montants.paye }}</span></div>
+      <div class="u-ligne-montant" style="font-weight:600;background:var(--acc-wash);border-radius:0 0 4px 4px"><span>Reste à recevoir</span><span>{{ montants.reste }}</span></div>
     </section>
     <section class="u-card" id="paiement">
       <div class="u-card-h"><h2>Paiements</h2></div>
@@ -240,12 +259,12 @@
       {% else %}
       <div class="u-ligne-montant u-muet">Aucun paiement enregistré.</div>
       {% endfor %}
-      <div class="u-card-b" style="border-top:1px solid #E9EBE7">
-        {% if !echeance.is_empty() %}<div><span class="u-cle">Échéance</span><span{% if etat == "en_retard" %} style="color:#953A0A;font-weight:600"{% endif %}>{{ echeance }}</span></div>{% endif %}
+      <div class="u-card-b" style="border-top:1px solid var(--line)">
+        {% if !echeance.is_empty() %}<div><span class="u-cle">Échéance</span><span{% if etat == "en_retard" %} style="color:var(--bad);font-weight:600"{% endif %}>{{ echeance }}</span></div>{% endif %}
         {% if !vcs.is_empty() %}<div><span class="u-cle">Communication structurée</span><span class="mono">{{ vcs }}</span></div>{% endif %}
         {% if montants.a_recevoir %}
         <details class="u-card" style="box-shadow:none"{% if payer_ouvert %} open{% endif %}>
-          <summary class="u-card-h" style="padding:9px 12px"><span class="u-chevron flex">{% call ui::icone("bas", 14) %}{% endcall %}</span><h2 style="font-size:13.5px">Ajouter le paiement</h2></summary>
+          <summary class="u-card-h" style="padding:10px 12px"><span class="u-chevron flex">{% call ui::icone("bas", 14) %}{% endcall %}</span><h2 style="font-size:var(--t-md)">Ajouter le paiement</h2></summary>
           <form method="post" action="/factures/{{ id }}/paiements" class="u-card-b">
             <div class="u-segment" role="radiogroup" aria-label="Type de paiement">
               <label class="flex items-center gap-1 px-2 text-[13px] whitespace-nowrap"><input class="radio radio-xs" type="radio" name="genre" value="complet" checked> Complet</label>
@@ -334,7 +353,7 @@
         {% endif %}
         {% if p.peut_envoyer() %}
         <form method="post" action="/factures/{{ id }}/peppol" style="margin:0">
-          <button class="btn btn-primary btn-sm" type="submit">{% if p.envois.is_empty() %}Envoyer par Peppol{% else %}Renvoyer par Peppol{% endif %}</button>
+          <button class="btn btn-sm" type="submit">{% if p.envois.is_empty() %}Envoyer par Peppol{% else %}Renvoyer par Peppol{% endif %}</button>
         </form>
         {% else if !p.envoi_actif %}
         <p class="u-petit u-muet" style="margin:0">L'envoi par Peppol n'est pas configuré sur ce serveur.</p>
@@ -344,7 +363,7 @@
         {% for e in p.envois %}
         <div style="display:flex;flex-direction:column;gap:2px">
           <span class="u-petit"><span class="u-pastille {{ e.classe }}">{{ e.libelle }}</span> {{ e.quand }} · <span class="mono">{{ e.destinataire }}</span></span>
-          {% if !e.erreur.is_empty() %}<small style="color:#8E2B22">{{ e.erreur }}</small>{% endif %}
+          {% if !e.erreur.is_empty() %}<small style="color:var(--bad)">{{ e.erreur }}</small>{% endif %}
         </div>
         {% endfor %}
         {% if p.en_attente() %}
@@ -366,9 +385,11 @@
 </div>
 {% endblock %}
 
+{# Barre du bas : seulement pour un brouillon (note d'enregistrement, suppression, validation). Une pièce validée a ses
+   actions en haut. #}
 {% block barre %}
+{% if brouillon %}
 <div class="u-barre" id="facture-barre">
-  {% if brouillon %}
   <details class="u-menu">
     <summary class="btn btn-danger">Supprimer…</summary>
     <form method="post" action="/factures/{{ id }}/supprimer" class="u-menu-liste gauche u-menu-form">
@@ -377,13 +398,12 @@
     </form>
   </details>
   {% call ui::enregistrement(enregistrement) %}{% endcall %}
+  <a class="btn" href="/factures/{{ id }}/pdf" target="_blank">Aperçu du PDF</a>
+  {% if !a_completer.is_empty() %}
+  <span class="rv-raison">Pour valider : {{ crate::commun::nombre(a_completer.len(), "point", "points") }} à compléter (à droite).</span>
+  <button class="btn btn-primary" type="button" disabled>Valider et envoyer…</button>
   {% endif %}
-  <a class="btn" href="/factures">Fermer</a>
-  <a class="btn{% if !brouillon && !peut_marquer_envoyee %} btn-primary{% endif %}" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
-  {% if brouillon && !a_completer.is_empty() %}
-  <button class="btn btn-primary" type="button" disabled title="Complétez d'abord les points du bloc « Avant de valider »">Valider et envoyer…</button>
-  {% endif %}
-  {% if brouillon && a_completer.is_empty() %}
+  {% if a_completer.is_empty() %}
   {# Un seul bouton : Raven choisit Peppol ou l'e-mail (envoi_choisi) ; le panneau dit où la pièce part et pourquoi. #}
   <details class="u-menu">
     <summary class="btn btn-primary">{{ envoi.bouton }}…</summary>
@@ -395,16 +415,6 @@
     </form>
   </details>
   {% endif %}
-  {% match peppol %}{% when Some with (p) %}{% if p.peut_envoyer() %}
-  <form method="post" action="/factures/{{ id }}/peppol" style="margin:0">
-    <button class="btn" type="submit">Envoyer par Peppol</button>
-  </form>
-  {% endif %}{% when None %}{% endmatch %}
-  {% if !brouillon %}<a class="btn" href="/factures/{{ id }}/email">Envoyer par e-mail</a>{% endif %}
-  {% if peut_marquer_envoyee %}
-  <form method="post" action="/factures/{{ id }}/envoyee">
-    <button class="btn btn-primary" type="submit">Marquer comme envoyée</button>
-  </form>
-  {% endif %}
 </div>
+{% endif %}
 {% endblock %}

@@ -97,10 +97,10 @@ async fn statistiques_de_la_periode(options: PgPoolOptions, connexion: PgConnect
         &format!("242,00{E} TTC"),
         &format!("21,00{E}"),        // encaissé
         &format!("121,00{E}"),       // en retard
-        "En retard : 1 facture(s)",
+        "En retard : 1\u{a0}facture",
         &format!("100,00{E} (1)"),   // pas encore échue : 121 − 21
         "33,33 %",                   // 1 accepté sur 3 émis
-        "1 accepté(s) sur 3 devis émis",
+        "1\u{a0}accepté sur 3 devis émis",
         &format!("Panier moyen (accepté)</span><span>1\u{a0}000,00{E}"),
         "Voir le tableau",
     ] {
@@ -108,7 +108,7 @@ async fn statistiques_de_la_periode(options: PgPoolOptions, connexion: PgConnect
     }
     // Une autre période : rien de facturé l'an passé.
     let page = lire(&s, "/statistiques?periode=annee_passee").await;
-    assert!(page.contains(&format!("affaires HT</small><b>0,00{E}</b>")) && page.contains("0 accepté(s) sur 0 devis émis"));
+    assert!(page.contains(&format!("affaires HT</small><b>0,00{E}</b>")) && page.contains("0\u{a0}accepté sur 0 devis émis"));
     // Période personnalisée à l'envers : retombe sur cette année.
     let page = lire(&s, "/statistiques?periode=perso&du=2026-12-31&au=2026-01-01").await;
     assert!(page.contains("<option value=\"annee\" selected>"));

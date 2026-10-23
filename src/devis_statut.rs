@@ -71,7 +71,7 @@ pub struct Barre {
     pub resume: String,
     /// Le chantier né de ce devis, ou celui que cet avenant corrige : (id, numéro).
     pub chantier: Option<(i64, i64)>,
-    /// « Devis N° 2026-57 » ou « Avenant N° 2 ».
+    /// « Devis n° 2026-57 » ou « Avenant n° 2 ».
     pub titre: String,
     /// La liste des devis, ou le chantier pour un avenant.
     pub retour: String,
@@ -133,7 +133,7 @@ pub async fn charger_barre(db: &mut PgConnection, id: i64) -> Result<Barre, Erre
         .bind(chantier_avenant)
         .fetch_optional(&mut *db)
         .await?;
-    let titre = format!("{} N° {}", if avenant { "Avenant" } else { "Devis" }, crate::devis_lignes::numero_affiche(annee, numero, avenant));
+    let titre = format!("{} n° {}", if avenant { "Avenant" } else { "Devis" }, crate::devis_lignes::numero_affiche(annee, numero, avenant));
     let retour = match (avenant, chantier) {
         (true, Some((chantier_id, _))) => format!("/chantiers/{chantier_id}/devis"),
         _ => "/devis".to_string(),

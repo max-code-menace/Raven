@@ -11,7 +11,7 @@
     <div class="u-titre">
       <a class="u-retour" href="/devis/{{ id }}/encodage" aria-label="Retour à l'encodage" title="Retour à l'encodage">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
-        <h1>Importer depuis Excel - {{ titre }}</h1>
+        <h1>Importer depuis Excel · {{ titre }}</h1>
         <div class="u-sous-titre">Un tableau Excel de métré : lots, sous-titres, textes et postes deviennent les lignes {% if avenant %}de l'avenant{% else %}du devis{% endif %}.</div>
       </div>
     </div>
@@ -36,7 +36,7 @@
   </form>
   <aside class="u-card">
     <div class="u-card-h"><h2>Ce qui est repris</h2></div>
-    <div class="u-card-b text-[13.5px]">
+    <div class="u-card-b text-[13px]">
       <span>La ligne d'en-tête <b>POSTE · DESCRIPTION · Qté · UNITE · PRIX</b> est retrouvée toute seule.</span>
       <span>« LOT n » → un <b>titre</b> (lot) ; un numéro (2.1) ou un texte en MAJUSCULES → un <b>sous-titre</b> ; un autre texte → une ligne de <b>texte</b> ; une quantité → un <b>poste</b>.</span>
       <span>« option » → la description commence par « Option : ». Un poste sans description reprend les textes juste au-dessus.</span>

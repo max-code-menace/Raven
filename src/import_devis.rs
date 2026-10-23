@@ -23,14 +23,14 @@ use crate::{AppState, Erreur, calcul};
 
 const TAILLE_MAX: usize = 10 * 1024 * 1024;
 
-/// Le devis (ou l'avenant), s'il est encore un brouillon : (titre « Devis N° 2026-57 », nombre de lignes, avenant ?).
+/// Le devis (ou l'avenant), s'il est encore un brouillon : (titre « Devis n° 2026-57 », nombre de lignes, avenant ?).
 async fn brouillon(db: &mut PgConnection, id: i64) -> Result<(String, i64, bool), Erreur> {
     let entete = charger_entete(&mut *db, id).await?;
     if !entete.brouillon {
         return Err(Erreur::conflit("Ce devis n'est plus un brouillon : on ne peut plus y importer de lignes."));
     }
     let lignes: i64 = sqlx::query_scalar("SELECT count(*) FROM devis_lignes WHERE devis_id = $1").bind(id).fetch_one(&mut *db).await?;
-    Ok((format!("{} N° {}", entete.genre, entete.numero), lignes, entete.genre == "Avenant"))
+    Ok((format!("{} n° {}", entete.genre, entete.numero), lignes, entete.genre == "Avenant"))
 }
 
 // ─── Envoyer le fichier ─────────────────────────────────────────────────────
@@ -288,8 +288,8 @@ async fn importer(mut db: Base, Path((id, import)): Path<(i64, i64)>, Form(c): F
     crate::devis_lignes::recalculer(&mut tx, id).await?;
     let total: i64 = i.lignes.iter().map(LigneImport::total_cents).sum();
     let detail = format!(
-        "{} ligne(s) importée(s) depuis « {} »{}, total des lignes {} HT",
-        i.lignes.len(),
+        "{} depuis « {} »{}, total des lignes {} HT",
+        crate::commun::nombre(i.lignes.len(), "ligne importée", "lignes importées"),
         i.nom_fichier,
         if c.mode == "remplacer" { " à la place des lignes existantes" } else { "" },
         format_euros(total)

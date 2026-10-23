@@ -199,7 +199,7 @@ async fn l_exemple_reel_avancement_puis_facture_finale(options: PgPoolOptions, c
             .unwrap();
     assert_eq!((reference.as_str(), statut.as_str()), ("Solde (facture finale)", "valide"));
     let (_, page) = lire(&s, &format!("/chantiers/{}/finances", ex.chantier)).await;
-    for attendu in ["Facture N° 125", "Facture N° 126", "6\u{a0}603,77\u{a0}€", "100,00 %", "Facture finale créée"] {
+    for attendu in ["Facture n° 125", "Facture n° 126", "6\u{a0}603,77\u{a0}€", "100,00 %", "Facture finale créée"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     assert!(page.contains("Reste à facturer HT <strong>0,00\u{a0}€</strong>"));

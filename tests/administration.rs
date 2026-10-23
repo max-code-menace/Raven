@@ -177,7 +177,7 @@ async fn publier_une_mise_a_jour_du_catalogue(options: PgPoolOptions, connexion:
     let detapissage: i64 = sqlx::query_scalar("SELECT id FROM catalogue_ouvrages WHERE description = 'Détapissage'").fetch_one(&pool).await.unwrap();
     assert_eq!(poster(&s, &format!("/admin/catalogue/ouvrages/{detapissage}/retirer"), "", &admin).await.lieu.as_deref(), Some("/admin/catalogue/peinture.peinture?ok=retire"));
     let r = lire(&s, "/admin/catalogue", &admin).await;
-    assert!(r.corps.contains("3 ajout(s) en attente") && r.corps.contains("Décoration murale"));
+    assert!(r.corps.contains("3\u{a0}ajouts en attente") && r.corps.contains("Décoration murale"));
 
     // Avant la publication, les organisations ne voient rien de nouveau.
     assert!(!lire(&s, "/bibliotheque", &cookie_b).await.corps.contains("nouvel ouvrage"));

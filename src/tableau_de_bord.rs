@@ -24,11 +24,10 @@ fn compte((nombre, centimes): (i64, i64)) -> Compte {
     Compte { nombre, montant: format_euros(centimes) }
 }
 
-/// Une ligne de « À surveiller » : son étiquette (une pastille de statut, ou un drapeau jaune quand ce n'est pas un
-/// statut), texte, lien.
+/// Une ligne de « À surveiller » : son étiquette (toujours une pastille, selon la règle des statuts), texte, lien.
 pub struct Alerte {
     pub etiquette: String,
-    /// Classes de l'étiquette : « rv-pill … » ou « rv-flag ».
+    /// Classes de l'étiquette : « rv-pill … ».
     pub classe: String,
     pub texte: String,
     pub lien: String,
@@ -184,7 +183,7 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
         alertes.push(Alerte {
             etiquette: crate::composants::pastille_facture("en_retard").mot,
             classe: pilule(crate::composants::pastille_facture("en_retard")),
-            texte: format!("{} facture(s) en retard à relancer aujourd'hui ({} à recevoir).", a_relancer.len(), format_euros(total)),
+            texte: format!("{} à relancer aujourd'hui ({} à recevoir).", crate::commun::nombre(a_relancer.len(), "facture en retard", "factures en retard"), format_euros(total)),
             lien: "/factures/rappels".to_string(),
             action: "Envoyer les rappels",
         });
@@ -222,8 +221,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     if recurrentes > 0 {
         alertes.push(Alerte {
             etiquette: "À préparer".to_string(),
-            classe: "rv-flag".to_string(),
-            texte: format!("{recurrentes} facture(s) récurrente(s) à préparer (location…)."),
+            classe: "rv-pill rv-pill--todo".to_string(),
+            texte: format!("{} à préparer (location…).", crate::commun::nombre(recurrentes, "facture récurrente", "factures récurrentes")),
             lien: "/factures/recurrences".to_string(),
             action: "Préparer",
         });
@@ -232,8 +231,8 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
     if recues > 0 {
         alertes.push(Alerte {
             etiquette: "À traiter".to_string(),
-            classe: "rv-flag".to_string(),
-            texte: format!("{recues} facture(s) fournisseur reçue(s) par Peppol à traiter (rattacher à un chantier ou classer)."),
+            classe: "rv-pill rv-pill--todo".to_string(),
+            texte: format!("{} par Peppol à traiter (rattacher à un chantier ou classer).", crate::commun::nombre(recues, "facture fournisseur reçue", "factures fournisseurs reçues")),
             lien: "/achats/recues".to_string(),
             action: "Traiter",
         });
@@ -243,7 +242,7 @@ async fn alertes(db: &mut PgConnection) -> Result<Vec<Alerte>, sqlx::Error> {
         alertes.push(Alerte {
             etiquette: crate::composants::pastille_facture("a_envoyer").mot,
             classe: pilule(crate::composants::pastille_facture("a_envoyer")),
-            texte: format!("{a_envoyer} pièce(s) validée(s) pas encore envoyée(s) au client."),
+            texte: format!("{} pas encore {} au client.", crate::commun::nombre(a_envoyer, "facture validée", "factures validées"), crate::commun::accord(a_envoyer, "envoyée", "envoyées")),
             lien: "/factures?statut=a_envoyer".to_string(),
             action: "Voir",
         });

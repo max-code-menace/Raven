@@ -3,8 +3,9 @@
   <table class="u-table">
     <thead>
       <tr>
-        <th>N°</th><th>Date</th><th>Type</th><th>Client</th><th>Référence</th><th>{{ crate::profil::mot("Chantier") }}</th>
-        <th class="n">Montant HT</th><th class="n">Montant TTC</th><th>Statut</th><th class="n"><span class="sr-only">Actions</span></th>
+        {# Le type et le {{ crate::profil::mot("chantier") }} passent en deuxième ligne : la liste tient sans défiler de côté à 1366 px. #}
+        <th>N°</th><th>Date</th><th>Client</th><th>Référence</th>
+        <th class="n">Montant HT</th><th class="n">Montant TTC</th><th>Statut</th><th class="n u-acts"><span class="sr-only">Actions</span></th>
       </tr>
     </thead>
     <tbody>
@@ -12,10 +13,8 @@
       <tr>
         <td class="mono nw"><a href="/factures/{{ l.id }}">{{ l.numero }}</a></td>
         <td class="nw">{{ l.date }}</td>
-        <td class="nw">{{ l.genre }}</td>
-        <td>{{ l.client }}</td>
-        <td>{{ l.reference }}</td>
-        <td class="nw">{{ l.chantier }}</td>
+        <td><span class="u-coupe" title="{{ l.client }}">{{ l.client }}</span>{% if !l.chantier.is_empty() %}<small class="u-sous">{{ l.chantier }}</small>{% endif %}</td>
+        <td><span class="u-coupe" title="{{ l.reference }}">{{ l.reference }}</span><small class="u-sous">{{ l.genre }}</small></td>
         <td class="n">{{ l.montant_ht }}</td>
         <td class="n">{{ l.montant_ttc }}</td>
         <td>
@@ -24,7 +23,7 @@
             {% if !l.detail_statut.is_empty() %}<small>{{ l.detail_statut }}</small>{% endif %}
           </span>
         </td>
-        <td class="n">
+        <td class="n u-acts">
           <div class="inline-flex gap-0.5">
             <a class="btn u-ib" href="/factures/{{ l.id }}" aria-label="{% if l.brouillon %}Modifier{% else %}Consulter{% endif %}" title="{% if l.brouillon %}Modifier{% else %}Consulter (verrouillée){% endif %}">{% if l.brouillon %}{% call ui::icone("crayon", 16) %}{% endcall %}{% else %}{% call ui::icone("cadenas", 16) %}{% endcall %}{% endif %}</a>
             <details class="u-menu">
@@ -42,13 +41,10 @@
                 {% if !l.brouillon %}<a class="u-mi" href="/factures/{{ l.id }}#historique">Afficher l'historique</a>{% endif %}
                 <div class="u-sep"></div>
                 {% if !l.brouillon %}<a class="u-mi" href="/factures/{{ l.id }}/email">Envoyer par e-mail</a>{% endif %}
-                <a class="u-mi" href="/factures/{{ l.id }}/pdf?telecharger=1">Exporter en PDF</a>
-                {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
-                <div class="u-sep"></div>
+                <a class="u-mi" href="/factures/{{ l.id }}/pdf?telecharger=1">Télécharger le PDF</a>
                 {% if l.brouillon %}
+                <div class="u-sep"></div>
                 <a class="u-mi danger" href="/factures/{{ l.id }}">Supprimer le brouillon…</a>
-                {% else %}
-                {% call ui::bientot("Supprimer", "jamais une pièce émise") %}{% endcall %}
                 {% endif %}
               </div>
             </details>
@@ -56,21 +52,20 @@
         </td>
       </tr>
       {% else %}
-      <tr class="vide"><td colspan="10">Aucune facture trouvée.</td></tr>
+      <tr class="vide"><td colspan="8">Aucune facture trouvée.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
 <div class="u-pied">
-  {% call ui::par_page() %}{% endcall %}
-  <span>{{ liste.total }} pièce(s)</span>
+  <span>{{ crate::commun::nombre(liste.total, "facture", "factures") }}</span>
   {# Les notes de crédit comptent en négatif. #}
   <div class="flex flex-wrap gap-6">
     <span>Total HT <strong>{{ liste.total_ht }}</strong></span>
     <span>Total TVA <strong>{{ liste.total_tva }}</strong></span>
     <span>Total TTC <strong>{{ liste.total_ttc }}</strong></span>
-    <span>Montant à recevoir TTC <strong style="color:#0B6371">{{ liste.total_a_recevoir }}</strong></span>
+    <span>Montant à recevoir TTC <strong>{{ liste.total_a_recevoir }}</strong></span>
   </div>
   <div class="u-pages">
     {% if liste.page > 1 %}

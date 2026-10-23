@@ -101,7 +101,7 @@ async fn valider_et_envoyer_puis_corriger(options: PgPoolOptions, connexion: PgC
 
     // La fiche a les onglets de Vertuoza et propose « Valider et envoyer par e-mail ».
     let (_, page) = lire(&s, &format!("/factures/{id}")).await;
-    for attendu in ["Parties de la facture", "href=\"#informations\"", "href=\"#lignes\"", "href=\"#totaux-facture\"", "Visualisation", "Valider et envoyer par e-mail"] {
+    for attendu in ["Parties de la facture", "href=\"#informations\"", "href=\"#lignes\"", "href=\"#totaux-facture\"", "Aperçu", "Valider et envoyer par e-mail"] {
         assert!(page.contains(attendu), "{attendu}");
     }
     let (statut, lieu, _) = poster(&s, &format!("/factures/{id}/valider"), "puis=email").await;
@@ -111,7 +111,7 @@ async fn valider_et_envoyer_puis_corriger(options: PgPoolOptions, connexion: PgC
 
     // Verrouillée : le bandeau propose directement la correction par note de crédit.
     let (_, page) = lire(&s, &format!("/factures/{id}")).await;
-    assert!(page.contains("Pièce verrouillée") && page.contains("Corriger (note de crédit)"));
+    assert!(page.contains("Facture validée : elle ne se modifie plus") && page.contains("Corriger (note de crédit)"));
     let (_, lieu, _) = poster(&s, &format!("/factures/{id}/crediter"), "").await;
     assert!(lieu.unwrap().ends_with("?ok=credit"));
 }
@@ -133,7 +133,7 @@ async fn les_factures_fournisseurs(options: PgPoolOptions, connexion: PgConnectO
     assert_eq!(lieu.as_deref(), Some("/achats?ok=achat"));
     poster(&s, "/achats", &format!("chantier={chantier}&date=2026-10-11&montant=-50&categorie=fourniture&fournisseur=FACQ&description=Avoir")).await;
     let (_, page) = lire(&s, "/achats?ok=achat").await;
-    for attendu in ["FACQ", "261684166", "1\u{a0}250,50\u{a0}€", "1\u{a0}200,50\u{a0}€", "2 achat(s)", "L&#39;achat est enregistré"] {
+    for attendu in ["FACQ", "261684166", "1\u{a0}250,50\u{a0}€", "1\u{a0}200,50\u{a0}€", "2\u{a0}achats", "L&#39;achat est enregistré"] {
         assert!(page.contains(attendu) || page.contains(&attendu.replace("&#39;", "'")), "{attendu}");
     }
     // L'achat compte dans le chantier.
@@ -141,6 +141,6 @@ async fn les_factures_fournisseurs(options: PgPoolOptions, connexion: PgConnectO
     assert_eq!(total, 120_050);
     // La recherche filtre ; un chantier inconnu est refusé.
     let (_, page) = lire(&s, "/achats?q=Avoir").await;
-    assert!(page.contains("1 achat(s)"));
+    assert!(page.contains("1\u{a0}achat"));
     assert_eq!(poster(&s, "/achats", "chantier=999&date=2026-10-10&montant=10&categorie=autre").await.1.as_deref(), Some("/achats?erreur=achat"));
 }

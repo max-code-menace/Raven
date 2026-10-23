@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}Avancement n° {{ numero }} · {{ crate::profil::mot("Chantier") }} N° {{ chantier_numero }} · Raven{% endblock %}
+{% block title %}Avancement n° {{ numero }} · {{ crate::profil::mot("Chantier") }} n° {{ chantier_numero }} · Raven{% endblock %}
 {% block nav_chantiers %}aria-current="page"{% endblock %}
 
 {% block entete %}
@@ -10,7 +10,7 @@
     <div class="u-titre">
       <a class="u-retour" href="/chantiers/{{ chantier_id }}/finances" aria-label="Retour aux finances du {{ crate::profil::mot("chantier") }}" title="Retour aux finances du {{ crate::profil::mot("chantier") }}">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div id="avancement-titre">
-        <h1>{% if brouillon %}Modifier un avancement{% else %}Avancement{% endif %} - {{ reference }}</h1>
+        <h1>Avancement · {{ reference }}</h1>
         <div class="u-sous-titre">
           {% if brouillon %}<span class="u-pastille s-brouillon">Brouillon</span>
           {% else if facture.is_some() %}<span class="u-pastille s-accepte">Facturé</span>
@@ -89,7 +89,6 @@
     <button class="btn btn-ghost" type="submit">Remettre en brouillon</button>
   </form>
   {% endif %}
-  <a class="btn" href="/chantiers/{{ chantier_id }}/finances">Fermer</a>
   {% if brouillon %}
   <form method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/valider">
     <button class="btn btn-primary" type="submit">Valider l'avancement</button>

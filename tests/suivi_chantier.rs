@@ -163,7 +163,7 @@ async fn facture_encaisse_et_benefice_actuel(options: PgPoolOptions, connexion: 
     poster(&s, &format!("/chantiers/{id}/achats"), &format!("date={jour}&categorie=fourniture&montant=400")).await;
 
     let page = lire(&s, &format!("/chantiers/{id}")).await;
-    for attendu in [&format!("Encaissé</span><span style=\"color:#1C6B3C\">500,00{E}"), &format!("Reste à recevoir TTC</span><span>560,00{E}"), &format!("600,00{E}")] {
+    for attendu in [&format!("Encaissé</span><span style=\"color:var(--ok)\">500,00{E}"), &format!("Reste à recevoir TTC</span><span>560,00{E}"), &format!("600,00{E}")] {
         assert!(page.contains(attendu), "{attendu}");
     }
     // La liste des chantiers totalise le reste à facturer et le reste à recevoir.

@@ -155,7 +155,7 @@ async fn la_boite_montre_ce_qui_reste_a_payer_et_le_retard(options: PgPoolOption
     assert!(!page.contains("NM-12") && !page.contains("NC-3"));
     assert!(page.find("NM-11").unwrap() < page.find("NM-10").unwrap(), "la plus urgente d'abord");
     assert!(page.contains(&format!("Total à payer TTC : <strong>2\u{a0}420,00{E}</strong>")));
-    assert!(page.contains(&format!("dont en retard : <strong style=\"color:#953A0A\">1\u{a0}210,00{E}</strong> (1)")));
+    assert!(page.contains(&format!("dont en retard : <strong style=\"color:var(--bad)\">1\u{a0}210,00{E}</strong> (1)")));
 
     let page = lire(&s, "/achats/recues?vue=payees&ok=filtre").await;
     assert!(page.contains("NM-12") && !page.contains("NM-10"));

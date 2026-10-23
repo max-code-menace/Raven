@@ -21,7 +21,7 @@
 
 {% block content %}
 {% if let Some((ajoutees, deja)) = resultat %}
-<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span><strong>{{ ajoutees }} fiche(s) ajoutée(s)</strong>{% if *deja > 0 %} · {{ deja }} déjà présente(s), non ajoutée(s) une seconde fois{% endif %}. <a href="{% if contact %}/contacts{% else %}/entreprises{% endif %}">Voir la liste</a></span></div>
+<div role="status" class="u-bandeau ok">{% call ui::icone("ok", 18) %}{% endcall %}<span><strong>{{ crate::commun::nombre(ajoutees, "fiche ajoutée", "fiches ajoutées") }}</strong>{% if *deja > 0 %} · {{ crate::commun::nombre(deja, "déjà présente, non ajoutée", "déjà présentes, non ajoutées") }} une seconde fois{% endif %}. <a href="{% if contact %}/contacts{% else %}/entreprises{% endif %}">Voir la liste</a></span></div>
 {% endif %}
 {% if !erreur.is_empty() %}
 <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
@@ -29,7 +29,7 @@
 {% if !alertes.is_empty() %}
 <section class="u-card">
   <div class="u-card-h"><h2>{% call ui::icone("attention", 17) %}{% endcall %}À vérifier <span class="u-compte">{{ alertes.len() }}</span></h2></div>
-  <div class="u-card-b text-[13.5px]">{% for a in alertes %}<span>{{ a }}</span>{% endfor %}</div>
+  <div class="u-card-b text-[13px]">{% for a in alertes %}<span>{{ a }}</span>{% endfor %}</div>
 </section>
 {% endif %}
 <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] items-start">
@@ -45,7 +45,7 @@
   </form>
   <aside class="u-card">
     <div class="u-card-h"><h2>Colonnes reconnues</h2></div>
-    <div class="u-card-b text-[13.5px]">
+    <div class="u-card-b text-[13px]">
       <span><b>Nom</b> (obligatoire){% if contact %}, <b>Prénom</b>, <b>Civilité</b>, <b>Entreprise</b>{% endif %}, <b>Profils</b>, <b>Téléphone</b>{% if contact %} (et secondaire){% endif %}, <b>E-mail</b>, <b>TVA</b>, <b>IBAN</b>, <b>BIC</b>.</span>
       <span>L'adresse en une seule colonne (« Rue du Beau Site 12, 1390 Grez-Doiceau Belgique »), ou en colonnes Rue, Numéro, Code postal, Ville, Pays.</span>
     </div>

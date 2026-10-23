@@ -17,7 +17,7 @@
   <div class="u-card-h"><h2>Publier la mise à jour</h2></div>
   <div class="u-card-b flex flex-row flex-wrap items-center gap-3">
     {% if en_attente > 0 %}
-    <span class="flex-1">{{ en_attente }} ajout(s) en attente (ouvrages et bibliothèques).</span>
+    <span class="flex-1">{{ crate::commun::nombre(en_attente, "ajout", "ajouts") }} en attente (ouvrages et bibliothèques).</span>
     <form method="post" action="/admin/catalogue/publier"><button class="btn btn-primary" type="submit">Publier</button></form>
     {% else %}
     <span class="flex-1 u-muet">Rien en attente : tout est publié.</span>

@@ -241,9 +241,9 @@ async fn la_corbeille_et_les_filtres(options: PgPoolOptions, connexion: PgConnec
     assert!(r.corps.contains("Mes ouvrages</span><small>1</small>") && r.corps.contains("Prix à compléter</span><small>26</small>"));
     assert!(r.corps.contains("Supprimés</span><small>0</small>"));
     let r = lire(&s, "/bibliotheque?vue=miens", &cookie).await;
-    assert!(r.corps.contains("Ma peinture spéciale") && !r.corps.contains("Laque") && r.corps.contains("1 ouvrage(s)"));
+    assert!(r.corps.contains("Ma peinture spéciale") && !r.corps.contains("Laque") && r.corps.contains("1\u{a0}ouvrage"));
     let r = lire(&s, "/bibliotheque?vue=a_completer", &cookie).await;
-    assert!(r.corps.contains("Laque") && !r.corps.contains("Ma peinture spéciale") && r.corps.contains("26 ouvrage(s)"));
+    assert!(r.corps.contains("Laque") && !r.corps.contains("Ma peinture spéciale") && r.corps.contains("26\u{a0}ouvrages"));
 
     // Supprimer : à la corbeille, plus proposé ni modifiable, mais récupérable.
     let laque: i64 = sqlx::query_scalar("SELECT id FROM ouvrages WHERE description = 'Laque'").fetch_one(&mut *base).await.unwrap();

@@ -43,13 +43,13 @@
     <div class="u-card-h"><h2>Catégories</h2></div>
     <div class="p-2 flex flex-row flex-wrap 2xl:flex-col gap-0.5">
       {% for c in liste.categories %}
-      <a class="u-mi w-auto 2xl:w-full{% if c.choisie %} font-semibold{% endif %}" href="{{ c.adresse }}"{% if c.choisie %} aria-current="true" style="background:#DDEFF0;color:#084C57"{% endif %}><span class="flex-1 truncate">{{ c.libelle }}</span><small>{{ c.nombre }}</small></a>
+      <a class="u-mi w-auto 2xl:w-full{% if c.choisie %} font-semibold{% endif %}" href="{{ c.adresse }}"{% if c.choisie %} aria-current="true" style="background:var(--hover);box-shadow:inset 3px 0 0 var(--ink)"{% endif %}><span class="flex-1 truncate">{{ c.libelle }}</span><small>{{ c.nombre }}</small></a>
       {% endfor %}
     </div>
-    <div class="u-card-h" style="border-top:1px solid #E4E5E1"><h2>Afficher</h2></div>
+    <div class="u-card-h" style="border-top:1px solid var(--line)"><h2>Afficher</h2></div>
     <div class="p-2 flex flex-row flex-wrap 2xl:flex-col gap-0.5">
       {% for c in liste.vues %}
-      <a class="u-mi w-auto 2xl:w-full{% if c.choisie %} font-semibold{% endif %}" href="{{ c.adresse }}"{% if c.choisie %} aria-current="true" style="background:#DDEFF0;color:#084C57"{% endif %}><span class="flex-1 truncate">{{ c.libelle }}</span><small>{{ c.nombre }}</small></a>
+      <a class="u-mi w-auto 2xl:w-full{% if c.choisie %} font-semibold{% endif %}" href="{{ c.adresse }}"{% if c.choisie %} aria-current="true" style="background:var(--hover);box-shadow:inset 3px 0 0 var(--ink)"{% endif %}><span class="flex-1 truncate">{{ c.libelle }}</span><small>{{ c.nombre }}</small></a>
       {% endfor %}
       <a class="u-mi w-auto 2xl:w-full" href="/parametres/bibliotheques"><span class="flex-1 truncate">Bibliothèques de Raven</span><small>›</small></a>
     </div>

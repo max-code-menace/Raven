@@ -137,13 +137,13 @@ async fn un_avenant_reprend_l_en_tete_du_devis_et_porte_le_numero_2(options: PgP
 
     let (statut, page) = lire(&s, &format!("/devis/{av}?ok=avenant")).await;
     assert_eq!(statut, StatusCode::OK);
-    assert!(page.contains("Avenant N° 2"));
+    assert!(page.contains("Avenant n° 2"));
     assert!(page.contains("L&#39;avenant est créé en brouillon") || page.contains("L'avenant est créé en brouillon"));
     assert!(page.contains("Jours ouvrables supplémentaires"));
     assert!(page.contains(&format!("href=\"/chantiers/{}/devis\"", b.chantier)), "le bouton Retour mène au chantier");
     // Le devis de base, lui, n'a pas de champ de jours ouvrables.
     let (_, page) = lire(&s, &format!("/devis/{}", b.devis)).await;
-    assert!(!page.contains("Jours ouvrables supplémentaires") && page.contains("Devis N° 2026-57"));
+    assert!(!page.contains("Jours ouvrables supplémentaires") && page.contains("Devis n° 2026-57"));
 
     // Les avenants suivants : 3, 4…
     assert_eq!(sqlx::query_scalar::<_, i64>("SELECT numero FROM devis WHERE id = $1").bind(nouvel_avenant(&s, b.chantier).await).fetch_one(&pool).await.unwrap(), 3);

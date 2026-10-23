@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}{% if q.is_empty() %}Rechercher{% else %}« {{ q }} » · Recherche{% endif %} · Raven{% endblock %}
+{% block fond %}rv-papier{% endblock %}
+
+{% block entete %}
+{% if q.is_empty() %}
+{% call ui::tete("Rechercher", "Un numéro (2026-59), une référence de chantier (PL46), un client, un e-mail : Raven cherche partout à la fois.", "") %}{% endcall %}
+{% else %}
+{% call ui::tete("Résultats pour « {} »"|format(q), crate::commun::nombre(total, "résultat", "résultats"), "Recherche") %}{% endcall %}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<form class="rv-outils" method="get" action="/recherche" role="search">
+  <label class="rv-recherche" style="flex:1 1 480px">
+    {% call ui::icone("recherche", 16) %}{% endcall %}
+    <input class="rv-input" type="search" name="q" value="{{ q }}" placeholder="Numéro, référence, client, e-mail…" aria-label="Rechercher partout" autofocus>
+  </label>
+  {% call ui::bouton("Rechercher") %}{% endcall %}
+</form>
+
+{% if !q.is_empty() %}
+{% if total == 0 %}
+<p class="rv-hint">Rien trouvé pour « {{ q }} ». Essayez une partie du nom du client, ou le numéro seul (59 au lieu de 2026-59).</p>
+{% endif %}
+<div class="rv-deux">
+  {% for g in groupes %}
+  {% if !g.resultats.is_empty() %}
+  <section class="rv-section" aria-label="{{ g.titre }}">
+    <div class="rv-pied-tete"><h2 style="margin:0;font:700 var(--t-lg)/1.35 var(--font-sans)">{{ g.titre }} <span class="rv-hint">{{ g.resultats.len() }}</span></h2>
+      {% if g.resultats.len() >= 10 %}<a class="rv-hint" href="{{ g.tout_voir }}">Voir tout dans la liste</a>{% endif %}</div>
+    <div class="rv-table-wrap">
+      <table class="rv-table">
+        <tbody>
+          {% for r in g.resultats %}
+          <tr>
+            <td style="white-space:normal;padding-top:8px;padding-bottom:8px"><a class="rv-lien" href="{{ r.lien }}">{{ r.titre }}</a>{% if !r.detail.is_empty() %}<small class="rv-recherche-detail">{{ r.detail }}</small>{% endif %}</td>
+            <td class="rv-r rv-num">{{ r.montant }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

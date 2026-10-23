@@ -20,10 +20,10 @@
 
 {% block content %}
 <div class="rv-tuiles">
-  {% call ui::tuile("Chiffre d'affaires HT", ca_ht, "{} TTC · {} facture(s), notes de crédit déduites"|format(ca_ttc, nombre_factures)) %}{% endcall %}
+  {% call ui::tuile("Chiffre d'affaires HT", ca_ht, "{} TTC · {}, notes de crédit déduites"|format(ca_ttc, crate::commun::nombre(nombre_factures, "facture", "factures"))) %}{% endcall %}
   {% call ui::tuile("Encaissé TTC", encaisse, "Paiements reçus dans la période") %}{% endcall %}
-  {% call ui::tuile("En retard aujourd'hui", en_retard, "En retard : {} facture(s), TTC · pas encore échues : {} ({})"|format(nombre_en_retard, a_payer, nombre_a_payer), "/factures?statut=en_retard") %}{% endcall %}
-  {% call ui::tuile("Conversion des devis", taux_conversion, "{} accepté(s) sur {} devis émis · perte {}"|format(devis_acceptes, devis_emis, taux_perte)) %}{% endcall %}
+  {% call ui::tuile("En retard aujourd'hui", en_retard, "En retard : {}, TTC · pas encore échues : {} ({})"|format(crate::commun::nombre(nombre_en_retard, "facture", "factures"), a_payer, nombre_a_payer), "/factures?statut=en_retard") %}{% endcall %}
+  {% call ui::tuile("Conversion des devis", taux_conversion, "{} sur {} devis émis · perte {}"|format(crate::commun::nombre(devis_acceptes, "accepté", "acceptés"), devis_emis, taux_perte)) %}{% endcall %}
 </div>
 
 <div class="rv-deux">

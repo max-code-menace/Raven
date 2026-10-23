@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}{{ barre.titre }} · Visualisation · Raven{% endblock %}
+{% block title %}{{ barre.titre }} · Aperçu · Raven{% endblock %}
 {% block rail %}rv-side--rail{% endblock %}
 {% block fond %}rv-papier{% endblock %}
 {% block nav_devis %}{% if !barre.avenant %}aria-current="page"{% endif %}{% endblock %}
@@ -16,22 +16,23 @@
       <h2>Le PDF que le client recevra</h2>
       <span class="u-petit u-muet">conditions générales comprises</span>
       <a class="btn btn-sm" href="/devis/{{ id }}/pdf" target="_blank" rel="noopener">Ouvrir dans un onglet</a>
+      <a class="btn btn-sm" href="/devis/{{ id }}/pdf?telecharger=1">Télécharger</a>
     </div>
-    <div class="p-4 bg-[#F5F6F4] rounded-b-xl">
-      <iframe class="w-full rounded-box bg-white shadow" style="height: 80vh" src="/devis/{{ id }}/pdf" title="PDF du devis"></iframe>
+    <div class="p-4 bg-[color:var(--soft)] rounded-b">
+      <iframe class="w-full rounded bg-white border border-[color:var(--line)]" style="height: 80vh" src="/devis/{{ id }}/pdf" title="PDF du devis"></iframe>
     </div>
   </section>
 
   <aside class="flex flex-col gap-4" aria-label="Contrôles avant envoi">
     <section class="u-card">
       <div class="u-card-h"><h2>Avant l'envoi</h2>
-        {% if a_completer.is_empty() %}<span class="u-pastille s-accepte">prêt</span>{% else %}<span class="u-pastille s-a-envoyer">{{ a_completer.len() }} point(s)</span>{% endif %}
+        {% if a_completer.is_empty() %}<span class="u-pastille s-accepte">prêt</span>{% else %}<span class="u-pastille s-a-envoyer">{{ crate::commun::nombre(a_completer.len(), "point", "points") }}</span>{% endif %}
       </div>
       <div class="u-card-b">
         {% for m in a_completer %}
-        <div class="flex gap-2 items-start text-[13.5px]"><span class="text-[#953A0A] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
+        <div class="flex gap-2 items-start text-[13px]"><span class="text-[color:var(--ink)] mt-0.5">{% call ui::icone("attention", 16) %}{% endcall %}</span><span>{{ m }}</span></div>
         {% endfor %}
-        <div class="flex gap-2 items-start text-[13.5px]"><span class="text-[#1C6B3C] mt-0.5">{% call ui::icone("ok", 16) %}{% endcall %}</span><span>Prix d'achat et marge absents du PDF</span></div>
+        <div class="flex gap-2 items-start text-[13px]"><span class="text-[color:var(--ok)] mt-0.5">{% call ui::icone("ok", 16) %}{% endcall %}</span><span>Prix d'achat et marge absents du PDF</span></div>
         {% if !a_completer.is_empty() %}<p class="u-petit u-muet">À compléter avant d'envoyer le devis.</p>{% endif %}
       </div>
     </section>
@@ -47,15 +48,3 @@
 </div>
 {% endblock %}
 
-{% block barre %}
-<div class="u-barre">
-  <a class="btn" href="{{ barre.retour }}">Fermer</a>
-  <a class="btn" href="/devis/{{ id }}/email">Envoyer par e-mail</a>
-  <a class="btn{% if !barre.peut_marquer_envoye %} btn-primary{% endif %}" href="/devis/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
-  {% if barre.peut_marquer_envoye %}
-  <form method="post" action="/devis/{{ id }}/statut/envoye">
-    <button class="btn btn-primary" type="submit">Marquer comme envoyé</button>
-  </form>
-  {% endif %}
-</div>
-{% endblock %}

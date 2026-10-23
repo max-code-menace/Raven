@@ -305,7 +305,7 @@ async fn reception_releve_rattachement_et_export(options: PgPoolOptions, connexi
     let r = poster(&s, "/achats/recues/relever", "", &cookie).await;
     assert_eq!(r.lieu.as_deref(), Some("/achats/recues?ok=releve&nouvelles=0"));
     assert_eq!(un::<i64>(&pool, "SELECT count(*) FROM factures_recues").await, 2);
-    assert!(lire(&s, "/", &cookie).await.corps.contains("2 facture(s) fournisseur reçue(s) par Peppol à traiter"));
+    assert!(lire(&s, "/", &cookie).await.corps.contains("2\u{a0}factures fournisseurs reçues par Peppol à traiter"));
 
     // La facture : fournisseur, lignes, montants, PDF du fournisseur, XML tel quel.
     let facture: i64 = un(&pool, "SELECT id FROM factures_recues WHERE numero = 'F-2026-77'").await;

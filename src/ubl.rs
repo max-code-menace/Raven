@@ -386,7 +386,7 @@ mod tests {
             acheteur: Partie { nom: "Lambert <Marc>".into(), ..Default::default() },
             iban: "BE68 5390 0754 7034".into(),
             vcs: "+++000/0000/12629+++".into(),
-            conditions: "7 jour(s) après date de facturation".into(),
+            conditions: "7 jours après date de facturation".into(),
             lignes,
         }
     }

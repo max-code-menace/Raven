@@ -100,16 +100,16 @@ async fn les_blocs_et_ce_qui_est_a_surveiller(options: PgPoolOptions, connexion:
     let page = lire(&s, "/").await;
     for attendu in [
         &format!("5\u{a0}000,00{E}"),                        // en attente : 1 500 + 500 + 3 000
-        "rv-num\">3</span> devis envoyé(s) ou signé(s)",
+        "3\u{a0}devis envoyés ou signés",
         &format!("Devis en brouillon</a></td><td class=\"rv-r rv-num\">1</td><td class=\"rv-r rv-num\">800,00{E}"),
-        "rv-num\">1</span> facture(s) TTC · voir les rappels",
+        "1\u{a0}facture, TTC · voir les rappels",
         &format!("Factures à envoyer</a></td><td class=\"rv-r rv-num\">2</td><td class=\"rv-r rv-num\">242,00{E}"),
         &format!("<b class=\"rv-band-val\">242,00{E}</b>"),
-        "rv-num\">2</span> facture(s) pas encore soldée(s)",
-        "1 facture(s) en retard à relancer aujourd",
+        "2\u{a0}factures pas encore soldées",
+        "1\u{a0}facture en retard à relancer aujourd",
         "est signé en ligne par Anne Claes : il reste à l",
         "est envoyé depuis 25 jours, sans réponse.",
-        "2 pièce(s) validée(s) pas encore envoyée(s) au client.",
+        "2\u{a0}factures validées pas encore envoyées au client.",
         "href=\"/factures/rappels\"",
         &format!("Facturé HT</span><span>200,00{E}"),
     ] {

@@ -8,38 +8,27 @@
         <th>Profils</th>
         <th>Téléphone</th>
         {% if liste.est_contact %}<th>Téléphone secondaire</th>{% else %}<th>Numéro TVA</th>{% endif %}
-        <th>E-mail</th>
         <th>Adresse</th>
-        <th class="n"><span class="sr-only">Actions</span></th>
+        <th class="n u-acts"><span class="sr-only">Actions</span></th>
       </tr>
     </thead>
     <tbody>
       {% for l in liste.lignes %}
       <tr>
-        <td class="nw"><a class="font-medium text-[#17191C] no-underline hover:text-[#0B6371]" href="{{ liste.base }}/{{ l.id }}/modifier">{{ l.nom }}</a></td>
+        <td class="nw"><a class="font-medium text-[color:var(--ink)] no-underline hover:underline" href="{{ liste.base }}/{{ l.id }}/modifier">{{ l.nom }}</a></td>
         {% if liste.est_contact %}<td>{{ l.entreprise }}</td>{% endif %}
         <td>{% for p in l.profils %}<span class="u-profil">{{ p }}</span>{% endfor %}</td>
         <td class="nw">{{ l.telephone }}</td>
         {% if liste.est_contact %}<td class="nw u-muet">{{ l.telephone_secondaire }}</td>{% else %}<td class="nw">{{ l.numero_tva }}</td>{% endif %}
-        <td>{% if !l.email.is_empty() %}<a href="mailto:{{ l.email }}">{{ l.email }}</a>{% endif %}</td>
-        <td class="nw">{{ l.adresse }}</td>
-        <td class="n">
-          <div class="inline-flex gap-0.5">
-            <a class="btn u-ib" href="{{ liste.base }}/{{ l.id }}/modifier" aria-label="Modifier" title="Modifier">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
-            <details class="u-menu">
-              <summary class="btn u-ib" aria-label="Plus d'actions" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
-              <div class="u-menu-liste">
-                <a class="u-mi" href="{{ liste.base }}/{{ l.id }}/modifier">Modifier la fiche</a>
-                <div class="u-sep"></div>
-                {% call ui::bientot("Supprimer", "bientôt") %}{% endcall %}
-              </div>
-            </details>
-          </div>
+        {# L'e-mail est dans la fiche : la liste tient sans défiler de côté à 1366 px. #}
+        <td><span class="u-coupe" style="max-width:300px" title="{{ l.adresse }}">{{ l.adresse }}</span></td>
+        <td class="n u-acts">
+          <a class="btn u-ib" href="{{ liste.base }}/{{ l.id }}/modifier" aria-label="Modifier {{ l.nom }}" title="Modifier la fiche">{% call ui::icone("crayon", 16) %}{% endcall %}</a>
         </td>
       </tr>
       {% else %}
       <tr class="vide">
-        <td colspan="8">{% if liste.est_contact %}Aucun contact trouvé.{% else %}Aucune entreprise trouvée.{% endif %}</td>
+        <td colspan="7">{% if liste.est_contact %}Aucun contact trouvé.{% else %}Aucune entreprise trouvée.{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -47,8 +36,7 @@
 </div>
 
 <div class="u-pied">
-  {% call ui::par_page() %}{% endcall %}
-  <span>{{ liste.total }} résultat(s)</span>
+  <span>{{ crate::commun::nombre(liste.total, "résultat", "résultats") }}</span>
   <div class="u-pages">
     {% if liste.page > 1 %}
     <a href="{{ liste.base }}?q={{ liste.q|urlencode }}&profil={{ liste.profil|urlencode }}&page={{ liste.page - 1 }}"

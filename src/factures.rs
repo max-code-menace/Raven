@@ -67,11 +67,11 @@ pub(crate) fn numero_affiche(date: NaiveDate, numero: i64) -> String {
     format!("{}-{numero}", date.year())
 }
 
-/// « Facture N° 2026-125 », « Note de crédit N° 2026-6 », « Facture d'acompte (brouillon) ».
+/// « Facture n° 2026-125 », « Note de crédit n° 2026-6 », « Facture d'acompte (brouillon) ».
 pub(crate) fn titre(genre: &str, numero: Option<i64>, date: NaiveDate) -> String {
     match (genre, numero) {
-        ("note_credit", Some(n)) => format!("Note de crédit N° {}", numero_affiche(date, n)),
-        (_, Some(n)) => format!("Facture N° {}", numero_affiche(date, n)),
+        ("note_credit", Some(n)) => format!("Note de crédit n° {}", numero_affiche(date, n)),
+        (_, Some(n)) => format!("Facture n° {}", numero_affiche(date, n)),
         (g, None) => format!("{} (brouillon)", libelle_genre(g)),
     }
 }
@@ -516,9 +516,10 @@ async fn liste(mut db: Base, Query(r): Query<Recherche>, entetes: HeaderMap) -> 
                     brouillon: l.numero.is_none(),
                     peut_crediter: l.numero.is_some() && l.genre != "note_credit",
                     peut_recurrer: matches!(l.genre.as_str(), "simple" | "recurrente"),
+                    // Le numéro avec l'année, comme sur le PDF et ce que le client cite (« 2026-125 »).
                     numero: match (l.genre.as_str(), l.numero) {
-                        ("note_credit", Some(n)) => format!("NC {n}"),
-                        (_, Some(n)) => n.to_string(),
+                        ("note_credit", Some(n)) => format!("NC {}", numero_affiche(l.date_facture, n)),
+                        (_, Some(n)) => numero_affiche(l.date_facture, n),
                         (_, None) => "—".to_string(),
                     },
                     date: date_belge(l.date_facture),
@@ -860,7 +861,7 @@ async fn construire_page(db: &mut PgConnection, id: i64, retour: &Retour, enregi
         peut_crediter: f.numero.is_some() && f.genre != "note_credit",
         peut_recurrer: f.peut_recurrer(),
         reprise: f.reprise,
-        numero: f.numero.map(|n| n.to_string()).unwrap_or_default(),
+        numero: f.numero.map(|n| numero_affiche(f.date_facture, n)).unwrap_or_default(),
         date: date_belge(f.date_facture),
         echeance: f.date_echeance.map(date_belge).unwrap_or_default(),
         vcs: f.vcs.clone().unwrap_or_default(),
@@ -1451,9 +1452,9 @@ mod tests {
     #[test]
     fn les_titres() {
         let jour = NaiveDate::from_ymd_opt(2026, 10, 17).unwrap();
-        assert_eq!(titre("simple", Some(125), jour), "Facture N° 2026-125");
-        assert_eq!(titre("acompte", Some(126), jour), "Facture N° 2026-126");
-        assert_eq!(titre("note_credit", Some(6), jour), "Note de crédit N° 2026-6");
+        assert_eq!(titre("simple", Some(125), jour), "Facture n° 2026-125");
+        assert_eq!(titre("acompte", Some(126), jour), "Facture n° 2026-126");
+        assert_eq!(titre("note_credit", Some(6), jour), "Note de crédit n° 2026-6");
         assert_eq!(titre("finale", None, jour), "Facture finale (brouillon)");
     }
 

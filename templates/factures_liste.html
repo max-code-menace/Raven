@@ -18,11 +18,10 @@
     </div>
     <div class="u-actions">
       <details class="u-menu">
-        <summary class="btn u-ib" style="width:36px;height:36px;border-color:#CDD1CD;background:#fff" aria-label="Plus d'options" title="Plus d'options">{% call ui::points() %}{% endcall %}</summary>
+        <summary class="btn u-ib" style="border-color:var(--line-field)" aria-label="Plus d'options" title="Plus d'options">{% call ui::points() %}{% endcall %}</summary>
         <div class="u-menu-liste">
           <a class="u-mi" href="/factures/rappels">Rappels de paiement</a>
           <a class="u-mi" href="/factures/recurrences">Factures récurrentes</a>
-          {% call ui::bientot("Exporter la liste (Excel)", "bientôt") %}{% endcall %}
         </div>
       </details>
       {# Une facture simple, sans devis. Les factures d'acompte, d'avancement et finales se créent depuis le chantier ;

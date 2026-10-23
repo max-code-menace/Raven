@@ -1,10 +1,11 @@
 {% import "_ui.html" as ui %}
-{# En-tête commun aux onglets d'un devis ou d'un avenant (design de Raven, étape 4) : retour, numéro et pastille de statut,
-   client et référence, deux boutons (aperçu, envoi) et le menu « … » (chaque décision est notée dans l'historique), onglets. #}
+{# En-tête commun aux onglets d'un devis ou d'un avenant (design de Raven, étape 4 ; compact depuis l'audit du 23/10/2026) :
+   retour, numéro et pastille de statut, client et référence, une seule action principale (l'envoi) et le menu « … »
+   (chaque décision est notée dans l'historique), onglets. L'aperçu est l'onglet « Aperçu ». #}
 <header class="rv-tete rv-tete--fiche" id="devis-tete">
   <div class="rv-tete-texte">
-    <a class="rv-retour" href="{{ barre.retour }}">{% call ui::icone("gauche", 14) %}{% endcall %}{% if barre.avenant %}{{ crate::profil::mot("Chantier") }}{% else %}Devis{% endif %}</a>
     <div class="rv-tete-titre">
+      <a class="rv-retour rv-retour--carre" href="{{ barre.retour }}" aria-label="Retour {% if barre.avenant %}au {{ crate::profil::mot("chantier") }}{% else %}aux devis{% endif %}" title="Retour {% if barre.avenant %}au {{ crate::profil::mot("chantier") }}{% else %}aux devis{% endif %}">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <h1>{{ barre.titre }}</h1>
       {% call ui::pastille(barre.pastille) %}{% endcall %}
     </div>
@@ -16,7 +17,6 @@
     </p>
   </div>
   <div class="rv-actions">
-    {% call ui::lien_bouton("/devis/{}/apercu"|format(id), "Aperçu du document") %}{% endcall %}
     {% if barre.avenant %}{% call ui::lien_bouton("/devis/{}/email"|format(id), "Envoyer l'avenant", "acc") %}{% endcall %}{% else %}{% call ui::lien_bouton("/devis/{}/email"|format(id), "Envoyer le devis", "acc") %}{% endcall %}{% endif %}
     <details class="rv-menu-wrap">
       <summary class="rv-btn rv-btn--ghost rv-btn--carre" aria-label="Plus d'actions sur {% if barre.avenant %}cet avenant{% else %}ce devis{% endif %}" title="Plus d'actions">{% call ui::points() %}{% endcall %}</summary>
@@ -70,7 +70,7 @@
     {% call ui::onglet("/devis/{}"|format(id), "Informations", onglet == "informations") %}{% endcall %}
     {% call ui::onglet("/devis/{}/encodage"|format(id), "Encodage", onglet == "encodage") %}{% endcall %}
     {% call ui::onglet("/devis/{}/totaux"|format(id), "Totaux", onglet == "totaux") %}{% endcall %}
-    {% call ui::onglet("/devis/{}/apercu"|format(id), "Visualisation", onglet == "visualisation") %}{% endcall %}
+    {% call ui::onglet("/devis/{}/apercu"|format(id), "Aperçu", onglet == "visualisation") %}{% endcall %}
     {% call ui::onglet("/devis/{}/historique"|format(id), "Historique", onglet == "historique") %}{% endcall %}
   {% endcall %}
 </div>

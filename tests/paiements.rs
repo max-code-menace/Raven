@@ -231,10 +231,10 @@ async fn la_liste_montre_l_etat_et_le_montant_a_recevoir(options: PgPoolOptions,
     poster(&s, &format!("/factures/{id}/paiements"), &format!("genre=partiel&date={jour}&montant=1000&methode_id={m}")).await;
 
     let page = lire(&s, "/factures").await;
-    for attendu in ["Partiellement payée", &format!("reste 20,98{E}"), &format!("Montant à recevoir TTC <strong style=\"color:#0B6371\">20,98{E}</strong>"), "?payer=1#paiement"] {
+    for attendu in ["Partiellement payée", &format!("reste 20,98{E}"), &format!("Montant à recevoir TTC <strong>20,98{E}</strong>"), "?payer=1#paiement"] {
         assert!(page.contains(attendu), "{attendu}");
     }
-    assert!(lire(&s, "/factures?statut=partielle").await.contains("1 pièce(s)"));
-    assert!(lire(&s, "/factures?statut=payee").await.contains("0 pièce(s)"));
-    assert!(lire(&s, "/factures?statut=envoyee").await.contains("0 pièce(s)"));
+    assert!(lire(&s, "/factures?statut=partielle").await.contains("1\u{a0}facture"));
+    assert!(lire(&s, "/factures?statut=payee").await.contains("0\u{a0}facture"));
+    assert!(lire(&s, "/factures?statut=envoyee").await.contains("0\u{a0}facture"));
 }

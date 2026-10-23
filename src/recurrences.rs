@@ -213,7 +213,7 @@ async fn liste(mut db: Base, Query(retour): Query<RetourListe>) -> Result<Html<S
     let total_a_preparer = lignes.iter().map(|l| l.a_preparer).sum();
     let message_ok = match retour.preparees.parse::<usize>() {
         Ok(0) => "Rien à préparer aujourd'hui.".to_string(),
-        Ok(n) => format!("{n} facture(s) récurrente(s) préparée(s) en brouillon : relis-les, valide-les puis envoie-les."),
+        Ok(n) => format!("{} en brouillon : relisez-les, validez-les puis envoyez-les.", crate::commun::nombre(n, "facture récurrente préparée", "factures récurrentes préparées")),
         Err(_) => String::new(),
     };
     Ok(Html(PageListe { lignes, total_a_preparer, message_ok }.render()?))
@@ -411,7 +411,7 @@ async fn page(db: &mut PgConnection, f: &factures::Facture, saisie: Option<Saisi
         delais: (0..=30)
             .map(|n: i32| Choix {
                 valeur: n.to_string(),
-                libelle: if n == 0 { "le jour même".to_string() } else { format!("{n} jour(s) avant la date prévue") },
+                libelle: if n == 0 { "le jour même".to_string() } else { format!("{} avant la date prévue", crate::commun::nombre(n, "jour", "jours")) },
                 choisi: n.to_string() == delai_choisi || (n == 0 && delai_choisi.is_empty()),
             })
             .collect(),
@@ -439,7 +439,7 @@ async fn afficher(mut db: Base, Path(id): Path<i64>, Query(r): Query<RetourFiche
     page(&mut *db, &f, None, Vec::new(), message).await
 }
 
-/// L'aperçu « N occurrence(s) trouvée(s) » pendant la saisie (fragment htmx).
+/// L'aperçu « N occurrences trouvées » pendant la saisie (fragment htmx).
 async fn previsualiser(Query(s): Query<Saisie>) -> Result<Html<String>, Erreur> {
     Ok(Html(FragmentApercu { apercu: apercu(&s) }.render()?))
 }

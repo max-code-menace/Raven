@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}{{ crate::profil::mot("Chantier") }} N° {{ numero }} · Raven{% endblock %}
+{% block title %}{{ crate::profil::mot("Chantier") }} n° {{ numero }} · Raven{% endblock %}
 {% block nav_chantiers %}aria-current="page"{% endblock %}
 
 {% block entete %}
@@ -10,7 +10,7 @@
     <div class="u-titre">
       <a class="u-retour" href="/chantiers" aria-label="Retour aux {{ crate::profil::mot("chantiers") }}" title="Retour aux {{ crate::profil::mot("chantiers") }}">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
       <div>
-        <h1>{{ crate::profil::mot("Chantier") }} N° {{ numero }}{% if !reference.is_empty() %} - {{ reference }}{% endif %}</h1>
+        <h1>{{ crate::profil::mot("Chantier") }} n° {{ numero }}{% if !reference.is_empty() %} · {{ reference }}{% endif %}</h1>
         <div class="u-sous-titre" id="chantier-statut">
           <span class="u-pastille {{ classe_statut }}">{{ statut }}</span>
           <span>{{ client }} · Début le {{ date_debut }}</span>
@@ -18,16 +18,22 @@
       </div>
     </div>
     <div class="u-actions">
+      {# Une seule action pleine (Facturer) ; les avenants dans un menu (audit du design du 23/10/2026). #}
       {% if crate::profil::actuel().avenants %}
-      <form method="post" action="/chantiers/{{ id }}/avenants">
-        <button class="btn" type="submit" title="Crée un avenant en brouillon qui reprend l'en-tête du devis">Nouvel avenant</button>
-      </form>
-      {% if crate::profil::actuel().import_metres %}
-      <form method="post" action="/chantiers/{{ id }}/avenants">
-        <input type="hidden" name="import" value="1">
-        <button class="btn" type="submit" title="Crée un avenant en brouillon et importe le modèle Excel (montants positifs ou négatifs)">Avenant depuis Excel</button>
-      </form>
-      {% endif %}
+      <details class="u-menu">
+        <summary class="btn">Avenant{% call ui::icone("bas", 14) %}{% endcall %}</summary>
+        <div class="u-menu-liste">
+          <form method="post" action="/chantiers/{{ id }}/avenants">
+            <button class="u-mi" type="submit">Nouvel avenant <small>reprend l'en-tête du devis</small></button>
+          </form>
+          {% if crate::profil::actuel().import_metres %}
+          <form method="post" action="/chantiers/{{ id }}/avenants">
+            <input type="hidden" name="import" value="1">
+            <button class="u-mi" type="submit">Avenant depuis Excel <small>montants + ou −</small></button>
+          </form>
+          {% endif %}
+        </div>
+      </details>
       {% endif %}
       {% if !finances.finale %}
       <a class="btn btn-primary" href="/chantiers/{{ id }}/facturer">Facturer</a>
@@ -58,7 +64,7 @@
     <div><span><span class="u-cle">Client</span>{{ client }}</span><span><span class="u-cle">Adresse du {{ crate::profil::mot("chantier") }}</span>{{ adresse }}</span></div>
     <div><span><span class="u-cle">Date de début</span>{{ date_debut }}</span><span><span class="u-cle">Responsable</span>{{ responsable }}</span></div>
     <div><span><span class="u-cle">Gestionnaire</span>{% if gestionnaire.is_empty() %}—{% else %}{{ gestionnaire }}{% endif %}</span><span><span class="u-cle">Architecte</span>{% if architecte.is_empty() %}—{% else %}{{ architecte }}{% endif %}</span>
-      <span><span class="u-cle">Devis de base</span><a href="/devis/{{ devis_id }}">N° {{ devis_numero }}</a>{% if !date_acceptation.is_empty() %}, accepté le {{ date_acceptation }}{% endif %}</span></div>
+      <span><span class="u-cle">Devis de base</span><a href="/devis/{{ devis_id }}">n° {{ devis_numero }}</a>{% if !date_acceptation.is_empty() %}, accepté le {{ date_acceptation }}{% endif %}</span></div>
   </div>
 </section>
 
@@ -91,7 +97,7 @@
       <span class="u-grand">{{ factures.reste_a_facturer }}</span>
       <span class="u-petit u-muet">Facturé : {{ factures.facture_ht }} HT · {{ factures.facture_ttc }} TTC</span>
     </div>
-    <div class="u-ligne-montant"><span>Encaissé</span><span style="color:#1C6B3C">{{ suivi.encaisse }}</span></div>
+    <div class="u-ligne-montant"><span>Encaissé</span><span style="color:var(--ok)">{{ suivi.encaisse }}</span></div>
     <div class="u-ligne-montant" style="font-weight:600"><span>Reste à recevoir TTC</span><span>{{ suivi.reste_a_recevoir }}</span></div>
   </section>
 </div>
@@ -106,20 +112,20 @@
         <tr><td>Ventes</td><td class="n">{{ suivi.ventes_prevues }}</td><td class="n" title="Facturé HT">{{ suivi.facture_ht }}</td></tr>
         <tr><td>Achats</td><td class="n">{{ suivi.achats_prevus }}</td><td class="n">{{ suivi.achats_reels }}</td></tr>
         <tr><td>Frais généraux</td><td class="n">{{ suivi.frais_generaux }}</td><td class="n u-muet">—</td></tr>
-        <tr class="font-semibold"><td>Bénéfice</td><td class="n">{{ suivi.benefice_prevu }}</td><td class="n"{% if suivi.benefice_actuel_negatif %} style="color:#8E2B22"{% endif %}>{{ suivi.benefice_actuel }}</td></tr>
+        <tr class="font-semibold"><td>Bénéfice</td><td class="n">{{ suivi.benefice_prevu }}</td><td class="n"{% if suivi.benefice_actuel_negatif %} style="color:var(--bad)"{% endif %}>{{ suivi.benefice_actuel }}</td></tr>
         <tr><td>Marge sur le prix de vente</td><td class="n">{{ suivi.taux_prevu }}</td><td class="n">{{ suivi.taux_actuel }}</td></tr>
       </tbody>
     </table>
-    <p class="u-petit u-muet px-[18px] py-3" style="margin:0">Prévu : devis de base et avenants acceptés{% if suivi.lignes_sans_achat > 0 %} ({{ suivi.lignes_sans_achat }} ligne(s) sans prix d'achat){% endif %}. Actuel : facturé HT moins les achats saisis. La marge est ce bénéfice en % des ventes (facturé HT pour l'actuel).</p>
+    <p class="u-petit u-muet px-[18px] py-3" style="margin:0">Prévu : devis de base et avenants acceptés{% if suivi.lignes_sans_achat > 0 %} ({{ crate::commun::nombre(suivi.lignes_sans_achat, "ligne", "lignes") }} sans prix d'achat){% endif %}. Actuel : facturé HT moins les achats saisis. La marge est ce bénéfice en % des ventes (facturé HT pour l'actuel).</p>
   </section>
 
   <section class="u-card">
     <div class="u-card-h"><h2>Budget d'achat</h2><a class="u-petit" href="/chantiers/{{ id }}/finances#achats">Achats</a></div>
     <div class="u-card-b">
       <span class="u-cle">Disponible HT</span>
-      <span class="u-grand"{% if suivi.depasse %} style="color:#8E2B22"{% endif %}>{{ suivi.disponible }}</span>
-      <div class="w-full h-2 rounded-full bg-[#EEF0ED] overflow-hidden" role="img" aria-label="Budget d'achat dépensé : {{ suivi.pourcentage_budget_texte }}">
-        <div class="h-2 rounded-full" style="width:{{ suivi.pourcentage_budget }}%;background:{% if suivi.depasse %}#953A0A{% else %}#0B6371{% endif %}"></div>
+      <span class="u-grand"{% if suivi.depasse %} style="color:var(--bad)"{% endif %}>{{ suivi.disponible }}</span>
+      <div class="w-full h-2 rounded-full bg-[color:var(--line)] overflow-hidden" role="img" aria-label="Budget d'achat dépensé : {{ suivi.pourcentage_budget_texte }}">
+        <div class="h-2 rounded-full" style="width:{{ suivi.pourcentage_budget }}%;background:{% if suivi.depasse %}var(--bad){% else %}var(--ink){% endif %}"></div>
       </div>
       <span class="u-petit u-muet">Dépensé : {{ suivi.achats_reels }} sur {{ suivi.achats_prevus }} prévus ({{ suivi.pourcentage_budget_texte }}){% if suivi.depasse %} · budget dépassé{% endif %}</span>
     </div>
@@ -214,7 +220,7 @@
     </table>
   </div>
   <div class="u-pied">
-    <span>{{ finances.avancements.len() }} élément(s)</span>
+    <span>{{ crate::commun::nombre(finances.avancements.len(), "avancement", "avancements") }}</span>
     <div class="u-totaux">
       <div><small>Total {{ crate::profil::mot("chantier") }} HT</small><strong>{{ finances.total }}</strong></div>
       <div><small>Avancé (validé){% if !finances.pourcentage_avance.is_empty() %} · {{ finances.pourcentage_avance }}{% endif %}</small><strong>{{ finances.avance }}</strong></div>
@@ -228,7 +234,7 @@
   <summary class="u-card-h"><span class="u-chevron flex">{% call ui::icone("bas", 16) %}{% endcall %}</span><h2>Factures et notes de crédit <span class="u-compte">{{ factures.factures.len() }}</span></h2></summary>
   <div class="u-outils" style="justify-content:flex-end">
     {% if !finances.finale %}
-    <a class="btn btn-sm btn-primary" href="/chantiers/{{ id }}/facturer">Facturer</a>
+    <a class="btn btn-sm" href="/chantiers/{{ id }}/facturer">Facturer</a>
     {% endif %}
   </div>
   <div class="overflow-x-auto">
@@ -254,7 +260,7 @@
     </table>
   </div>
   <div class="u-pied">
-    <span>{{ factures.factures.len() }} élément(s)</span>
+    <span>{{ crate::commun::nombre(factures.factures.len(), "facture", "factures") }}</span>
     <div class="flex flex-wrap gap-6">
       <span>Facturé HT (pièces validées) <strong>{{ factures.facture_ht }}</strong></span>
       <span>Facturé TTC <strong>{{ factures.facture_ttc }}</strong></span>
@@ -327,7 +333,7 @@
     </table>
   </div>
   <div class="u-pied">
-    <span>{{ suivi.achats.len() }} achat(s)</span>
+    <span>{{ crate::commun::nombre(suivi.achats.len(), "achat", "achats") }}</span>
     <div class="flex flex-wrap gap-6">
       <span>Achats prévus HT <strong>{{ suivi.achats_prevus }}</strong></span>
       <span>Dépensé HT <strong>{{ suivi.achats_reels }}</strong></span>

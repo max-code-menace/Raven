@@ -9,21 +9,22 @@
   <script src="https://cdn.tailwindcss.com"></script>
   {% include "_raven.html" %}
   {% include "_styles.html" %}
-  <style>.u-piege { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }</style>
+  <style>
+    .u-piege { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+    /* Pages publiques (connexion, inscription, mot de passe, invitation) : la même marque que l'application,
+       page blanche, une carte au filet fin, le logo du menu. */
+    .p-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 16px; box-sizing: border-box; background: var(--paper); }
+    .p-carte { width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; padding: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); }
+    .p-carte h2 { margin: 0; font: 700 var(--t-xl)/1.25 var(--font-sans); }
+    .p-marque { display: flex; align-items: center; gap: 10px; padding: 0; }
+    .p-marque small { display: block; margin-top: 4px; font: 400 var(--t-sm)/1 var(--font-sans); letter-spacing: 0; color: var(--mut); }
+  </style>
 </head>
-<body style="background:var(--u-menu)">
-<main class="flex min-h-screen items-center justify-center px-4 py-8">
-  <div class="u-card w-full {% block largeur %}max-w-sm{% endblock %}">
-    <div class="u-card-b" style="gap:16px;padding:28px">
-      <div class="flex items-center gap-3">
-        <span class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-semibold text-lg" style="background:var(--u-accent)">R</span>
-        <div>
-          <h1 class="text-xl font-semibold" style="margin:0">Raven</h1>
-          <p class="u-petit u-muet" style="margin:0">Devis et factures</p>
-        </div>
-      </div>
-      {% block content %}{% endblock %}
-    </div>
+<body>
+<main class="p-page">
+  <div class="p-carte {% block largeur %}max-w-sm{% endblock %}">
+    <div class="p-marque rv-brand"><i>R</i><div>RAVEN<small>Devis et factures</small></div></div>
+    {% block content %}{% endblock %}
   </div>
 </main>
 </body>

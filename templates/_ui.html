@@ -5,7 +5,7 @@
 {% macro icone(nom, taille) %}<svg width="{{ taille }}" height="{{ taille }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 {%- if nom == "accueil" -%}<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path>
 {%- else if nom == "factures" -%}<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"></path>
-{%- else if nom == "paiements" -%}<path d="M7 4v14M3 14l4 4 4-4M17 20V6M13 10l4-4 4 4"></path>
+{%- else if nom == "paiements" -%}<circle cx="12" cy="12" r="9"></circle><path d="M15.5 8.5a4 4 0 1 0 0 7M7 10.5h6M7 13.5h6"></path>
 {%- else if nom == "clients" -%}<path d="M16 20v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M9.5 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"></path>
 {%- else if nom == "statistiques" -%}<path d="M3 20h18M6 20v-7M11 20V5M16 20v-10M21 20v-4"></path>
 {%- else if nom == "importer" -%}<path d="M12 3v12M7 10l5 5 5-5M4 21h16"></path>
@@ -17,7 +17,7 @@
 {%- else if nom == "entreprise" -%}<path d="M4 21V5.5A1.5 1.5 0 0 1 5.5 4h7A1.5 1.5 0 0 1 14 5.5V21M14 10h4.5a1.5 1.5 0 0 1 1.5 1.5V21M3 21h18M8 8h2M8 12h2M8 16h2"></path>
 {%- else if nom == "devis" -%}<path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6"></path>
 {%- else if nom == "bibliotheque" -%}<path d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-6M20 4v14h-6"></path>
-{%- else if nom == "chantiers" -%}<path d="M3 20h18M5 20V9l7-5 7 5v11M10 20v-6h4v6"></path>
+{%- else if nom == "chantiers" -%}<path d="M4 21V4M20 21V4M4 8h16M4 14h16M4 8l16 6M3 21h18"></path>
 {%- else if nom == "finances" -%}<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"></path><path d="M9 8h6M9 12h6"></path>
 {%- else if nom == "stats" -%}<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path>
 {%- else if nom == "reglages" -%}<circle cx="12" cy="12" r="3"></circle><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"></path>
@@ -52,8 +52,6 @@
 {# Bandeau d'en-tête simple d'une liste : icône, titre, puis les actions (bloc appelant). #}
 {% macro titre_liste(nom_icone, titre) %}<div class="u-titre"><span class="u-ic">{% call icone(nom_icone, 20) %}{% endcall %}</span><h1>{{ titre }}</h1></div>{% endmacro %}
 
-{# Pied d'une liste : « Afficher 20 éléments » (le nombre par page n'est pas encore réglable). #}
-{% macro par_page() %}<span class="u-par-page">Afficher <strong>20</strong> éléments par page</span>{% endmacro %}
 
 {# ── Onglets (fiche Tabs) ─────────────────────────────────────────────────
    Des liens : chaque onglet est une adresse (pas de JavaScript). Le groupe :
@@ -98,10 +96,11 @@
 {# ── Boutons (fiche Button) ───────────────────────────────────────────────
    genre : "" (contour encre), "acc" (l'action principale, une seule par écran), "ink" (geste qui engage),
    "ghost" (discret), plus "sm" (36 px). Exemple : {% call ui::bouton("Envoyer le devis", "acc", "plus") %}{% endcall %}.
-   Un bouton inactif dit pourquoi (raison, en info-bulle). Pour d'autres attributs (name, value, hx-…), écrire le
+   Un bouton inactif dit pourquoi (raison, écrite à côté de lui). Pour d'autres attributs (name, value, hx-…), écrire le
    <button> à la main avec class="{{ crate::composants::classes_bouton("…") }}". #}
-{% macro bouton(libelle, genre = "", symbole = "", inactif = false, raison = "") %}<button class="{{ crate::composants::classes_bouton(genre) }}" type="submit"{% if inactif %} disabled title="{{ raison }}"{% endif %}>
-  {%- if !symbole.is_empty() %}{% call icone(symbole, 16) %}{% endcall %}{% endif %}{{ libelle }}</button>{% endmacro %}
+{% macro bouton(libelle, genre = "", symbole = "", inactif = false, raison = "") %}<button class="{{ crate::composants::classes_bouton(genre) }}" type="submit"{% if inactif %} disabled{% endif %}>
+  {%- if !symbole.is_empty() %}{% call icone(symbole, 16) %}{% endcall %}{% endif %}{{ libelle }}</button>
+  {%- if inactif && !raison.is_empty() %}<span class="rv-raison">{{ raison }}</span>{% endif %}{% endmacro %}
 {# Une navigation qui a l'air d'un bouton. #}
 {% macro lien_bouton(adresse, libelle, genre = "", symbole = "") %}<a class="{{ crate::composants::classes_bouton(genre) }}" href="{{ adresse }}">
   {%- if !symbole.is_empty() %}{% call icone(symbole, 16) %}{% endcall %}{% endif %}{{ libelle }}</a>{% endmacro %}

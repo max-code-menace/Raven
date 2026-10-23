@@ -72,6 +72,21 @@ pub fn format_euros(centimes: i64) -> String {
     format!("{signe}{},{:02}\u{a0}€", groupes.join("\u{a0}"), absolu % 100)
 }
 
+/// Le mot accordé au nombre, à la française (singulier pour 0 et 1) : `accord(3, "facture", "factures")` → « factures ».
+/// Accepte tout nombre entier, par valeur ou par référence (les gabarits passent l'un ou l'autre).
+pub fn accord<'a>(n: impl std::fmt::Display, singulier: &'a str, pluriel: &'a str) -> &'a str {
+    let n = n.to_string();
+    if matches!(n.trim_start_matches('-'), "0" | "1") { singulier } else { pluriel }
+}
+
+/// Le nombre suivi du mot accordé : `nombre(1, "facture", "factures")` → « 1 facture », « 3 factures ». Pour éviter
+/// les « facture(s) » (audit du design du 23/10/2026).
+pub fn nombre(n: impl std::fmt::Display, singulier: &str, pluriel: &str) -> String {
+    let texte = n.to_string();
+    let mot = accord(&texte, singulier, pluriel);
+    format!("{texte}\u{a0}{mot}")
+}
+
 /// Les caractères % et _ sont des jokers dans une recherche SQL : on les neutralise.
 pub fn echapper_like(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
@@ -103,6 +118,16 @@ mod tests {
         assert_eq!(format_euros(100_000_000), "1\u{a0}000\u{a0}000,00\u{a0}€");
         assert_eq!(format_euros(-12_345), "-123,45\u{a0}€");
         assert_eq!(format_euros(99_999), "999,99\u{a0}€");
+    }
+
+    #[test]
+    fn mots_accordes_au_nombre() {
+        assert_eq!(nombre(0, "facture", "factures"), "0\u{a0}facture");
+        assert_eq!(nombre(1, "facture", "factures"), "1\u{a0}facture");
+        assert_eq!(nombre(2usize, "facture", "factures"), "2\u{a0}factures");
+        assert_eq!(nombre(&12i64, "ligne ajoutée", "lignes ajoutées"), "12\u{a0}lignes ajoutées");
+        assert_eq!(accord(-1, "jour", "jours"), "jour");
+        assert_eq!(accord(10, "jour", "jours"), "jours");
     }
 
     #[test]

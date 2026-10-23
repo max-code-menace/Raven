@@ -49,6 +49,7 @@ pub mod profil;
 pub mod pdf;
 pub mod peppol;
 pub mod rappels;
+pub mod recherche;
 pub mod recurrences;
 pub mod archive;
 pub mod mentions_tva;
@@ -158,6 +159,7 @@ fn pages() -> Router<AppState> {
         .merge(paiements::routes())
         .merge(envoi::routes())
         .merge(rappels::routes())
+        .merge(recherche::routes())
         .merge(recurrences::routes())
         .merge(exports::routes())
         .merge(donnees::routes())

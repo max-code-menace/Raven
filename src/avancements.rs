@@ -849,7 +849,7 @@ pub struct LigneListe {
     pub pourcentage_cumul: String,
     pub reste: String,
     pub brouillon: bool,
-    /// La facture qui reprend cet avancement : (id, « Facture N° 127 » ou « Facture en brouillon »).
+    /// La facture qui reprend cet avancement : (id, « Facture n° 127 » ou « Facture en brouillon »).
     pub facture: Option<(i64, String)>,
 }
 
@@ -900,7 +900,7 @@ pub async fn finances(db: &mut PgConnection, chantier_id: i64) -> Result<Finance
             brouillon: statut == "brouillon",
             facture: facture_id.map(|f| {
                 (f, match facture_numero {
-                    Some(n) => format!("Facture N° {n}"),
+                    Some(n) => format!("Facture n° {n}"),
                     None => "Facture en brouillon".to_string(),
                 })
             }),

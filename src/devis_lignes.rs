@@ -365,6 +365,11 @@ pub struct Encodage {
     pub coefficient_moyen: String,
     /// La ligne dont le prix de vente vient d'être calculé par son coefficient : son champ est renvoyé à htmx.
     pub prix_change: Option<i64>,
+    /// Retour visuel (audit du design du 23/10/2026) : la ligne dont le total vient de changer, la ligne qui vient
+    /// d'être ajoutée, et si les totaux du devis ont changé. Ce qui a changé s'éclaire en jaune puis s'efface.
+    pub ligne_changee: Option<i64>,
+    pub ligne_ajoutee: Option<i64>,
+    pub totaux_changes: bool,
     /// Les types de quantité (valeur, sigle, mot entier, explication).
     pub types_quantite: [(&'static str, &'static str, &'static str, &'static str); 3],
     /// Les unités proposées pour le métier de l'organisation.
@@ -519,6 +524,9 @@ fn construire_encodage(
         marge_sur_vente,
         coefficient_moyen,
         prix_change: None,
+        ligne_changee: None,
+        ligne_ajoutee: None,
+        totaux_changes: false,
         types_quantite: TYPES_QUANTITE,
         unites: contexte.unites,
     }
@@ -554,7 +562,7 @@ struct Page {
     onglet: &'static str,
     barre: Barre,
     enc: Encodage,
-    /// Après un import Excel : « 24 ligne(s) ajoutée(s)… ».
+    /// Après un import Excel : « 24 lignes ajoutées… ».
     message_ok: String,
 }
 
@@ -630,7 +638,7 @@ async fn page(
     }
     let barre = charger_barre(&mut *db, id).await?;
     let message_ok = match r.import.parse::<u32>() {
-        Ok(n) => format!("Import Excel terminé : {n} ligne(s) ajoutée(s). Vérifiez les totaux ci-dessous."),
+        Ok(n) => format!("Import Excel terminé : {}. Vérifiez les totaux ci-dessous.", crate::commun::nombre(n, "ligne ajoutée", "lignes ajoutées")),
         Err(_) => String::new(),
     };
     let page = Page { id, onglet: "encodage", barre, enc, message_ok };
@@ -661,22 +669,24 @@ async fn ajouter(mut db: Base, Path(id): Path<i64>, Form(f): Form<NouvelleLigne>
     // Verrouille le devis : deux ajouts en même temps ne prennent pas la même position.
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     // Une ligne chiffrée naît avec la quantité 1 et la TVA par défaut du devis ; la main d'œuvre en heures.
-    sqlx::query(
+    let nouvelle: i64 = sqlx::query_scalar(
         "INSERT INTO devis_lignes (devis_id, position, genre, quantite_e5, taux_tva_id, unite)
          VALUES ($1, COALESCE((SELECT max(position) FROM devis_lignes WHERE devis_id = $1), 0) + 1,
-                 $2::text::genre_ligne, $3, $4, $5)",
+                 $2::text::genre_ligne, $3, $4, $5)
+         RETURNING id",
     )
     .bind(id)
     .bind(genre)
     .bind(est_chiffre.then_some(100_000_i64))
     .bind(if est_chiffre { entete.taux_par_defaut } else { None })
     .bind(if genre == "main_oeuvre" { "h" } else { "" })
-    .execute(&mut *tx)
+    .fetch_one(&mut *tx)
     .await?;
     recalculer(&mut tx, id).await?;
     tx.commit().await?;
 
-    let enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
+    let mut enc = charger_encodage(&mut *db, id, &entete, String::new()).await?;
+    enc.ligne_ajoutee = Some(nouvelle);
     Ok(Html(Bloc { enc }.render()?))
 }
 
@@ -699,13 +709,13 @@ async fn ajouter_ouvrage(mut db: Base, Path(id): Path<i64>, Form(f): Form<Ouvrag
     let mut tx = db.begin().await?;
     sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     // Un ouvrage sans prix de vente (« à compléter ») arrive à 0 € : le message le signale pour qu'on le complète.
-    let insere: Option<bool> = sqlx::query_scalar(
+    let insere: Option<(i64, bool)> = sqlx::query_as(
         "INSERT INTO devis_lignes (devis_id, position, genre, description, quantite_e5, unite, prix_unitaire_e5, prix_achat_unitaire_e5,
                                    remarque, taux_tva_id)
          SELECT $1, COALESCE((SELECT max(position) FROM devis_lignes WHERE devis_id = $1), 0) + 1,
                 genre, description, 100000, unite, COALESCE(prix_vente_e5, 0), prix_achat_e5, remarque, $3
          FROM ouvrages WHERE id = $2 AND supprime_le IS NULL
-         RETURNING (SELECT prix_vente_e5 IS NULL FROM ouvrages WHERE id = $2)",
+         RETURNING id, (SELECT prix_vente_e5 IS NULL FROM ouvrages WHERE id = $2)",
     )
     .bind(id)
     .bind(f.ouvrage)
@@ -714,12 +724,14 @@ async fn ajouter_ouvrage(mut db: Base, Path(id): Path<i64>, Form(f): Form<Ouvrag
     .await?;
     let message = match insere {
         None => "Cet ouvrage n'existe plus dans la bibliothèque.".to_string(),
-        Some(true) => "Cet ouvrage n'a pas encore de prix dans votre bibliothèque : la ligne est ajoutée à 0 €, indiquez son prix.".to_string(),
-        Some(false) => String::new(),
+        Some((_, true)) => "Cet ouvrage n'a pas encore de prix dans votre bibliothèque : la ligne est ajoutée à 0 €, indiquez son prix.".to_string(),
+        Some((_, false)) => String::new(),
     };
     recalculer(&mut tx, id).await?;
     tx.commit().await?;
-    let enc = charger_encodage(&mut *db, id, &entete, message).await?;
+    let mut enc = charger_encodage(&mut *db, id, &entete, message).await?;
+    enc.ligne_ajoutee = insere.map(|(ligne, _)| ligne);
+    enc.totaux_changes = insere.is_some();
     Ok(Html(Bloc { enc }.render()?))
 }
 
@@ -800,7 +812,8 @@ async fn modifier(
     let options = Options::charger(&mut *db, Genre::Entreprise).await?;
 
     let mut tx = db.begin().await?;
-    sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
+    let totaux_avant: (i64, i64) =
+        sqlx::query_as("SELECT montant_ht_cents, montant_ttc_cents FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     let courante: Option<LigneBase> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT {COLONNES_LIGNE}, NULL::int AS taux_centiemes
          FROM devis_lignes l WHERE l.id = $1 AND l.devis_id = $2",
@@ -814,6 +827,7 @@ async fn modifier(
     let a_metre: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM devis_metres WHERE ligne_id = $1)").bind(ligne_id).fetch_one(&mut *tx).await?;
     let f = if a_metre { MajLigne { quantite: None, ..f } } else { f };
+    let montant_avant = (ligne.quantite_e5, ligne.prix_unitaire_e5);
 
     let message = match appliquer(&mut ligne, &f, &options.taux_tva) {
         Ok(()) => {
@@ -840,9 +854,16 @@ async fn modifier(
         // Rien n'est enregistré : le champ garde ce que la personne a tapé, avec l'explication en haut.
         Err(m) => m,
     };
+    let totaux_apres: (i64, i64) =
+        sqlx::query_as("SELECT montant_ht_cents, montant_ttc_cents FROM devis WHERE id = $1").bind(id).fetch_one(&mut *tx).await?;
     tx.commit().await?;
 
-    let enc = charger_encodage(&mut *db, id, &entete, message).await?;
+    let refuse = !message.is_empty();
+    let mut enc = charger_encodage(&mut *db, id, &entete, message).await?;
+    if !refuse && montant_avant != (ligne.quantite_e5, ligne.prix_unitaire_e5) {
+        enc.ligne_changee = Some(ligne_id);
+    }
+    enc.totaux_changes = totaux_avant != totaux_apres;
     Ok(Html(Maj { enc }.render()?))
 }
 
@@ -874,7 +895,8 @@ async fn appliquer_coefficient(
     let entete = charger_entete(&mut *db, id).await?;
     exiger_brouillon(&entete)?;
     let mut tx = db.begin().await?;
-    sqlx::query("SELECT id FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
+    let totaux_avant: (i64, i64) =
+        sqlx::query_as("SELECT montant_ht_cents, montant_ttc_cents FROM devis WHERE id = $1 FOR UPDATE").bind(id).fetch_one(&mut *tx).await?;
     let ligne: Option<(String, Option<i64>)> = sqlx::query_as(
         "SELECT genre::text, prix_achat_unitaire_e5 FROM devis_lignes WHERE id = $1 AND devis_id = $2",
     )
@@ -903,9 +925,15 @@ async fn appliquer_coefficient(
         }
         Err(m) => m,
     };
+    let totaux_apres: (i64, i64) =
+        sqlx::query_as("SELECT montant_ht_cents, montant_ttc_cents FROM devis WHERE id = $1").bind(id).fetch_one(&mut *tx).await?;
     tx.commit().await?;
     let mut enc = charger_encodage(&mut *db, id, &entete, message).await?;
     enc.prix_change = Some(ligne_id);
+    enc.totaux_changes = totaux_avant != totaux_apres;
+    if enc.totaux_changes {
+        enc.ligne_changee = Some(ligne_id);
+    }
     Ok(Html(Maj { enc }.render()?))
 }
 

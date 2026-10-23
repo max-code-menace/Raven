@@ -62,17 +62,17 @@ async fn creer_chercher_modifier_supprimer(options: PgPoolOptions, connexion: Pg
     poster(&s, "/bibliotheque", "description=Pose+de+goutti%C3%A8res&genre=main_oeuvre&unite=h&prix_vente=45").await;
 
     let (_, page) = lire(&s, "/bibliotheque?ok=cree").await;
-    for attendu in ["Panneaux isolants PIR 12 cm", "Brico Pro", "28,00\u{a0}€", "37,5 %", "44,80\u{a0}€", "Toiture", "Sans catégorie", "2 ouvrage(s)", "L&#39;ouvrage est ajouté"] {
+    for attendu in ["Panneaux isolants PIR 12 cm", "Brico Pro", "28,00\u{a0}€", "37,5 %", "44,80\u{a0}€", "Toiture", "Sans catégorie", "2 ouvrages", "L&#39;ouvrage est ajouté"] {
         assert!(page.contains(attendu) || page.contains(&attendu.replace("&#39;", "'")), "{attendu}");
     }
     // Filtre par catégorie et recherche (htmx : le tableau seul).
     let (_, page) = lire(&s, "/bibliotheque?categorie=Toiture").await;
-    assert!(page.contains("1 ouvrage(s)") && page.contains("Panneaux"));
+    assert!(page.contains("1\u{a0}ouvrage") && page.contains("Panneaux"));
     let (_, page) = lire(&s, "/bibliotheque?categorie=-").await;
-    assert!(page.contains("1 ouvrage(s)") && page.contains("gouttières"));
+    assert!(page.contains("1\u{a0}ouvrage") && page.contains("gouttières"));
     let (_, _, tableau) =
         envoyer(&s, Request::builder().uri("/bibliotheque?q=goutti").header("hx-request", "true").body(Body::empty()).unwrap()).await;
-    assert!(!tableau.contains("<html") && tableau.contains("1 ouvrage(s)") && !tableau.contains("Panneaux"));
+    assert!(!tableau.contains("<html") && tableau.contains("1\u{a0}ouvrage") && !tableau.contains("Panneaux"));
 
     // Erreurs : tout est gardé, rien n'est enregistré.
     let (code, _, page) = poster(&s, "/bibliotheque", "description=&genre=fourniture&prix_achat=12").await;

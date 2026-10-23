@@ -129,14 +129,14 @@ async fn une_location_mensuelle(options: PgPoolOptions, connexion: PgConnectOpti
     assert!(page.contains(&format!("/factures/{modele}/recurrence")));
     let (code, page) = lire(&s, &format!("/factures/{modele}/recurrence")).await;
     assert_eq!(code, StatusCode::OK);
-    assert!(page.contains("Création d&#39;une récurrence") || page.contains("Création d'une récurrence"));
-    assert!(page.contains("12 occurrence(s) trouvée(s)"), "proposition : chaque mois pendant un an");
+    assert!(page.contains("Nouvelle récurrence"));
+    assert!(page.contains("12\u{a0}occurrences trouvées"), "proposition : chaque mois pendant un an");
 
     // Chaque mois, depuis deux mois avant aujourd'hui jusqu'à dans deux mois.
     let debut = jour.checked_sub_months(chrono::Months::new(2)).unwrap();
     let fin = jour.checked_add_months(chrono::Months::new(2)).unwrap();
     let (_, page) = lire(&s, &format!("/factures/recurrences/apercu?date_debut={debut}&date_fin={fin}&frequence=mois&intervalle=1&jours_avance=0")).await;
-    assert!(page.contains("5 occurrence(s) trouvée(s)") && page.contains("Tous les mois"), "{page}");
+    assert!(page.contains("5\u{a0}occurrences trouvées") && page.contains("Tous les mois"), "{page}");
     // Une saisie fausse est refusée sans rien enregistrer.
     let (code, _, page) = poster(&s, &format!("/factures/{modele}/recurrence"), &format!("date_debut={fin}&date_fin={debut}&frequence=mois&intervalle=1")).await;
     assert!(code == StatusCode::OK && page.contains("La date de fin doit suivre la date de début."));
@@ -146,7 +146,7 @@ async fn une_location_mensuelle(options: PgPoolOptions, connexion: PgConnectOpti
 
     // Trois échéances sont arrivées (il y a deux mois, il y a un mois, aujourd'hui) : le tableau de bord les signale.
     let (_, accueil) = lire(&s, "/").await;
-    assert!(accueil.contains("3 facture(s) récurrente(s) à préparer"));
+    assert!(accueil.contains("3\u{a0}factures récurrentes à préparer"));
     let (_, liste) = lire(&s, "/factures/recurrences").await;
     assert!(liste.contains("Locataire SA") && liste.contains("Tous les mois") && liste.contains("Préparer les factures (3)"));
 
@@ -225,7 +225,7 @@ async fn importer_la_bibliotheque(options: PgPoolOptions, connexion: PgConnectOp
                Prix illisible;;;;pce;abc;\n";
     let (code, _, page) = televerser(&s, "/bibliotheque/import", "ouvrages.csv", csv.as_bytes()).await;
     assert_eq!(code, StatusCode::OK, "une ligne écartée : le résultat et le détail restent affichés");
-    assert!(page.contains("2 ouvrage(s) ajouté(s)") && page.contains("Ligne 4 :"));
+    assert!(page.contains("2\u{a0}ouvrages ajoutés") && page.contains("Ligne 4 :"));
     let (achat, vente): (Option<i64>, Option<i64>) =
         sqlx::query_as("SELECT prix_achat_e5, prix_vente_e5 FROM ouvrages WHERE description = 'Modification alimentation boiler'").fetch_one(&pool).await.unwrap();
     assert_eq!((achat, vente), (Some(19_750_000), Some(19_750_000)), "marge 0 % : vente = achat, comme chez Ubique");
@@ -237,7 +237,7 @@ async fn importer_la_bibliotheque(options: PgPoolOptions, connexion: PgConnectOp
     let total: i64 = sqlx::query_scalar("SELECT count(*) FROM ouvrages").fetch_one(&pool).await.unwrap();
     assert_eq!(total, 3);
     let (_, page) = lire(&s, "/bibliotheque/import?ajoutes=1&deja=1").await;
-    assert!(page.contains("1 ouvrage(s) ajouté(s)") && page.contains("1 déjà présent(s)"));
+    assert!(page.contains("1\u{a0}ouvrage ajouté") && page.contains("1\u{a0}déjà présent"));
 
     // Un fichier sans en-tête reconnu est refusé.
     let (code, _, page) = televerser(&s, "/bibliotheque/import", "x.csv", b"a;b\n1;2\n").await;

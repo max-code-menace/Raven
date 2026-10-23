@@ -17,7 +17,8 @@
     </div>
     {% for l in enc.lignes %}
     {% let oob = false %}
-    <div class="rv-qt-row{% if l.est_titre %} rv-qt-ch{% else if l.est_chiffre %} rv-qt-ln{% else if l.est_saut %} rv-qt-txt{% else if l.genre == "texte" %} rv-qt-txt{% else %} rv-qt-ln rv-qt-sous{% endif %}" role="row"
+    {% let nouvelle = enc.ligne_ajoutee == Some(*l.id) %}
+    <div class="rv-qt-row{% if l.est_titre %} rv-qt-ch{% else if l.est_chiffre %} rv-qt-ln{% else if l.est_saut %} rv-qt-txt{% else if l.genre == "texte" %} rv-qt-txt{% else %} rv-qt-ln rv-qt-sous{% endif %}{% if nouvelle %} rv-maj{% endif %}" role="row"
          {% if enc.modifiable && !l.est_saut %}hx-post="/devis/{{ enc.id }}/lignes/{{ l.id }}" hx-trigger="change" hx-include="this" hx-swap="none"{% endif %}>
       <span class="rv-qt-ordre">
         {% if enc.modifiable %}
@@ -30,7 +31,7 @@
       <span class="rv-qt-ref">{{ l.numero }}</span>
       {% if l.est_chiffre %}
       <span class="rv-qt-desc">
-        <textarea class="rv-cell rv-cell--strong" rows="1" name="description" aria-label="Désignation de la ligne {{ l.numero }}" placeholder="Désignation"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
+        <textarea class="rv-cell rv-cell--strong" rows="1" name="description" aria-label="Désignation de la ligne {{ l.numero }}" placeholder="Désignation"{% if !enc.modifiable %} disabled{% endif %}{% if nouvelle %} autofocus{% endif %}>{{ l.description }}</textarea>
         <small class="rv-qt-genre">{{ l.libelle_genre }}</small>
         <input aria-label="Remarque de la ligne {{ l.numero }}" class="rv-cell rv-cell--sub" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Remarque"{% if !enc.modifiable %} disabled{% endif %}>
       </span>
@@ -66,7 +67,7 @@
       <span></span>{% if enc.marge_activee %}<span></span>{% endif %}
       {% else %}
       <span class="rv-qt-desc rv-qt-large">
-        <textarea class="rv-cell{% if l.est_titre %} rv-cell--strong{% endif %}" rows="1" name="description" aria-label="{{ l.libelle_genre }} {{ l.numero }}" placeholder="{{ l.libelle_genre }}"{% if !enc.modifiable %} disabled{% endif %}>{{ l.description }}</textarea>
+        <textarea class="rv-cell{% if l.est_titre %} rv-cell--strong{% endif %}" rows="1" name="description" aria-label="{{ l.libelle_genre }} {{ l.numero }}" placeholder="{{ l.libelle_genre }}"{% if !enc.modifiable %} disabled{% endif %}{% if nouvelle %} autofocus{% endif %}>{{ l.description }}</textarea>
         <input aria-label="Remarque de la ligne {{ l.numero }}" class="rv-cell rv-cell--sub" type="text" name="remarque" value="{{ l.remarque }}" placeholder="Remarque"{% if !enc.modifiable %} disabled{% endif %}>
       </span>
       <span class="rv-qt-n">{% if l.est_titre %}<span id="soustotal-{{ l.id }}">{{ l.sous_total }}</span>{% endif %}</span>
@@ -146,7 +147,7 @@
         </div>
       </details>
       {% if crate::profil::actuel().import_metres %}{% call ui::lien_bouton("/devis/{}/import"|format(enc.id), "Importer depuis Excel", "ghost sm", "importer") %}{% endcall %}{% endif %}
-      <span class="rv-hint" style="margin-left:auto;align-self:center">Chaque champ s'enregistre quand vous le quittez.</span>
+      <span class="rv-hint" style="margin-left:auto;align-self:center">Chaque champ s'enregistre quand vous le quittez ; ce qui change s'éclaire en jaune.</span>
     </div>
     {% endif %}
   </div>
@@ -187,7 +188,7 @@
     </div>
     <div class="rv-band-cell rv-band-cell--wide">
       <div class="rv-eyebrow">Total du devis</div>
-      <div id="totaux">{% include "_encodage_totaux.html" %}</div>
+      <div id="totaux"{% if enc.totaux_changes %} class="rv-maj"{% endif %}>{% include "_encodage_totaux.html" %}</div>
     </div>
   </section>
 </div>

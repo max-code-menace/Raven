@@ -44,7 +44,7 @@
     {% for t in totaux.tva %}
     <div class="u-ligne-montant u-muet"><span>TVA {{ t.taux }} (sur {{ t.base }})</span><span class="nw">{{ t.montant }}</span></div>
     {% endfor %}
-    <div class="u-ligne-montant" style="font-size:15px"><span class="font-semibold">Total TTC à payer</span><strong class="nw">{{ totaux.ttc }}</strong></div>
+    <div class="u-ligne-montant" style="font-size:var(--t-lg)"><span class="font-semibold">Total TTC à payer</span><strong class="nw">{{ totaux.ttc }}</strong></div>
   </section>
 </div>
 
@@ -122,8 +122,8 @@
           <td>{{ c.libelle }}</td>
           <td class="n">{{ c.achats }}</td>
           <td class="n">{{ c.frais }}</td>
-          <td class="n text-[#1C6B3C]">{{ c.marge }}</td>
-          <td class="n text-[#1C6B3C]">{{ c.taux_marge }}</td>
+          <td class="n text-[color:var(--ok)]">{{ c.marge }}</td>
+          <td class="n text-[color:var(--ok)]">{{ c.taux_marge }}</td>
           <td class="n">{{ c.ventes }}</td>
           <td class="n">{{ c.heures }}</td>
         </tr>
@@ -146,8 +146,8 @@
           <td>{{ r.total.libelle }}</td>
           <td class="n">{{ r.total.achats }}</td>
           <td class="n">{{ r.total.frais }}</td>
-          <td class="n text-[#1C6B3C]">{{ r.total.marge }}</td>
-          <td class="n text-[#1C6B3C]">{{ r.total.taux_marge }}</td>
+          <td class="n text-[color:var(--ok)]">{{ r.total.marge }}</td>
+          <td class="n text-[color:var(--ok)]">{{ r.total.taux_marge }}</td>
           <td class="n">{{ r.total.ventes }}</td>
           <td class="n">{{ r.total.heures }}</td>
         </tr>
@@ -157,7 +157,7 @@
   <div class="u-card-b">
     <p class="u-petit u-muet">Bénéfice = ventes − achats − frais généraux ; la marge est ce bénéfice en % des ventes HT (prix de vente).</p>
     {% if r.lignes_sans_achat > 0 %}
-    <div role="alert" class="u-bandeau alerte">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ r.lignes_sans_achat }} ligne(s) chiffrée(s) sans prix d'achat : leur vente est comptée en entier comme bénéfice.</span></div>
+    <div role="alert" class="u-bandeau alerte">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ crate::commun::nombre(r.lignes_sans_achat, "ligne chiffrée", "lignes chiffrées") }} sans prix d'achat : leur vente est comptée en entier comme bénéfice.</span></div>
     {% endif %}
   </div>
 </section>
@@ -165,10 +165,7 @@
 </div>
 {% endblock %}
 
+{# La barre du bas ne garde que la note d'enregistrement : les actions sont en haut (une seule action principale). #}
 {% block barre %}
-<div class="u-barre">
-  {% if modifiable %}{% call ui::enregistrement(enregistrement) %}{% endcall %}{% endif %}
-  <a class="btn" href="{{ barre.retour }}">Fermer</a>
-  <a class="btn btn-primary" href="/devis/{{ id }}/apercu">Aperçu et PDF</a>
-</div>
+{% if modifiable %}<div class="u-barre">{% call ui::enregistrement(enregistrement) %}{% endcall %}</div>{% endif %}
 {% endblock %}
