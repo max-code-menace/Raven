@@ -229,5 +229,5 @@ async fn le_chantier_est_propose_d_office_quand_la_facture_porte_sa_reference(op
     // Une fois toute la base répartie, plus de proposition.
     poster(&s, &format!("/achats/recues/{id}/rattacher"), &format!("destination={}&montant=1000&categorie=fourniture", chantiers[1])).await;
     let page = lire(&s, &format!("/achats/recues/{id}")).await;
-    assert!(page.contains("Traitée") && !page.contains("car la facture porte la référence"));
+    assert!(page.contains("Rattachée") && !page.contains("car la facture porte la référence"));
 }

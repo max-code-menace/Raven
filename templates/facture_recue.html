@@ -11,7 +11,7 @@
       <a class="btn btn-sm" href="/achats/recues" aria-label="Retour">‹</a>
       <div>
         <h1>{{ genre }} fournisseur{% if !numero.is_empty() %} n° {{ numero }}{% endif %} · {{ fournisseur }}</h1>
-        <div class="u-sous-titre">{% if traitee %}<span class="u-pastille s-accepte">Traitée</span>{% else %}<span class="u-pastille s-a-envoyer">À traiter</span>{% endif %}{% if !paiement.is_empty() %} <span class="u-pastille {{ paiement_classe }}">{{ paiement }}</span>{% endif %} Reçue par Peppol le {{ recue }}</div>
+        <div class="u-sous-titre">{% if traitee %}<span class="u-pastille s-accepte">{{ crate::factures_recues::mot_rattacher("Rattachée") }}</span>{% else %}<span class="u-pastille s-a-envoyer">{{ crate::factures_recues::mot_rattacher("À rattacher") }}</span>{% endif %}{% if !paiement.is_empty() %} <span class="u-pastille {{ paiement_classe }}">{{ paiement }}</span>{% endif %} Reçue par Peppol le {{ recue }}</div>
       </div>
     </div>
     <div class="u-actions">
@@ -144,10 +144,10 @@
   <div class="u-card-h"><h2>{% if crate::profil::actuel().achats %}Rattacher à un {{ crate::profil::mot("chantier") }}{% else %}Classer la facture{% endif %}</h2></div>
   <div class="u-card-b" style="display:flex;flex-direction:column;gap:12px">
     {% if parts.is_empty() %}
-    <p class="u-petit" style="margin:0">{% if crate::profil::actuel().achats %}Rattachée à un {{ crate::profil::mot("chantier") }}, la facture devient un achat du {{ crate::profil::mot("chantier") }} : son budget d'achat et sa rentabilité sont mis à jour. Vous pouvez la répartir sur plusieurs {{ crate::profil::mot("chantiers") }}, ou la classer sans {{ crate::profil::mot("chantier") }} (frais généraux).{% else %}Classez la facture une fois vérifiée : elle passe dans « Traitées ».{% endif %}</p>
+    <p class="u-petit" style="margin:0">{% if crate::profil::actuel().achats %}Rattachée à un {{ crate::profil::mot("chantier") }}, la facture devient un achat du {{ crate::profil::mot("chantier") }} : son budget d'achat et sa rentabilité sont mis à jour. Vous pouvez la répartir sur plusieurs {{ crate::profil::mot("chantiers") }}, ou la classer sans {{ crate::profil::mot("chantier") }} (frais généraux).{% else %}Classez la facture une fois vérifiée : elle passe dans « Classées ».{% endif %}</p>
     {% else %}
     <table class="u-table">
-      <thead><tr><th>Destination</th><th>Type</th><th>Description</th><th class="n">Montant HT</th></tr></thead>
+      <thead><tr><th>Rattachée à</th><th>Type de dépense</th><th>Description</th><th class="n">Montant HT</th></tr></thead>
       <tbody>
         {% for p in parts %}
         <tr>
@@ -162,13 +162,13 @@
     {% endif %}
 
     {% if traitee %}
-    <p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Traitée</span> Toute la base HT est répartie.</p>
+    <p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">{{ crate::factures_recues::mot_rattacher("Rattachée") }}</span> Tout le montant HT est {% if crate::profil::actuel().achats %}rattaché{% else %}classé{% endif %}.</p>
     {% else %}
-    <p class="u-petit" style="margin:0"><strong>Reste à répartir : {{ reste }} HT.</strong></p>
+    <p class="u-petit" style="margin:0"><strong>{{ crate::factures_recues::mot_rattacher("Reste à rattacher") }} : {{ reste }} HT.</strong></p>
     {% if !proposition.is_empty() %}<p class="u-petit" style="margin:0">{{ proposition }} Vous pouvez en choisir un autre.</p>{% endif %}
     <form method="post" action="/achats/recues/{{ id }}/rattacher" class="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)_auto] items-end" style="margin:0">
       <label class="form-control">
-        <span class="u-lbl">Destination</span>
+        <span class="u-lbl">Où va cette dépense ?</span>
         <select class="select select-bordered select-sm" name="destination" required>
           {% if crate::profil::actuel().achats %}
           <option value="">—</option>
@@ -182,7 +182,7 @@
         <input class="input input-bordered input-sm text-right" type="text" inputmode="decimal" name="montant" value="{{ reste_saisie }}" required>
       </label>
       <label class="form-control">
-        <span class="u-lbl">Type</span>
+        <span class="u-lbl">Type de dépense</span>
         <select class="select select-bordered select-sm" name="categorie">
           {% for c in categories %}<option value="{{ c.valeur }}"{% if c.choisi %} selected{% endif %}>{{ c.libelle }}</option>{% endfor %}
         </select>
@@ -191,12 +191,12 @@
         <span class="u-lbl">Description</span>
         <input class="input input-bordered input-sm" type="text" name="description" maxlength="300" placeholder="{{ genre }}{% if !numero.is_empty() %} n° {{ numero }}{% endif %}">
       </label>
-      <button class="btn btn-primary btn-sm" type="submit">Enregistrer</button>
+      <button class="btn btn-primary btn-sm" type="submit">{% if crate::profil::actuel().achats %}Rattacher{% else %}Classer{% endif %}</button>
     </form>
     {% endif %}
     {% if !parts.is_empty() %}
     <form method="post" action="/achats/recues/{{ id }}/annuler" style="margin:0">
-      <button class="btn btn-sm" type="submit">Annuler la répartition</button>
+      <button class="btn btn-sm" type="submit">{% if crate::profil::actuel().achats %}Défaire le rattachement{% else %}Défaire le classement{% endif %}</button>
       <span class="u-petit u-muet">Les achats créés depuis cette facture sont retirés de leurs {{ crate::profil::mot("chantiers") }}.</span>
     </form>
     {% endif %}

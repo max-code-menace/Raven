@@ -121,6 +121,33 @@ async fn ajustement_fiche_chantier_et_avancement(options: PgPoolOptions, connexi
 }
 
 #[sqlx::test]
+async fn la_fiche_d_un_client_existant_s_enregistre_toute_seule(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let s = site(&pool);
+    donnees::remplir(&pool, &s).await;
+    let id: i64 = sqlx::query_scalar("SELECT id FROM entreprises WHERE nom = 'Hôtel du Parc SA'").fetch_one(&pool).await.unwrap();
+
+    // Plus de bouton « Enregistrer » sur une fiche existante : la note dans la barre du bas, le nom en titre.
+    let page = lire(&s, &format!("/entreprises/{id}/modifier")).await;
+    assert!(page.contains(&format!("hx-post=\"/entreprises/{id}\"")) && page.contains("Les modifications s'enregistrent automatiquement."), "{page}");
+    assert!(page.contains("<h1 id=\"fiche-titre\">Hôtel du Parc SA</h1>"));
+    // Une nouvelle fiche garde son bouton de création.
+    assert!(lire(&s, "/entreprises/nouveau").await.contains("Créer l&#39;entreprise") || lire(&s, "/entreprises/nouveau").await.contains("Créer l'entreprise"));
+
+    // Un e-mail valable est gardé ; un e-mail refusé garde le précédent, le reste est enregistré.
+    let (statut, page) = poster_htmx(&s, &format!("/entreprises/{id}"), "nom=H%C3%B4tel+du+Parc+SA&email=accueil%40hotel.example&langue=fr&pays=BE&ville=Bruxelles").await;
+    assert_eq!(statut, StatusCode::OK);
+    assert!(morceau(&page, "id=\"etat-enregistrement\"", "</span>").contains("Enregistré à "), "{page}");
+    let (statut, page) = poster_htmx(&s, &format!("/entreprises/{id}"), "nom=&email=pas-un-mail&langue=fr&pays=BE&ville=Ixelles").await;
+    assert_eq!(statut, StatusCode::OK);
+    let note = morceau(&page, "id=\"etat-enregistrement\"", "</span></span>");
+    assert!(note.contains("Le nom est obligatoire.") && note.contains("n&#39;est pas valide") || note.contains("n'est pas valide"), "{note}");
+    let (nom, email, ville): (String, Option<String>, String) =
+        sqlx::query_as("SELECT nom, email, ville FROM entreprises WHERE id = $1").bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!((nom.as_str(), email.as_deref(), ville.as_str()), ("Hôtel du Parc SA", Some("accueil@hotel.example"), "Ixelles"));
+}
+
+#[sqlx::test]
 async fn reglages_societe_et_e_mails(options: PgPoolOptions, connexion: PgConnectOptions) {
     let pool = commun::reserve(options, connexion).await;
     let s = site(&pool);
