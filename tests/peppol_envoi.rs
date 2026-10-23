@@ -247,7 +247,8 @@ async fn inscription_verification_puis_envoi_livre(options: PgPoolOptions, conne
 
     // Envoi : l'UBL émis part vers le client, la facture passe à « Envoyée ».
     let r = lire(&s, &format!("/factures/{id}"), &cookie).await;
-    assert_eq!(r.corps.matches(&format!("action=\"/factures/{id}/peppol\"")).count(), 2, "bouton dans le bloc et dans la barre du bas");
+    assert_eq!(r.corps.matches(&format!("action=\"/factures/{id}/peppol\"")).count(), 3, "bouton dans le bloc, dans la barre du bas et dans le menu Actions");
+    assert!(!r.corps.contains("Envoyer électroniquement"), "plus de « bientôt » pour Peppol dans le menu Actions");
     let r = poster(&s, &format!("/factures/{id}/peppol"), "", &cookie).await;
     assert_eq!(r.lieu, Some(format!("/factures/{id}?ok=peppol#peppol")));
     let (societe_envoi, corps) = etat.lock().unwrap().envois.iter().find(|(s, _)| *s == societe).cloned().unwrap();
@@ -277,7 +278,7 @@ async fn valider_et_envoyer_par_peppol_en_un_clic(options: PgPoolOptions, connex
     verifier(&etat, &societe);
     lire(&s, "/parametres/peppol", &cookie).await;
 
-    // Un brouillon prêt : le menu « Valider… » propose l'envoi par Peppol.
+    // Un brouillon prêt : « Valider et envoyer » choisit seul Peppol, et dit où la facture part.
     let mut db = Base::ouvrir(&pool, 2).await.unwrap();
     let client: i64 = sqlx::query_scalar(
         "INSERT INTO entreprises (nom, profils, numero_tva, rue, numero, code_postal, ville) VALUES ('Client SA', '{client}', 'BE0987654394', 'Rue A', '1', '1000', 'Bruxelles') RETURNING id",
@@ -295,10 +296,12 @@ async fn valider_et_envoyer_par_peppol_en_un_clic(options: PgPoolOptions, connex
     let ligne: i64 = sqlx::query_scalar("SELECT max(id) FROM facture_lignes WHERE facture_id = $1").bind(id).fetch_one(&mut *db).await.unwrap();
     poster(&s, &format!("/factures/{id}/lignes/{ligne}"), &format!("description=Travaux&quantite=1&prix_unitaire=100&taux_tva_id={taux}"), &cookie).await;
     let r = lire(&s, &format!("/factures/{id}"), &cookie).await;
-    assert!(r.corps.contains("Valider et envoyer par Peppol") && r.corps.contains("Elle partira par Peppol une fois validée"), "{}", r.corps);
+    assert!(r.corps.contains("<summary class=\"btn btn-primary\">Valider et envoyer par Peppol…</summary>"), "{}", r.corps);
+    assert!(r.corps.contains("0208:0987654394 du client.") && r.corps.contains("Elle partira par Peppol une fois validée"), "{}", r.corps);
+    assert!(!r.corps.contains("Valider et envoyer par e-mail"), "un seul choix : Peppol");
 
     // Un clic : validée, numérotée et livrée.
-    assert_eq!(poster(&s, &format!("/factures/{id}/valider"), "puis=peppol", &cookie).await.lieu, Some(format!("/factures/{id}?ok=peppol#peppol")));
+    assert_eq!(poster(&s, &format!("/factures/{id}/valider"), "puis=envoyer", &cookie).await.lieu, Some(format!("/factures/{id}?ok=peppol#peppol")));
     assert_eq!(statut_envoi(&pool, id).await, vec![("livre".to_string(), String::new())]);
     let statut: String = sqlx::query_scalar("SELECT statut::text FROM factures WHERE id = $1").bind(id).fetch_one(&mut *db).await.unwrap();
     assert_eq!(statut, "envoyee");

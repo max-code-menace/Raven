@@ -39,7 +39,11 @@
           <a class="u-mi" href="#historique">Afficher l'historique</a>
           <div class="u-sep"></div>
           {% if !brouillon %}<a class="u-mi" href="/factures/{{ id }}/email">Envoyer par e-mail</a>{% endif %}
-          {% call ui::bientot("Envoyer électroniquement", "phase 2") %}{% endcall %}
+          {% match peppol %}{% when Some with (p) %}{% if p.peut_envoyer() %}
+          <form method="post" action="/factures/{{ id }}/peppol">
+            <button class="u-mi" type="submit">Envoyer par Peppol</button>
+          </form>
+          {% endif %}{% when None %}{% endmatch %}
           <a class="u-mi" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
           <a class="u-mi" href="/factures/{{ id }}/pdf?telecharger=1">Télécharger le PDF</a>
           {% call ui::bientot("Exporter en Excel", "bientôt") %}{% endcall %}
@@ -195,7 +199,7 @@
       </div>
       <div class="u-card-b">
         {% if a_completer.is_empty() %}
-        <p class="u-petit">Tout est complet. « Valider » (en bas à droite) donne le numéro définitif, puis peut envoyer la facture par e-mail ou par Peppol.</p>
+        <p class="u-petit">Tout est complet. « {{ envoi.bouton }} » (en bas à droite) donne le numéro définitif et envoie la pièce : par Peppol à une entreprise inscrite, sinon par e-mail.</p>
         {% else %}
         <p class="u-petit font-semibold">À compléter avant de valider :</p>
         {% for m in a_completer %}
@@ -326,7 +330,7 @@
         {% if p.prete() %}
         {% if p.envois.is_empty() %}<p class="u-petit" style="margin:0"><span class="u-pastille s-accepte">Prête pour Peppol</span></p>{% endif %}
         {% if p.brouillon %}
-        {% if p.pourra_partir() %}<p class="u-petit u-muet" style="margin:0">Elle partira par Peppol une fois validée : menu « Valider… » › « Valider et envoyer par Peppol ».</p>{% endif %}
+        {% if p.pourra_partir() %}<p class="u-petit u-muet" style="margin:0">Elle partira par Peppol une fois validée : bouton « Valider et envoyer par Peppol » en bas à droite.</p>{% endif %}
         {% endif %}
         {% if p.peut_envoyer() %}
         <form method="post" action="/factures/{{ id }}/peppol" style="margin:0">
@@ -377,18 +381,17 @@
   <a class="btn" href="/factures">Fermer</a>
   <a class="btn{% if !brouillon && !peut_marquer_envoyee %} btn-primary{% endif %}" href="/factures/{{ id }}/pdf" target="_blank">Voir le PDF</a>
   {% if brouillon && !a_completer.is_empty() %}
-  <button class="btn btn-primary" type="button" disabled title="Complétez d'abord les points du bloc « Avant de valider »">Valider…</button>
+  <button class="btn btn-primary" type="button" disabled title="Complétez d'abord les points du bloc « Avant de valider »">Valider et envoyer…</button>
   {% endif %}
   {% if brouillon && a_completer.is_empty() %}
+  {# Un seul bouton : Raven choisit Peppol ou l'e-mail (envoi_choisi) ; le panneau dit où la pièce part et pourquoi. #}
   <details class="u-menu">
-    <summary class="btn btn-primary">Valider…</summary>
+    <summary class="btn btn-primary">{{ envoi.bouton }}…</summary>
     <form method="post" action="/factures/{{ id }}/valider" class="u-menu-liste u-menu-form">
-      <span class="u-petit">La facture reçoit son numéro définitif. Elle ne pourra plus être modifiée ni supprimée : seule une note de crédit pourra la corriger.</span>
-      {% match peppol %}{% when Some with (p) %}{% if p.pourra_partir() %}
-      <button class="btn btn-primary btn-sm" type="submit" name="puis" value="peppol">Valider et envoyer par Peppol</button>
-      {% endif %}{% when None %}{% endmatch %}
-      <button class="btn btn-primary btn-sm" type="submit" name="puis" value="email">Valider et envoyer par e-mail</button>
-      <button class="btn btn-sm" type="submit">Valider et numéroter seulement</button>
+      <span class="u-petit"><strong>{{ envoi.raison }}</strong>{% if !envoi.peppol %} L'écran d'envoi s'ouvre ensuite, déjà rempli.{% endif %}</span>
+      <span class="u-petit">La pièce reçoit son numéro définitif. Elle ne pourra plus être modifiée ni supprimée : seule une note de crédit pourra la corriger.</span>
+      <button class="btn btn-primary btn-sm" type="submit" name="puis" value="envoyer">{{ envoi.bouton }}</button>
+      <button class="btn btn-sm" type="submit">Valider seulement (envoi fait autrement)</button>
     </form>
   </details>
   {% endif %}
