@@ -312,23 +312,30 @@ pub async fn remplir(pool: &PgPool, s: &Router) -> Donnees {
         import
     };
     // Étape 5-3 : une facture fournisseur reçue par Peppol (fournisseur créé à l'arrivée), rattachée en partie au
-    // chantier ; une seconde encore à traiter.
+    // chantier et payée en partie ; une seconde encore à traiter, qui porte la référence du chantier PL46 (proposé
+    // d'office) ; une troisième échue depuis 20 jours, pas payée.
     let fournisseur: i64 = sqlx::query_scalar(
         "INSERT INTO entreprises (nom, profils, numero_tva, rue, code_postal, ville) VALUES ('Négoce Matériaux Wavre', '{fournisseur_autres}', 'BE0987654394', 'Rue du Dépôt 4', '1300', 'Wavre') RETURNING id",
     )
     .fetch_one(pool)
     .await
     .unwrap();
-    for (document, numero, ht) in [("doc_vitrine_1", "NMW-2026-0412", 84_250_i64), ("doc_vitrine_2", "NMW-2026-0431", 12_900)] {
+    let virement = un(pool, "SELECT id FROM methodes_paiement WHERE libelle = 'Virement'").await;
+    for (document, numero, ht, il_y_a, reference) in [
+        ("doc_vitrine_1", "NMW-2026-0412", 84_250_i64, 0, ""),
+        ("doc_vitrine_2", "NMW-2026-0431", 12_900, 0, "PL46 Claes"),
+        ("doc_vitrine_3", "NMW-2026-0377", 23_480, 50, ""),
+    ] {
         let recue: i64 = sqlx::query_scalar(
             "INSERT INTO factures_recues (document_id, genre, expediteur, fournisseur_id, fournisseur_nom, fournisseur_tva, numero, date_facture,
                  date_echeance, montant_ht_cents, montant_tva_cents, montant_ttc_cents, a_payer_cents, iban, communication, validation, donnees,
                  xml, empreinte, pdf, recue_le)
-             VALUES ($1, 'facture', '0208:0987654394', $2, 'Négoce Matériaux Wavre', 'BE0987654394', $3, $4::date, $4::date + 30, $5, $5 * 21 / 100,
+             VALUES ($1, 'facture', '0208:0987654394', $2, 'Négoce Matériaux Wavre', 'BE0987654394', $3, $4::date - $6, $4::date - $6 + 30, $5, $5 * 21 / 100,
                  $5 + $5 * 21 / 100, $5 + $5 * 21 / 100, 'BE68539007547034', '000041200048', 'valid',
                  jsonb_build_object('lines', jsonb_build_array(jsonb_build_object('name', 'Blocs béton 14 cm, palette', 'quantity', '5.00', 'unitCode', 'C62',
                      'netPriceAmount', '1.00', 'netAmount', ($5 / 100.0)::text, 'vat', jsonb_build_object('percentage', '21.00')))),
-                 '<Invoice><ID>' || $3 || '</ID></Invoice>', repeat('a', 64), '%PDF-1.4 facture fournisseur'::bytea, now())
+                 '<Invoice><ID>' || $3 || '</ID>' || CASE WHEN $7 = '' THEN '' ELSE '<BuyerReference>' || $7 || '</BuyerReference>' END || '</Invoice>',
+                 repeat('a', 64), '%PDF-1.4 facture fournisseur'::bytea, now() - make_interval(days => $6))
              RETURNING id",
         )
         .bind(document)
@@ -336,11 +343,14 @@ pub async fn remplir(pool: &PgPool, s: &Router) -> Donnees {
         .bind(numero)
         .bind(&aujourdhui)
         .bind(ht)
+        .bind(il_y_a)
+        .bind(reference)
         .fetch_one(pool)
         .await
         .unwrap();
         if document == "doc_vitrine_1" {
             poster(s, &format!("/achats/recues/{recue}/rattacher"), &format!("destination={chantier}&montant=600&categorie=fourniture")).await;
+            poster(s, &format!("/achats/recues/{recue}/paiements"), &format!("genre=partiel&date={aujourdhui}&montant=500&methode_id={virement}")).await;
         }
     }
 

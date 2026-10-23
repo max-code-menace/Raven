@@ -83,7 +83,7 @@ async fn un_autre_metier_parle_de_projets_et_eteint_les_modules(options: PgPoolO
         assert!(!r.corps.contains("Factures fournisseurs") && !r.corps.contains("Depuis Excel"), "{chemin} : modules éteints");
     }
     assert!(lire(&s, "/chantiers", &cookie).await.corps.contains("Aucun projet trouvé"));
-    assert!(!lire(&s, "/factures/rappels", &cookie).await.corps.contains("href=\"/achats/recues\""), "Paiements : pas d'onglet « À payer »");
+    assert!(!lire(&s, "/factures/rappels", &cookie).await.corps.contains("href=\"/achats/recues?vue=a_payer\""), "Paiements : pas d'onglet « À payer »");
     // Les adresses des modules éteints répondent « module éteint », même tapées à la main.
     for (chemin, methode) in [("/achats", "GET"), ("/chantiers/1/avancements", "POST"), ("/chantiers/1/avenants", "POST"), ("/devis/import", "POST")] {
         let r = envoyer(&s, methode, chemin, "", &cookie).await;
@@ -97,7 +97,7 @@ async fn un_autre_metier_parle_de_projets_et_eteint_les_modules(options: PgPoolO
     assert_eq!(poster(&s, "/parametres/metier", corps, &cookie).await.lieu.as_deref(), Some("/parametres/metier?ok=1"));
     let r = lire(&s, "/chantiers", &cookie).await;
     assert!(r.corps.contains("Chantiers") && !r.corps.contains("Depuis Excel"));
-    assert!(lire(&s, "/factures/rappels", &cookie).await.corps.contains("href=\"/achats/recues\">À payer"), "Paiements › À payer");
+    assert!(lire(&s, "/factures/rappels", &cookie).await.corps.contains("href=\"/achats/recues?vue=a_payer\">À payer"), "Paiements › À payer");
     assert_eq!(lire(&s, "/achats", &cookie).await.statut, StatusCode::OK);
     assert_eq!(envoyer(&s, "POST", "/chantiers/1/avenants", "", &cookie).await.statut, StatusCode::CONFLICT, "avenants toujours éteints");
 
@@ -129,7 +129,7 @@ async fn le_batiment_garde_tout_et_ubique_garde_l_import_excel(options: PgPoolOp
     let cookie = nouvelle_organisation(&pool, &s, "batiment", "assujetti").await;
     let r = lire(&s, "/chantiers", &cookie).await;
     assert!(r.corps.contains("Chantiers"));
-    assert!(lire(&s, "/factures/rappels", &cookie).await.corps.contains("href=\"/achats/recues\">À payer"), "Paiements › À payer");
+    assert!(lire(&s, "/factures/rappels", &cookie).await.corps.contains("href=\"/achats/recues?vue=a_payer\">À payer"), "Paiements › À payer");
     assert!(!lire(&s, "/devis", &cookie).await.corps.contains("Depuis Excel"), "l'import du modèle de métré est éteint par défaut");
     // L'organisation n° 1 (Ubique, déjà en service) garde l'import.
     let r = app(AppState { db: pool.clone() }).oneshot(Request::builder().uri("/devis").body(Body::empty()).unwrap()).await.unwrap();

@@ -72,7 +72,7 @@
 {# Paiements : « À recevoir » (rappels) et « À payer » (factures fournisseurs, si l'organisation en a). actif : "recevoir" ou "payer". #}
 {% macro onglets_paiements(actif) %}<nav class="rv-tabs" aria-label="Paiements">
   {%- call onglet("/factures/rappels", "À recevoir", actif == "recevoir") %}{% endcall -%}
-  {%- if crate::profil::actuel().achats || crate::profil::actuel().reception %}{% call onglet("/achats/recues", "À payer", actif == "payer") %}{% endcall %}{% endif -%}
+  {%- if crate::profil::actuel().achats || crate::profil::actuel().reception %}{% call onglet("/achats/recues?vue=a_payer", "À payer", actif == "payer") %}{% endcall %}{% endif -%}
 </nav>{% endmacro %}
 
 {# Réglages : une page par sujet. actif : "societe", "emails", "equipe", "metier", "bibliotheques" ou "peppol". #}
