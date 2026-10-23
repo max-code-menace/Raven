@@ -8,6 +8,7 @@ use askama::Template;
 use axum::{
     Router,
     extract::{Form, Path, Query},
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -303,6 +304,8 @@ pub struct ModeleVue {
     pub objet: String,
     pub corps: String,
     pub ouvert: bool,
+    /// L'identifiant de la note du modèle (enregistrement automatique) : « etat-modele-facture ».
+    pub note: String,
 }
 
 pub struct EmailVue {
@@ -329,6 +332,8 @@ struct PageReglages {
     rappel_pme: bool,
     /// Le plafond légal du moment (« 10,50 »), s'il est connu.
     taux_plafond: String,
+    /// La note de départ de chaque formulaire (« Les modifications s'enregistrent automatiquement. »).
+    vide: crate::composants::Enregistrement,
     envoi_actif: bool,
     expediteur: String,
     adresse_publique: String,
@@ -369,7 +374,7 @@ async fn reglages(mut db: Base, Query(r): Query<RetourReglages>) -> Result<Html<
         adresse_publique: emails::adresse_publique(),
         modeles: modeles
             .into_iter()
-            .map(|(code, nom, objet, corps)| ModeleVue { ouvert: code == r.modele, code, nom, objet, corps })
+            .map(|(code, nom, objet, corps)| ModeleVue { ouvert: code == r.modele, note: format!("etat-modele-{code}"), code, nom, objet, corps })
             .collect(),
         variables: emails::VARIABLES.to_vec(),
         journal: journal
@@ -412,6 +417,7 @@ async fn reglages(mut db: Base, Query(r): Query<RetourReglages>) -> Result<Html<
         rappel_interets: reglage.interets_particuliers_centiemes.map(pourcent).unwrap_or_default(),
         rappel_pme: reglage.pme,
         taux_plafond: crate::retard::taux_commercial_centiemes(aujourdhui).map(pourcent).unwrap_or_default(),
+        vide: crate::composants::Enregistrement::default(),
     };
     Ok(Html(page.render()?))
 }
@@ -423,20 +429,37 @@ struct SaisieModele {
     corps: String,
 }
 
-async fn enregistrer_modele(mut db: Base, Path(code): Path<String>, Form(m): Form<SaisieModele>) -> Result<Redirect, Erreur> {
-    let existe: Option<String> = sqlx::query_scalar("SELECT code FROM modeles_email WHERE organisation_id = app_organisation() AND code = $1").bind(&code).fetch_optional(&mut *db).await?;
-    let code = existe.ok_or_else(Erreur::introuvable)?;
-    let objet = m.objet.trim();
-    if objet.is_empty() || objet.chars().count() > emails::LONGUEUR_MAX_OBJET || m.corps.chars().count() > emails::LONGUEUR_MAX_CORPS {
-        return Ok(Redirect::to(&format!("/parametres/emails?erreur=modele&modele={code}#modele-{code}")));
-    }
+/// Enregistre un modèle. Le formulaire s'envoie tout seul (htmx) : un objet ou un message refusé garde le précédent ;
+/// la réponse est la note du modèle seule.
+async fn enregistrer_modele(mut db: Base, Path(code): Path<String>, entetes: HeaderMap, Form(m): Form<SaisieModele>) -> Result<Response, Erreur> {
+    let avant: Option<(String, String, String)> =
+        sqlx::query_as("SELECT code, objet, corps FROM modeles_email WHERE organisation_id = app_organisation() AND code = $1").bind(&code).fetch_optional(&mut *db).await?;
+    let (code, objet_avant, corps_avant) = avant.ok_or_else(Erreur::introuvable)?;
+    let mut erreurs = Vec::new();
+    let objet = match m.objet.trim() {
+        o if o.is_empty() || o.chars().count() > emails::LONGUEUR_MAX_OBJET => {
+            erreurs.push(format!("L'objet est obligatoire ({} caractères au maximum).", emails::LONGUEUR_MAX_OBJET));
+            objet_avant
+        }
+        o => o.to_string(),
+    };
+    let corps = if m.corps.chars().count() > emails::LONGUEUR_MAX_CORPS {
+        erreurs.push(format!("Le message est trop long ({} caractères au maximum).", emails::LONGUEUR_MAX_CORPS));
+        corps_avant
+    } else {
+        m.corps.replace("\r\n", "\n")
+    };
     sqlx::query("UPDATE modeles_email SET objet = $1, corps = $2, updated_at = now() WHERE organisation_id = app_organisation() AND code = $3")
-        .bind(objet)
-        .bind(m.corps.replace("\r\n", "\n"))
+        .bind(&objet)
+        .bind(&corps)
         .bind(&code)
         .execute(&mut *db)
         .await?;
-    Ok(Redirect::to(&format!("/parametres/emails?ok=modele&modele={code}#modele-{code}")))
+    if crate::composants::par_htmx(&entetes) {
+        return Ok(crate::composants::NoteSeule::rendre(&mut db, format!("etat-modele-{code}"), erreurs).await?.into_response());
+    }
+    let suite = if erreurs.is_empty() { "ok" } else { "erreur" };
+    Ok(Redirect::to(&format!("/parametres/emails?{suite}=modele&modele={code}#modele-{code}")).into_response())
 }
 
 pub fn routes() -> Router<AppState> {

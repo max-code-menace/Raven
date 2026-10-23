@@ -9,7 +9,7 @@
   <div class="u-top-ligne">
     <div class="u-titre">
       <a class="u-retour" href="/chantiers/{{ chantier_id }}/finances" aria-label="Retour aux finances du {{ crate::profil::mot("chantier") }}" title="Retour aux finances du {{ crate::profil::mot("chantier") }}">{% call ui::icone("gauche", 16) %}{% endcall %}</a>
-      <div>
+      <div id="avancement-titre">
         <h1>{% if brouillon %}Modifier un avancement{% else %}Avancement{% endif %} - {{ reference }}</h1>
         <div class="u-sous-titre">
           {% if brouillon %}<span class="u-pastille s-brouillon">Brouillon</span>
@@ -37,7 +37,11 @@
 <section class="u-card">
   <div class="u-card-h"><h2>{% call ui::icone("info", 17) %}{% endcall %}Informations générales</h2></div>
   {% if brouillon %}
-  <form class="u-grille-champs" method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/infos">
+  {# Enregistrement automatique : le formulaire part tout seul 0,6 s après la dernière frappe (ou à la sortie d'un
+     champ) ; htmx reprend de la réponse la note de la barre du bas et le titre. #}
+  <form class="u-grille-champs" method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/infos"
+    hx-post="/chantiers/{{ chantier_id }}/avancements/{{ id }}/infos" hx-trigger="input delay:600ms, change" hx-sync="this:queue last"
+    hx-target="#etat-enregistrement" hx-select="#etat-enregistrement" hx-swap="outerHTML" hx-select-oob="#avancement-titre">
     <label class="form-control">
       <span class="u-lbl">Référence <i>*</i></span>
       <input class="input input-bordered" type="text" name="reference" value="{{ reference }}" maxlength="200" required>
@@ -54,7 +58,6 @@
       <span class="u-lbl">Date de l'avancement <i>*</i></span>
       <input class="input input-bordered" type="date" name="date" value="{{ date_champ }}" required>
     </label>
-    <div class="flex items-end"><button class="btn" type="submit">Enregistrer</button></div>
   </form>
   {% else %}
   <div class="u-grille-champs">
@@ -72,13 +75,14 @@
 {% block barre %}
 <div class="u-barre">
   {% if brouillon %}
-  <details class="u-menu mr-auto">
+  <details class="u-menu">
     <summary class="btn btn-danger">Supprimer le brouillon…</summary>
     <form method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/supprimer" class="u-menu-liste gauche u-menu-form">
       <span class="u-petit">Supprimer cet avancement en brouillon et tout ce qui y est saisi ?</span>
       <button class="btn btn-danger btn-sm" type="submit">Confirmer la suppression</button>
     </form>
   </details>
+  {% call ui::enregistrement(enregistrement) %}{% endcall %}
   {% endif %}
   {% if peut_remettre_en_brouillon %}
   <form class="mr-auto" method="post" action="/chantiers/{{ chantier_id }}/avancements/{{ id }}/brouillon">

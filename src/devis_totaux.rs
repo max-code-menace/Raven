@@ -5,7 +5,7 @@ use askama::Template;
 use axum::{
     Router,
     extract::{Form, Path},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -15,6 +15,7 @@ use sqlx::{Connection as _, PgConnection};
 use crate::base::Base;
 use crate::calcul::{self, Ajustement};
 use crate::commun::format_euros;
+use crate::composants::Enregistrement;
 use crate::devis_statut::{Barre, charger_barre};
 use crate::devis_lignes::{Entete, RentabiliteVue, TotauxVue, charger_encodage, charger_entete, recalculer};
 use crate::{AppState, Erreur};
@@ -23,7 +24,7 @@ const MESSAGE_NON_MODIFIABLE: &str = "Ce devis n'est plus un brouillon : il ne p
 const LONGUEUR_MAX_LIBELLE: usize = 100;
 
 /// Ce que le navigateur envoie. `valeur` est toujours positive : c'est `sens` qui dit remise ou majoration.
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Default, Clone)]
 #[serde(default)]
 pub struct AjustementForm {
     libelle: String,
@@ -92,6 +93,39 @@ fn valider(f: &AjustementForm, sous_total_cents: i64) -> Result<Valide, String> 
     }
 }
 
+/// Le mode et la valeur enregistrés d'un ajustement.
+fn colonnes(a: Ajustement) -> (&'static str, i64) {
+    match a {
+        Ajustement::Aucun => ("aucun", 0),
+        Ajustement::Pourcentage(v) => ("pourcentage", v),
+        Ajustement::Montant(c) => ("montant", c),
+    }
+}
+
+/// Lit le formulaire pour l'enregistrement automatique : une valeur vide retire l'ajustement ; un libellé ou un
+/// ajustement refusé garde celui d'avant (`avant`, `libelle_avant`) et donne un message.
+fn lire(f: &AjustementForm, avant: Ajustement, libelle_avant: &str, sous_total_cents: i64) -> (Valide, Vec<String>) {
+    let mut erreurs = Vec::new();
+    let libelle = if f.libelle.trim().chars().count() > LONGUEUR_MAX_LIBELLE {
+        erreurs.push(format!("Le libellé est trop long ({LONGUEUR_MAX_LIBELLE} caractères au maximum)."));
+        libelle_avant.to_string()
+    } else {
+        f.libelle.trim().to_string()
+    };
+    let (mode, valeur) = if f.valeur.trim().is_empty() {
+        ("aucun", 0)
+    } else {
+        match valider(&AjustementForm { libelle: String::new(), ..f.clone() }, sous_total_cents) {
+            Ok(v) => (v.mode, v.valeur),
+            Err(e) => {
+                erreurs.push(e);
+                colonnes(avant)
+            }
+        }
+    };
+    (Valide { libelle, mode, valeur }, erreurs)
+}
+
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 #[derive(Template)]
@@ -107,6 +141,8 @@ struct Page {
     totaux: TotauxVue,
     /// Présent seulement quand l'option « prix d'achat, marge et frais généraux » est allumée.
     rentabilite: Option<RentabiliteVue>,
+    /// La note de la barre du bas : l'ajustement s'enregistre tout seul.
+    enregistrement: Enregistrement,
 }
 
 async fn construire(db: &mut PgConnection, id: i64, entete: Entete, form: Option<AjustementForm>, erreur: String) -> Result<Page, Erreur> {
@@ -122,6 +158,7 @@ async fn construire(db: &mut PgConnection, id: i64, entete: Entete, form: Option
         form,
         totaux: enc.totaux,
         rentabilite: enc.rentabilite,
+        enregistrement: Enregistrement::default(),
     })
 }
 
@@ -130,22 +167,27 @@ async fn afficher(mut db: Base, Path(id): Path<i64>) -> Result<Html<String>, Err
     Ok(Html(construire(&mut *db, id, entete, None, String::new()).await?.render()?))
 }
 
-async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(f): Form<AjustementForm>) -> Result<Response, Erreur> {
+/// Enregistre l'ajustement. Le formulaire s'envoie tout seul (htmx) à chaque changement : la réponse est la page
+/// entière, dont htmx reprend la note de la barre du bas, les totaux et la rentabilité.
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, entetes: HeaderMap, Form(f): Form<AjustementForm>) -> Result<Response, Erreur> {
     let entete = charger_entete(&mut *db, id).await?;
     if !entete.brouillon {
         return Err(Erreur::conflit(MESSAGE_NON_MODIFIABLE));
     }
     let sous_total = sous_total_cents(&mut *db, id).await?;
-    match valider(&f, sous_total) {
-        Ok(v) => {
-            changer_ajustement(&mut *db, id, &v.libelle, v.mode, v.valeur).await?;
-            Ok(Redirect::to(&format!("/devis/{id}/totaux")).into_response())
-        }
-        Err(erreur) => {
-            let page = construire(&mut *db, id, entete, Some(f), erreur).await?;
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
-        }
+    let (v, erreurs) = lire(&f, entete.ajustement, &entete.ajustement_libelle, sous_total);
+    changer_ajustement(&mut *db, id, &v.libelle, v.mode, v.valeur).await?;
+    let entete = charger_entete(&mut *db, id).await?;
+    if crate::composants::par_htmx(&entetes) {
+        let mut page = construire(&mut *db, id, entete, Some(f), String::new()).await?;
+        page.enregistrement = Enregistrement::maintenant(&mut *db, erreurs).await?;
+        return Ok(Html(page.render()?).into_response());
     }
+    if erreurs.is_empty() {
+        return Ok(Redirect::to(&format!("/devis/{id}/totaux")).into_response());
+    }
+    let page = construire(&mut *db, id, entete, Some(f), erreurs.join(" ")).await?;
+    Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
 }
 
 async fn retirer(mut db: Base, Path(id): Path<i64>) -> Result<Redirect, Erreur> {

@@ -12,7 +12,8 @@ use askama::Template;
 use axum::{
     Router,
     extract::{Form, Path, Query},
-    response::{Html, Redirect},
+    http::HeaderMap,
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use chrono::NaiveDate;
@@ -22,6 +23,7 @@ use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 use crate::base::Base;
 use crate::avancement_calcul as ac;
 use crate::calcul;
+use crate::composants::Enregistrement;
 use crate::facture_calcul;
 use crate::factures::NouvelleLigne;
 use crate::commun::format_euros;
@@ -392,6 +394,8 @@ struct Page {
     message_ok: &'static str,
     message_erreur: &'static str,
     grille: Grille,
+    /// La note de la barre du bas : la référence et la date s'enregistrent toutes seules.
+    enregistrement: Enregistrement,
 }
 
 #[derive(Template)]
@@ -430,6 +434,10 @@ impl Retour {
 }
 
 async fn afficher(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>, Query(retour): Query<Retour>) -> Result<Html<String>, Erreur> {
+    page(&mut db, chantier_id, id, retour, Enregistrement::default()).await
+}
+
+async fn page(db: &mut PgConnection, chantier_id: i64, id: i64, retour: Retour, enregistrement: Enregistrement) -> Result<Html<String>, Erreur> {
     let a = charger_avancement(&mut *db, chantier_id, id).await?;
     let facture = facture_de(&mut *db, id).await?;
     let grille = charger_grille(&mut *db, chantier_id, id, &a, String::new()).await?;
@@ -447,6 +455,7 @@ async fn afficher(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>, Query
         message_ok: retour.message_ok(),
         message_erreur: retour.message_erreur(),
         grille,
+        enregistrement,
     };
     Ok(Html(page.render()?))
 }
@@ -612,26 +621,41 @@ struct Infos {
     reference: String,
 }
 
-async fn enregistrer_infos(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>, Form(f): Form<Infos>) -> Result<Redirect, Erreur> {
+/// Enregistre la référence et la date d'un brouillon. Le formulaire s'envoie tout seul (htmx) : une valeur valable
+/// est gardée, une valeur refusée garde la précédente ; la réponse est la page, dont htmx reprend la note de la barre
+/// du bas et le titre.
+async fn enregistrer_infos(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>, entetes: HeaderMap, Form(f): Form<Infos>) -> Result<Response, Erreur> {
     let a = charger_avancement(&mut *db, chantier_id, id).await?;
     if a.statut != "brouillon" {
         return Err(Erreur::conflit("Cet avancement est validé : il ne se modifie plus."));
     }
-    let retour = |code: &str| Ok(Redirect::to(&format!("/chantiers/{chantier_id}/avancements/{id}?{code}")));
-    let Ok(date) = NaiveDate::parse_from_str(f.date.trim(), "%Y-%m-%d") else {
-        return retour("erreur=date");
+    let mut erreurs = Vec::new();
+    let date = NaiveDate::parse_from_str(f.date.trim(), "%Y-%m-%d").unwrap_or_else(|_| {
+        erreurs.push(("date", "La date de l'avancement n'est pas valide."));
+        a.date_avancement
+    });
+    let reference = match f.reference.trim() {
+        r if r.is_empty() || r.chars().count() > LONGUEUR_MAX_REFERENCE => {
+            erreurs.push(("reference", "La référence est obligatoire (200 caractères au maximum)."));
+            a.reference.clone()
+        }
+        r => r.to_string(),
     };
-    let reference = f.reference.trim();
-    if reference.is_empty() || reference.chars().count() > LONGUEUR_MAX_REFERENCE {
-        return retour("erreur=reference");
-    }
     sqlx::query("UPDATE avancements SET date_avancement = $1, reference = $2, updated_at = now() WHERE id = $3")
         .bind(date)
-        .bind(reference)
+        .bind(&reference)
         .bind(id)
         .execute(&mut *db)
         .await?;
-    retour("ok=infos")
+    if crate::composants::par_htmx(&entetes) {
+        let enregistrement = Enregistrement::maintenant(&mut db, erreurs.iter().map(|(_, m)| m.to_string()).collect()).await?;
+        return Ok(page(&mut db, chantier_id, id, Retour::default(), enregistrement).await?.into_response());
+    }
+    let suite = match erreurs.first() {
+        Some((code, _)) => format!("erreur={code}"),
+        None => "ok=infos".to_string(),
+    };
+    Ok(Redirect::to(&format!("/chantiers/{chantier_id}/avancements/{id}?{suite}")).into_response())
 }
 
 async fn valider(mut db: Base, Path((chantier_id, id)): Path<(i64, i64)>) -> Result<Redirect, Erreur> {

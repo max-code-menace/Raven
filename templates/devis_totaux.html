@@ -17,7 +17,7 @@
 </div>
 {% endif %}
 
-<div class="grid gap-4 lg:grid-cols-2 items-start">
+<div class="grid gap-4 lg:grid-cols-2 items-start" id="totaux-devis">
   <section class="u-card">
     <div class="u-card-h"><h2>TVA</h2></div>
     <table class="u-table">
@@ -55,7 +55,13 @@
     {% if !erreur.is_empty() %}
     <div role="alert" class="u-bandeau erreur">{% call ui::icone("attention", 18) %}{% endcall %}<span>{{ erreur }}</span></div>
     {% endif %}
-    <form method="post" action="/devis/{{ id }}/ajustement">
+    {# Enregistrement automatique (comme les informations du devis) : le formulaire part tout seul 0,6 s après la
+       dernière frappe ou à chaque choix ; htmx reprend de la réponse la note de la barre du bas, les totaux, la
+       rentabilité et le bouton « Retirer ». Une valeur vide retire l'ajustement. #}
+    <form method="post" action="/devis/{{ id }}/ajustement"
+      {%- if modifiable %} hx-post="/devis/{{ id }}/ajustement" hx-trigger="input delay:600ms, change" hx-sync="this:queue last"
+      hx-target="#etat-enregistrement" hx-select="#etat-enregistrement" hx-swap="outerHTML"
+      hx-select-oob="#totaux-devis,#rentabilite-devis,#ajustement-actions"{% endif %}>
       <fieldset class="flex flex-col gap-4"{% if !modifiable %} disabled{% endif %}>
         <div class="grid gap-3 md:grid-cols-[2fr_1fr_1fr_1fr] items-end">
           <label class="form-control w-full">
@@ -82,11 +88,10 @@
           </label>
         </div>
         {% if modifiable %}
-        <div class="flex justify-end gap-2">
+        <div class="flex justify-end gap-2" id="ajustement-actions">
           {% if a_un_ajustement %}
           <button class="btn btn-ghost" type="submit" formaction="/devis/{{ id }}/ajustement/retirer" formnovalidate>Retirer l'ajustement</button>
           {% endif %}
-          <button class="btn" type="submit">Enregistrer l'ajustement</button>
         </div>
         {% endif %}
       </fieldset>
@@ -94,6 +99,7 @@
   </div>
 </details>
 
+<div id="rentabilite-devis">
 {% if let Some(r) = rentabilite %}
 <section class="u-card">
   <div class="u-card-h"><h2>Rentabilité par type de poste</h2><span class="u-petit u-muet">Interne : jamais sur le PDF</span></div>
@@ -156,10 +162,12 @@
   </div>
 </section>
 {% endif %}
+</div>
 {% endblock %}
 
 {% block barre %}
 <div class="u-barre">
+  {% if modifiable %}{% call ui::enregistrement(enregistrement) %}{% endcall %}{% endif %}
   <a class="btn" href="{{ barre.retour }}">Fermer</a>
   <a class="btn btn-primary" href="/devis/{{ id }}/apercu">Aperçu et PDF</a>
 </div>

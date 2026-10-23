@@ -87,8 +87,9 @@
 
 {# ── Enregistrement automatique ───────────────────────────────────────────
    Dans la barre du bas d'un formulaire qui s'enregistre tout seul (htmx) : « Enregistré à 14:32 », ou les valeurs
-   refusées (leur champ garde sa valeur précédente). e : composants::Enregistrement. #}
-{% macro enregistrement(e) %}<span id="etat-enregistrement" class="u-note{% if !e.erreurs.is_empty() %} erreur{% else if !e.heure.is_empty() %} ok{% endif %}" role="status">
+   refusées (leur champ garde sa valeur précédente). e : composants::Enregistrement. Un petit formulaire dans un bloc
+   (plusieurs sur la même page) porte sa propre note : id différent, réponse `composants::NoteSeule`. #}
+{% macro enregistrement(e, id = "etat-enregistrement") %}<span id="{{ id }}" class="u-note{% if !e.erreurs.is_empty() %} erreur{% else if !e.heure.is_empty() %} ok{% endif %}" role="status">
   {%- if !e.erreurs.is_empty() %}{% call icone("attention", 16) %}{% endcall %}<span>Pas enregistré : {% for m in e.erreurs %}{{ m }} {% endfor %}Le reste est enregistré.</span>
   {%- else if !e.heure.is_empty() %}{% call icone("ok", 16) %}{% endcall %}<span>Enregistré à {{ e.heure }}</span>
   {%- else %}<span>Les modifications s'enregistrent automatiquement.</span>{% endif -%}

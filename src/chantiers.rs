@@ -7,7 +7,7 @@ use axum::{
     Router,
     extract::{Form, Path, Query},
     http::HeaderMap,
-    response::{Html, Redirect},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
 use chrono::NaiveDate;
@@ -16,6 +16,7 @@ use sqlx::{FromRow, PgConnection, Postgres, Transaction};
 
 use crate::base::Base;
 use crate::commun::{Choix, echapper_like, encoder_url, format_euros};
+use crate::composants::Enregistrement;
 use crate::{AppState, Erreur};
 
 const PAR_PAGE: i64 = 20;
@@ -319,9 +320,15 @@ struct PageFiche {
     suivi: crate::suivi_chantier::Suivi,
     message_ok: &'static str,
     message_erreur: &'static str,
+    /// La note du bloc « Suivi » : le statut et la date de début s'enregistrent tout seuls.
+    enregistrement: Enregistrement,
 }
 
 async fn charger_fiche(db: &mut PgConnection, id: i64, onglet: &'static str, retour: Retour) -> Result<Html<String>, Erreur> {
+    charger_fiche_avec(db, id, onglet, retour, Enregistrement::default()).await
+}
+
+async fn charger_fiche_avec(db: &mut PgConnection, id: i64, onglet: &'static str, retour: Retour, enregistrement: Enregistrement) -> Result<Html<String>, Erreur> {
     let fiche: Option<FicheBase> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT ch.numero, ch.statut::text AS statut, ch.date_debut, d.id AS devis_id,
                 extract(year FROM d.date_devis)::int || '-' || d.numero AS devis_numero,
@@ -372,6 +379,7 @@ async fn charger_fiche(db: &mut PgConnection, id: i64, onglet: &'static str, ret
         suivi,
         message_ok: retour.message_ok(),
         message_erreur: retour.message_erreur(),
+        enregistrement,
     };
     Ok(Html(page.render()?))
 }
@@ -395,23 +403,41 @@ struct Modification {
     date_debut: String,
 }
 
-/// Change le statut et la date de début. Rien d'autre : le reste vient du devis accepté.
-async fn enregistrer(mut db: Base, Path(id): Path<i64>, Form(m): Form<Modification>) -> Result<Redirect, Erreur> {
-    let existe: Option<i64> = sqlx::query_scalar("SELECT id FROM chantiers WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
-    existe.ok_or_else(Erreur::introuvable)?;
-    let Some(statut_choisi) = STATUTS.iter().map(|(v, _, _)| *v).find(|v| *v == m.statut.trim()) else {
-        return Ok(Redirect::to(&format!("/chantiers/{id}?erreur=statut")));
+/// Change le statut et la date de début. Rien d'autre : le reste vient du devis accepté. Le bloc « Suivi » s'envoie
+/// tout seul (htmx) à chaque changement : une valeur valable est gardée, une valeur refusée garde la précédente ; la
+/// réponse est la fiche, dont htmx reprend la note du bloc et la pastille de statut de l'en-tête.
+async fn enregistrer(mut db: Base, Path(id): Path<i64>, entetes: HeaderMap, Form(m): Form<Modification>) -> Result<Response, Erreur> {
+    let avant: Option<(String, NaiveDate)> =
+        sqlx::query_as("SELECT statut::text, date_debut FROM chantiers WHERE id = $1").bind(id).fetch_optional(&mut *db).await?;
+    let (statut_avant, date_avant) = avant.ok_or_else(Erreur::introuvable)?;
+    let mut erreurs = Vec::new();
+    let statut_choisi = match STATUTS.iter().map(|(v, _, _)| *v).find(|v| *v == m.statut.trim()) {
+        Some(s) => s.to_string(),
+        None => {
+            erreurs.push(("statut", "Ce statut n'existe pas."));
+            statut_avant
+        }
     };
-    let Ok(date) = NaiveDate::parse_from_str(m.date_debut.trim(), "%Y-%m-%d") else {
-        return Ok(Redirect::to(&format!("/chantiers/{id}?erreur=date")));
-    };
+    let date = NaiveDate::parse_from_str(m.date_debut.trim(), "%Y-%m-%d").unwrap_or_else(|_| {
+        erreurs.push(("date", "La date de début n'est pas valide."));
+        date_avant
+    });
     sqlx::query("UPDATE chantiers SET statut = $1::text::statut_chantier, date_debut = $2, updated_at = now() WHERE id = $3")
-        .bind(statut_choisi)
+        .bind(&statut_choisi)
         .bind(date)
         .bind(id)
         .execute(&mut *db)
         .await?;
-    Ok(Redirect::to(&format!("/chantiers/{id}?ok=1")))
+    if crate::composants::par_htmx(&entetes) {
+        let messages = erreurs.iter().map(|(_, m)| crate::profil::adapter(m).to_string()).collect();
+        let enregistrement = Enregistrement::maintenant(&mut *db, messages).await?;
+        return Ok(charger_fiche_avec(&mut *db, id, "tableau", Retour::default(), enregistrement).await?.into_response());
+    }
+    Ok(Redirect::to(&match erreurs.first() {
+        Some((code, _)) => format!("/chantiers/{id}?erreur={code}"),
+        None => format!("/chantiers/{id}?ok=1"),
+    })
+    .into_response())
 }
 
 pub fn routes() -> Router<AppState> {

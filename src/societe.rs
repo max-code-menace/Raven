@@ -5,7 +5,7 @@ use askama::Template;
 use axum::{
     Router,
     extract::{DefaultBodyLimit, Multipart, Query},
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -15,6 +15,7 @@ use sqlx::{Connection as _, FromRow, PgConnection};
 
 use crate::base::Base;
 use crate::commun::{Choix, PAYS, choix_fixes, email_valide, vide_en_none};
+use crate::composants::Enregistrement;
 use crate::{AppState, Erreur};
 
 const TAILLE_MAX_LOGO: usize = 1024 * 1024;
@@ -289,43 +290,57 @@ pub(crate) struct Valeurs {
     comptes: Vec<(String, Option<String>)>,
 }
 
+/// Le formulaire vérifié en entier (assistant de démarrage) : tout ou rien.
 pub(crate) fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
+    let (valeurs, erreurs) = lire(f, &SocieteForm::default());
+    if erreurs.is_empty() { Ok(valeurs) } else { Err(erreurs) }
+}
+
+/// Lit le formulaire champ par champ (enregistrement automatique) : une valeur valable remplace celle de `avant`, une
+/// valeur refusée (champ obligatoire vidé, e-mail, TVA, IBAN ou BIC invalide…) garde celle de `avant` et donne un
+/// message. Les e-mails et téléphones supplémentaires, comme les comptes bancaires, se gardent ou se refusent en bloc.
+fn lire(f: &SocieteForm, avant: &SocieteForm) -> (Valeurs, Vec<String>) {
     let mut erreurs = Vec::new();
-
-    let nom = f.nom.trim().to_string();
-    if nom.is_empty() {
-        erreurs.push("Le nom de la société est obligatoire.".to_string());
-    }
-    let nom_abrege = f.nom_abrege.trim().to_string();
-    if nom_abrege.is_empty() {
-        erreurs.push("Le nom abrégé est obligatoire.".to_string());
-    }
-
-    let pays = if f.pays.is_empty() { "BE".to_string() } else { f.pays.clone() };
-    if !PAYS.iter().any(|(v, _)| *v == pays) {
-        erreurs.push("Ce pays n'existe pas.".to_string());
-    }
-
-    let email = f.email.trim().to_string();
-    if email.is_empty() {
-        erreurs.push("L'adresse e-mail est obligatoire.".to_string());
-    } else if !email_valide(&email) {
-        erreurs.push(format!("L'e-mail « {email} » n'est pas valide."));
-    }
-    let emails_supplementaires: Vec<String> =
-        f.emails_supplementaires.iter().filter_map(|e| vide_en_none(e)).collect();
-    for e in &emails_supplementaires {
-        if !email_valide(e) {
-            erreurs.push(format!("L'e-mail « {e} » n'est pas valide."));
+    fn obligatoire(erreurs: &mut Vec<String>, valeur: &str, precedente: &str, message: &str) -> String {
+        let v = valeur.trim();
+        if v.is_empty() {
+            erreurs.push(message.to_string());
+            precedente.to_string()
+        } else {
+            v.to_string()
         }
     }
+    let nom = obligatoire(&mut erreurs, &f.nom, &avant.nom, "Le nom de la société est obligatoire.");
+    let nom_abrege = obligatoire(&mut erreurs, &f.nom_abrege, &avant.nom_abrege, "Le nom abrégé est obligatoire.");
 
-    let telephone = f.telephone.trim().to_string();
-    if telephone.is_empty() {
-        erreurs.push("Le numéro de téléphone est obligatoire.".to_string());
+    let pays = match f.pays.as_str() {
+        "" => "BE".to_string(),
+        p if PAYS.iter().any(|(v, _)| *v == p) => p.to_string(),
+        _ => {
+            erreurs.push("Ce pays n'existe pas.".to_string());
+            if avant.pays.is_empty() { "BE".to_string() } else { avant.pays.clone() }
+        }
+    };
+
+    let email = match f.email.trim() {
+        "" => {
+            erreurs.push("L'adresse e-mail est obligatoire.".to_string());
+            avant.email.clone()
+        }
+        e if !email_valide(e) => {
+            erreurs.push(format!("L'e-mail « {e} » n'est pas valide."));
+            avant.email.clone()
+        }
+        e => e.to_string(),
+    };
+    let mut emails_supplementaires: Vec<String> = f.emails_supplementaires.iter().filter_map(|e| vide_en_none(e)).collect();
+    let mauvais: Vec<String> = emails_supplementaires.iter().filter(|e| !email_valide(e)).map(|e| format!("L'e-mail « {e} » n'est pas valide.")).collect();
+    if !mauvais.is_empty() {
+        erreurs.extend(mauvais);
+        emails_supplementaires = avant.emails_supplementaires.clone();
     }
-    let telephones_supplementaires: Vec<String> =
-        f.telephones_supplementaires.iter().filter_map(|t| vide_en_none(t)).collect();
+    let telephone = obligatoire(&mut erreurs, &f.telephone, &avant.telephone, "Le numéro de téléphone est obligatoire.");
+    let telephones_supplementaires: Vec<String> = f.telephones_supplementaires.iter().filter_map(|t| vide_en_none(t)).collect();
 
     let numero_tva = match vide_en_none(&f.numero_tva) {
         None => None,
@@ -333,46 +348,56 @@ pub(crate) fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
             Ok(n) => Some(n),
             Err(message) => {
                 erreurs.push(message.to_string());
-                None
+                vide_en_none(&avant.numero_tva)
             }
         },
     };
 
-    let regime_tva = if f.regime_tva.is_empty() { "assujetti".to_string() } else { f.regime_tva.clone() };
-    if !REGIMES_TVA.iter().any(|(v, _)| *v == regime_tva) {
-        erreurs.push("Ce régime de TVA n'existe pas.".to_string());
-    }
+    let regime_tva = match f.regime_tva.as_str() {
+        "" => "assujetti".to_string(),
+        r if REGIMES_TVA.iter().any(|(v, _)| *v == r) => r.to_string(),
+        _ => {
+            erreurs.push("Ce régime de TVA n'existe pas.".to_string());
+            if avant.regime_tva.is_empty() { "assujetti".to_string() } else { avant.regime_tva.clone() }
+        }
+    };
 
     // Les lignes de compte sont envoyées par paires (IBAN, BIC), dans l'ordre. Les lignes
     // entièrement vides sont ignorées. Le premier compte est celui utilisé par défaut.
-    let mut comptes = Vec::new();
-    for (i, iban) in f.iban.iter().enumerate() {
-        let bic = f.bic.get(i).map(|b| b.trim().to_uppercase()).unwrap_or_default();
-        if iban.trim().is_empty() {
-            if !bic.is_empty() {
-                erreurs.push("Un BIC est renseigné sans IBAN.".to_string());
-            }
-            continue;
-        }
-        match normaliser_iban(iban) {
-            Ok(iban) => {
-                if !bic.is_empty() && !bic_valide(&bic) {
-                    erreurs.push(format!("Le BIC « {bic} » n'est pas valide."));
+    let lire_comptes = |ibans: &[String], bics: &[String]| -> (Vec<(String, Option<String>)>, Vec<String>) {
+        let mut comptes = Vec::new();
+        let mut erreurs = Vec::new();
+        for (i, iban) in ibans.iter().enumerate() {
+            let bic = bics.get(i).map(|b| b.trim().to_uppercase()).unwrap_or_default();
+            if iban.trim().is_empty() {
+                if !bic.is_empty() {
+                    erreurs.push("Un BIC est renseigné sans IBAN.".to_string());
                 }
-                comptes.push((iban, (!bic.is_empty()).then_some(bic)));
+                continue;
             }
-            Err(message) => erreurs.push(format!("{message} (« {} »)", iban.trim())),
+            match normaliser_iban(iban) {
+                Ok(iban) => {
+                    if !bic.is_empty() && !bic_valide(&bic) {
+                        erreurs.push(format!("Le BIC « {bic} » n'est pas valide."));
+                    }
+                    comptes.push((iban, (!bic.is_empty()).then_some(bic)));
+                }
+                Err(message) => erreurs.push(format!("{message} (« {} »)", iban.trim())),
+            }
         }
-    }
-    let mut vus = std::collections::HashSet::new();
-    if comptes.iter().any(|(iban, _)| !vus.insert(iban.clone())) {
-        erreurs.push("Le même IBAN est saisi deux fois.".to_string());
+        let mut vus = std::collections::HashSet::new();
+        if comptes.iter().any(|(iban, _)| !vus.insert(iban.clone())) {
+            erreurs.push("Le même IBAN est saisi deux fois.".to_string());
+        }
+        (comptes, erreurs)
+    };
+    let (mut comptes, erreurs_comptes) = lire_comptes(&f.iban, &f.bic);
+    if !erreurs_comptes.is_empty() {
+        erreurs.extend(erreurs_comptes);
+        comptes = lire_comptes(&avant.iban, &avant.bic).0;
     }
 
-    if !erreurs.is_empty() {
-        return Err(erreurs);
-    }
-    Ok(Valeurs {
+    let valeurs = Valeurs {
         nom,
         nom_abrege,
         rue: f.rue.trim().to_string(),
@@ -388,7 +413,8 @@ pub(crate) fn valider(f: &SocieteForm) -> Result<Valeurs, Vec<String>> {
         numero_tva,
         regime_tva,
         comptes,
-    })
+    };
+    (valeurs, erreurs)
 }
 
 pub(crate) async fn enregistrer(db: &mut PgConnection, v: &Valeurs) -> Result<(), sqlx::Error> {
@@ -461,6 +487,8 @@ struct PageSociete {
     form: SocieteForm,
     erreurs: Vec<String>,
     enregistre: bool,
+    /// La note de la barre du bas : les informations s'enregistrent toutes seules.
+    enregistrement: Enregistrement,
     pays: Vec<Choix>,
     comptes: Vec<Compte>,
     a_un_logo: bool,
@@ -510,6 +538,7 @@ async fn construire_page(
         form,
         erreurs,
         enregistre,
+        enregistrement: Enregistrement::default(),
     })
 }
 
@@ -525,17 +554,33 @@ async fn afficher(mut db: Base, Query(q): Query<Confirmation>) -> Result<Html<St
     Ok(Html(page.render()?))
 }
 
-async fn sauvegarder(mut db: Base, Form(form): Form<SocieteForm>) -> Result<Response, Erreur> {
-    match valider(&form) {
-        Ok(valeurs) => {
-            enregistrer(&mut *db, &valeurs).await?;
-            Ok(Redirect::to("/parametres/societe?ok=1").into_response())
-        }
-        Err(erreurs) => {
-            let page = construire_page(&mut *db, form, erreurs, false).await?;
-            Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
-        }
+/// Enregistre la société. Le formulaire s'envoie tout seul (htmx) à chaque changement, et quand une ligne (e-mail,
+/// téléphone, compte) est retirée : chaque valeur valable est gardée, une valeur refusée garde la précédente ; htmx ne
+/// reprend de la réponse que la note de la barre du bas.
+async fn sauvegarder(mut db: Base, entetes: HeaderMap, Form(form): Form<SocieteForm>) -> Result<Response, Erreur> {
+    let avant = charger_formulaire(&mut *db).await?;
+    let (valeurs, erreurs) = lire(&form, &avant);
+    // La société se crée en entier (d'habitude par l'assistant de démarrage) : pas de société à moitié vide.
+    let existe: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM societe WHERE organisation_id = app_organisation())").fetch_one(&mut *db).await?;
+    if existe || erreurs.is_empty() {
+        enregistrer(&mut *db, &valeurs).await?;
     }
+    if crate::composants::par_htmx(&entetes) {
+        let mut page = construire_page(&mut *db, form, Vec::new(), false).await?;
+        page.enregistrement = Enregistrement::maintenant(&mut *db, erreurs).await?;
+        return Ok(Html(page.render()?).into_response());
+    }
+    if erreurs.is_empty() {
+        return Ok(Redirect::to("/parametres/societe?ok=1").into_response());
+    }
+    let page = construire_page(&mut *db, form, erreurs, false).await?;
+    Ok((StatusCode::UNPROCESSABLE_ENTITY, Html(page.render()?)).into_response())
+}
+
+/// Le bouton « ✕ » d'une ligne (e-mail, téléphone, compte) : la ligne disparaît, puis le formulaire s'enregistre
+/// (événement `enregistrer` déclenché sur le formulaire une fois la ligne retirée).
+async fn ligne_retiree() -> Response {
+    ([("HX-Trigger-After-Swap", r##"{"enregistrer":{"target":"#societe"}}"##)], Html("")).into_response()
 }
 
 async fn erreur_de_fichier(db: &mut PgConnection, message: String) -> Result<Response, Erreur> {
@@ -663,7 +708,7 @@ pub fn routes() -> Router<AppState> {
             }),
         )
         // Réponse vide : sert au bouton « Retirer » d'une ligne ajoutée.
-        .route("/parametres/societe/ligne/vide", get(|| async { Html("") }))
+        .route("/parametres/societe/ligne/vide", get(ligne_retiree))
         .route("/parametres/societe/logo", get(|db: Base| telecharger(Fichier::Logo, db)))
         .route("/parametres/societe/logo/envoyer", televersement(Fichier::Logo))
         .route(
