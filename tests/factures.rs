@@ -126,7 +126,7 @@ async fn une_facture_simple_de_bout_en_bout(options: PgPoolOptions, connexion: P
     assert_eq!(montants(&pool, id).await, (84_998, 17_100, 102_098));
 
     let (_, page) = lire(&s, &format!("/factures/{id}")).await;
-    assert!(page.contains("Valider et numéroter"));
+    assert!(page.contains("Valider seulement"));
     assert!(page.contains("1\u{a0}020,98\u{a0}€"));
 
     // Valider : premier numéro après la dernière facture de Vertuoza (124), échéance à 30 jours, VCS.
@@ -308,8 +308,9 @@ async fn l_en_tete_s_enregistre_tout_seul_et_valider_suit(options: PgPoolOptions
     assert!(page.contains(&format!("hx-post=\"/factures/{id}\"")) && !page.contains("Enregistrer les informations"));
     assert!(morceau(&page, "id=\"facture-barre\"", "</div>").contains("disabled title=\"Complétez d'abord"));
 
-    // Le formulaire part tout seul : la barre renvoyée (que htmx remplace) dit « Enregistré » et propose « Valider… »,
-    // le bloc « Avant de valider » est prêt, sans recharger la page.
+    // Le formulaire part tout seul : la barre renvoyée (que htmx remplace) dit « Enregistré » et propose « Valider et
+    // envoyer » (par e-mail : l'envoi par Peppol n'est pas configuré pendant les tests), le bloc « Avant de valider » est
+    // prêt, sans recharger la page.
     let corps = format!(
         "date={}&reference=Petits+travaux&responsable=&client=e{c}&conditions_paiement_id={}&taux_tva_id=&remarque=",
         aujourdhui(&pool).await,
@@ -318,7 +319,7 @@ async fn l_en_tete_s_enregistre_tout_seul_et_valider_suit(options: PgPoolOptions
     let (statut, page) = poster_htmx(&s, &format!("/factures/{id}"), &corps).await;
     assert_eq!(statut, StatusCode::OK);
     let barre = morceau(&page, "id=\"facture-barre\"", "</div>");
-    assert!(barre.contains("Enregistré à ") && barre.contains("<summary class=\"btn btn-primary\">Valider…</summary>"), "{barre}");
+    assert!(barre.contains("Enregistré à ") && barre.contains("<summary class=\"btn btn-primary\">Valider et envoyer par e-mail…</summary>"), "{barre}");
     assert!(morceau(&page, "id=\"avant-valider\"", "</section>").contains("prête"));
 
     // Un client inconnu : pas enregistré (le client choisi reste), la barre le dit ; le reste est enregistré.
@@ -332,6 +333,55 @@ async fn l_en_tete_s_enregistre_tout_seul_et_valider_suit(options: PgPoolOptions
     // Une facture validée ne s'enregistre plus, même toute seule.
     poster(&s, &format!("/factures/{id}/valider"), "").await;
     assert_eq!(poster_htmx(&s, &format!("/factures/{id}"), &corps).await.0, StatusCode::CONFLICT);
+}
+
+#[sqlx::test]
+async fn valider_et_envoyer_choisit_l_e_mail_et_dit_pourquoi(options: PgPoolOptions, connexion: PgConnectOptions) {
+    let pool = commun::reserve(options, connexion).await;
+    let s = site(&pool);
+    let condition = condition_30_jours(&pool).await;
+    let jour = aujourdhui(&pool).await;
+
+    // Un particulier (contact sans numéro de TVA) : par e-mail, avec la raison.
+    let particulier: i64 =
+        sqlx::query_scalar("INSERT INTO contacts (nom, prenom, email) VALUES ('Lambert', 'Anne', 'anne@exemple.be') RETURNING id").fetch_one(&pool).await.unwrap();
+    let id = nouvelle(&s).await;
+    poste(&pool, &s, id, "Travaux", "1", "100", 2100).await;
+    poster(&s, &format!("/factures/{id}"), &format!("date={jour}&reference=Travaux&client=c{particulier}&conditions_paiement_id={condition}")).await;
+    let (_, page) = lire(&s, &format!("/factures/{id}")).await;
+    let barre = morceau(&page, "id=\"facture-barre\"", "</div>");
+    assert!(barre.contains("<summary class=\"btn btn-primary\">Valider et envoyer par e-mail…</summary>"), "{barre}");
+    assert!(barre.contains("un particulier ne reçoit pas de facture par Peppol") && barre.contains("déjà rempli"), "{barre}");
+    assert!(barre.contains("name=\"puis\" value=\"envoyer\"") && barre.contains("Valider seulement"), "{barre}");
+    assert!(!page.contains("Valider et numéroter seulement") && !page.contains("Envoyer électroniquement"));
+
+    // Un clic : validée, numérotée, puis l'écran d'envoi par e-mail s'ouvre.
+    let (statut, lieu, _) = poster(&s, &format!("/factures/{id}/valider"), "puis=envoyer").await;
+    assert_eq!((statut, lieu), (StatusCode::SEE_OTHER, Some(format!("/factures/{id}/email"))));
+    let numero: Option<i64> = sqlx::query_scalar("SELECT numero FROM factures WHERE id = $1").bind(id).fetch_one(&pool).await.unwrap();
+    assert!(numero.is_some());
+
+    // Une entreprise avec un numéro de TVA belge valable, mais l'envoi par Peppol n'est pas configuré ici : par e-mail,
+    // et la raison le dit.
+    let entreprise: i64 = sqlx::query_scalar("INSERT INTO entreprises (nom, profils, numero_tva) VALUES ('Client SA', '{client}', 'BE0987654394') RETURNING id")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO societe (nom, nom_abrege, email, telephone, numero_tva) VALUES ('Société Essai SRL', 'SE', 'info@exemple.be', '010', 'BE0123456749')
+         ON CONFLICT (organisation_id) DO UPDATE SET numero_tva = EXCLUDED.numero_tva",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let id = nouvelle(&s).await;
+    poste(&pool, &s, id, "Travaux", "1", "100", 2100).await;
+    poster(&s, &format!("/factures/{id}"), &format!("date={jour}&reference=Travaux&client=e{entreprise}&conditions_paiement_id={condition}")).await;
+    let (_, page) = lire(&s, &format!("/factures/{id}")).await;
+    assert!(page.contains("Valider et envoyer par e-mail…") && page.contains("pas configuré sur ce serveur"), "{page}");
+    // « Valider seulement » ne fait que numéroter.
+    let (_, lieu, _) = poster(&s, &format!("/factures/{id}/valider"), "").await;
+    assert_eq!(lieu, Some(format!("/factures/{id}?ok=validee")));
 }
 
 #[sqlx::test]

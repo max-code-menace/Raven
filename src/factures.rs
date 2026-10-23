@@ -741,6 +741,8 @@ struct Page {
     archive: Vec<crate::archive::Ligne>,
     /// Facturation électronique : l'adresse Peppol du client et ce qui empêche l'envoi (pièce validée seulement).
     peppol: Option<crate::peppol::Bloc>,
+    /// Ce que fera « Valider et envoyer » sur un brouillon : par Peppol ou par e-mail, et pourquoi.
+    envoi: Envoi,
     /// La note de la barre du bas d'un brouillon : les informations s'enregistrent toutes seules.
     enregistrement: Enregistrement,
 }
@@ -840,6 +842,8 @@ async fn construire_page(db: &mut PgConnection, id: i64, retour: &Retour, enregi
         a_recevoir: solde.a_recevoir(),
     };
     let methodes = paiements::methodes(&mut *db).await?;
+    let peppol = crate::peppol::controler(&mut *db, &f).await?;
+    let envoi = envoi_choisi(peppol.as_ref());
     let form = InfosForm::depuis(&f);
     let conditions_texte = f
         .conditions_paiement_id
@@ -883,7 +887,8 @@ async fn construire_page(db: &mut PgConnection, id: i64, retour: &Retour, enregi
         lien_client: if f.numero.is_some() { crate::page_client::lien(&mut *db, crate::emails::Piece::Facture, id).await? } else { String::new() },
         rappel: if solde.etat == "en_retard" { crate::rappels::resume_facture(&mut *db, id).await? } else { None },
         archive: if f.numero.is_some() { crate::archive::lignes(&mut *db, &f).await? } else { Vec::new() },
-        peppol: crate::peppol::controler(&mut *db, &f).await?,
+        peppol,
+        envoi,
         enregistrement,
     };
     Ok(page)
@@ -1197,9 +1202,35 @@ pub(crate) async fn reste_a_crediter(db: &mut PgConnection, facture_id: i64, sau
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct ApresValidation {
-    /// « email » : ouvrir l'envoi par e-mail juste après (un seul clic, comme l'envoi dans Vertuoza) ; « peppol » :
-    /// l'envoyer par Peppol juste après.
+    /// « envoyer » : l'envoyer juste après par le canal que Raven choisit (`envoi_choisi`) ; « email » : ouvrir
+    /// l'envoi par e-mail juste après (comme l'envoi dans Vertuoza) ; « peppol » : l'envoyer par Peppol juste après.
     puis: String,
+}
+
+/// Ce que fait « Valider et envoyer » (23/10/2026, retour de Mahx : un seul bouton qui dit quoi faire ensuite).
+pub struct Envoi {
+    /// Par Peppol (sinon par e-mail : l'écran d'envoi s'ouvre, déjà rempli).
+    pub peppol: bool,
+    /// Le texte du bouton : « Valider et envoyer par Peppol » ou « Valider et envoyer par e-mail ».
+    pub bouton: &'static str,
+    /// La raison du choix, en clair.
+    pub raison: String,
+}
+
+/// Raven choisit seul comment la pièce part : par Peppol quand elle le peut (client entreprise avec une adresse Peppol
+/// valable, envoi configuré, organisation inscrite et vérifiée), sinon par e-mail, avec la raison.
+pub(crate) fn envoi_choisi(bloc: Option<&crate::peppol::Bloc>) -> Envoi {
+    let email = |raison: &str| Envoi { peppol: false, bouton: "Valider et envoyer par e-mail", raison: raison.to_string() };
+    match bloc {
+        Some(b) if b.pourra_partir() => {
+            Envoi { peppol: true, bouton: "Valider et envoyer par Peppol", raison: format!("Par Peppol, à l'adresse {} du client.", b.client) }
+        }
+        Some(b) if b.particulier => email("Par e-mail : un particulier ne reçoit pas de facture par Peppol."),
+        Some(b) if !b.prete() => email("Par e-mail : l'envoi par Peppol n'est pas encore possible (voir « Facturation électronique »)."),
+        Some(b) if !b.envoi_actif => email("Par e-mail : l'envoi par Peppol n'est pas configuré sur ce serveur."),
+        Some(_) => email("Par e-mail : votre entreprise n'est pas encore inscrite sur Peppol (Réglages › Peppol)."),
+        None => email("Par e-mail."),
+    }
 }
 
 async fn valider(mut db: Base, Path(id): Path<i64>, Form(apres): Form<ApresValidation>) -> Result<Redirect, Erreur> {
@@ -1270,10 +1301,17 @@ async fn valider(mut db: Base, Path(id): Path<i64>, Form(apres): Form<ApresValid
     {
         eprintln!("Archive de la facture {id} : pas encore faite, elle se fera à la prochaine utilisation.");
     }
-    if apres.puis == "email" {
+    // « Valider et envoyer » : le canal est choisi sur la pièce validée, pas d'après le formulaire.
+    let puis = match (apres.puis.as_str(), charger(&mut *db, id).await?) {
+        ("envoyer", Some(validee)) => {
+            if envoi_choisi(crate::peppol::controler(&mut *db, &validee).await?.as_ref()).peppol { "peppol" } else { "email" }
+        }
+        (puis, _) => puis,
+    };
+    if puis == "email" {
         return Ok(Redirect::to(&format!("/factures/{id}/email")));
     }
-    if apres.puis == "peppol"
+    if puis == "peppol"
         && let Some(validee) = charger(&mut *db, id).await?
     {
         // La facture est validée quoi qu'il arrive ; un envoi refusé se lit dans le bloc « Facturation électronique ».
