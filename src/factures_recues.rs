@@ -8,7 +8,7 @@
 //! - **Archive** : le XML reçu est gardé tel quel avec son empreinte SHA-256, non modifiable (déclencheur), comme
 //!   l'archive des ventes ; le PDF joint par le fournisseur (sinon le rendu de Recommand) l'accompagne.
 //! - **Fournisseur** : retrouvé dans les entreprises par son numéro de TVA (ou son adresse Peppol), sinon créé.
-//! - **Boîte de réception** (Finances › Factures fournisseurs › Reçues par Peppol) : à traiter / traitées ; une facture
+//! - **Boîte de réception** (Paiements › À payer › Reçues par Peppol) : à traiter / traitées ; une facture
 //!   se **rattache** à un ou plusieurs chantiers (elle devient un achat du chantier : budget et rentabilité à jour) ou
 //!   se classe **sans chantier** (frais généraux). Elle est traitée quand toute sa base HT est répartie (statut
 //!   calculé, jamais enregistré). Une note de crédit fournisseur compte en négatif.

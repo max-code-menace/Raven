@@ -590,7 +590,7 @@ async fn reglages(mut db: Base, Utilisateur(moi): Utilisateur, Query(r): Query<R
     let erreur = if envoi_actif() && !inscription(&mut db).await?.verifiee { actualiser_organisation(&mut db).await? } else { None };
     let message_ok = match r.ok.as_str() {
         "inscrite" => "Votre entreprise est inscrite chez Recommand. Il reste à vérifier votre identité.",
-        "reception" => "La réception est allumée : vos factures fournisseurs arriveront dans Finances › Factures fournisseurs.",
+        "reception" => "La réception est allumée : vos factures fournisseurs arriveront dans Paiements › À payer.",
         "reception_arretee" => "La réception est arrêtée : vos factures fournisseurs n'arrivent plus dans Raven. Celles déjà reçues restent.",
         _ => "",
     };
