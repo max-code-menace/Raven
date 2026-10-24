@@ -54,6 +54,7 @@ pub mod recurrences;
 pub mod archive;
 pub mod mentions_tva;
 pub mod reprise;
+pub mod ressources;
 pub mod retard;
 pub mod securite;
 pub mod signature;
@@ -141,6 +142,7 @@ fn pages() -> Router<AppState> {
     Router::new()
         .route("/", get(tableau_de_bord::afficher))
         .route("/sante", get(sante))
+        .merge(ressources::routes())
         .merge(devis::routes())
         .merge(devis_editeur::routes())
         .merge(devis_lignes::routes())

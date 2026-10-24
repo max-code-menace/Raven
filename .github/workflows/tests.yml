@@ -31,6 +31,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # Le CSS de Tailwind (assets/web/raven.css) doit suivre les classes des gabarits : sinon une classe ajoutée
+      # resterait sans effet à l'écran. On le refabrique avec le même outil (3.4.17) et on vérifie qu'il ne change pas.
+      - name: CSS de Tailwind à jour (scripts/css.ps1)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/tailwindcss" https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.17/tailwindcss-linux-x64
+          echo "7d24f7fa191d2193b78cd5f5a42a6093e14409521908529f42d80b11fde1f1d4  $RUNNER_TEMP/tailwindcss" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/tailwindcss"
+          "$RUNNER_TEMP/tailwindcss" -o assets/web/raven.css --content "./templates/**/*.html,./src/**/*.rs" --minify
+          git diff --exit-code assets/web/raven.css || { echo "::error::assets/web/raven.css n'est pas à jour : lancer scripts/css.ps1 et le versionner."; exit 1; }
       - name: Utilisateur et base (scripts/creer-base.sql)
         env:
           PGPASSWORD: postgres

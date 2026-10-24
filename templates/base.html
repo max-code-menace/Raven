@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Raven{% endblock %}</title>
   {% include "_polices.html" %}
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <link href="{{ crate::ressources::adresse("daisyui.css") }}" rel="stylesheet">
+  <script src="{{ crate::ressources::adresse("htmx.min.js") }}"></script>
   {% include "_raven.html" %}
   {% include "_styles.html" %}
+  {# Tailwind en dernier, là où le script du CDN posait ses styles avant l'étape 7-2 : mêmes priorités qu'avant. #}
+  <link href="{{ crate::ressources::adresse("raven.css") }}" rel="stylesheet">
 </head>
 {# Les écrans passés au nouveau design posent « rv-papier » dans le bloc fond : page blanche, marges du design system. #}
 <body class="{% block fond %}{% endblock %}">

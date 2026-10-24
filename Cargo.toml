@@ -12,6 +12,7 @@ base64 = "0.22"
 calamine = "0.28"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "serde"] }
 dotenvy = "0.15.7"
+flate2 = "1.1"
 getrandom = "0.3"
 hex = "0.4.3"
 lopdf = "0.45"

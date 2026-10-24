@@ -168,6 +168,18 @@ pub async fn noter(db: impl PgExecutor<'_> + Copy, ip: &Ip, essai: Essai) -> Res
 
 // ─── En-têtes de sécurité ───────────────────────────────────────────────────
 
+/// Ce qu'une page de Raven a le droit de charger (étape 7-2, depuis que tout est servi par Raven lui-même) :
+/// - **scripts : seulement ceux de Raven** (htmx), aucun script écrit dans la page ni venu d'ailleurs. Si quelqu'un
+///   arrivait un jour à glisser du code dans un texte affiché (nom de client, remarque…), le navigateur refuserait de
+///   l'exécuter ;
+/// - styles de Raven et styles écrits dans les gabarits (`<style>`, `style="…"`) ;
+/// - images de Raven (logos) et images décrites dans la page (`data:`, icônes de DaisyUI) ;
+/// - polices, demandes htmx et cadres (le PDF du devis) : Raven seulement ; aucun plugin (`object-src`) ;
+/// - personne d'autre ne peut afficher Raven dans un cadre, ni détourner l'adresse de base ou l'envoi d'un formulaire.
+const POLITIQUE: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; \
+    font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; \
+    form-action 'self'";
+
 /// Les en-têtes de sécurité, ajoutés à chaque réponse sans remplacer ceux qu'une page a déjà posés :
 /// - `X-Content-Type-Options` : le navigateur ne devine pas le type d'un fichier (un fichier envoyé reste un fichier) ;
 /// - `X-Frame-Options` et `frame-ancestors` : aucun autre site ne peut afficher Raven dans un cadre (le PDF du devis
@@ -175,10 +187,8 @@ pub async fn noter(db: impl PgExecutor<'_> + Copy, ip: &Ip, essai: Essai) -> Res
 /// - `Referrer-Policy` : l'adresse d'une page (le lien secret de la page client) n'est jamais donnée à un autre site ;
 /// - `Permissions-Policy` : ni caméra, ni micro, ni position, ni paiement par le navigateur ;
 /// - `Cache-Control: no-store` : devis, factures et chiffres ne restent pas dans le cache d'un ordinateur partagé ;
-/// - `Strict-Transport-Security`, en production seulement : le navigateur n'ouvre plus Raven qu'en https.
-///
-/// Pas encore de règle sur les scripts et les styles (`script-src`) : Tailwind et htmx viennent d'autres sites tant
-/// qu'ils ne sont pas installés dans le projet (étape 7-2).
+/// - `Strict-Transport-Security`, en production seulement : le navigateur n'ouvre plus Raven qu'en https ;
+/// - `Content-Security-Policy` sur les pages HTML (`POLITIQUE`).
 pub async fn entetes(requete: Request, suite: Next) -> Response {
     let mut reponse = suite.run(requete).await;
     let html = reponse
@@ -196,7 +206,7 @@ pub async fn entetes(requete: Request, suite: Next) -> Response {
     poser(header::HeaderName::from_static("permissions-policy"), "camera=(), microphone=(), geolocation=(), payment=()");
     poser(header::CACHE_CONTROL, "no-store");
     if html {
-        poser(header::CONTENT_SECURITY_POLICY, "frame-ancestors 'self'; base-uri 'self'; form-action 'self'");
+        poser(header::CONTENT_SECURITY_POLICY, POLITIQUE);
     }
     if production() {
         poser(header::STRICT_TRANSPORT_SECURITY, "max-age=31536000");
