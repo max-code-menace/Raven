@@ -1,4 +1,4 @@
-# Refabrique assets/web/raven.css : les classes de Tailwind employées dans templates/ et src/ (étape 7-2).
+﻿# Refabrique assets/web/raven.css : les classes de Tailwind employées dans templates/ et src/ (étape 7-2).
 # À lancer après avoir ajouté ou changé des classes de Tailwind dans un gabarit (les tests de GitHub le vérifient).
 # L'outil (un seul fichier, sans Node) est téléchargé une fois dans outils/ (hors du dépôt), à la version 3.4.17, celle
 # qu'employait le CDN : le CSS fabriqué est le même que celui que le navigateur fabriquait avant.
