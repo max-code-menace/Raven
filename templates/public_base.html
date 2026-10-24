@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titre %}{% endblock %} · Raven</title>
   {% include "_polices.html" %}
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="{{ crate::ressources::adresse("daisyui.css") }}" rel="stylesheet">
   {% include "_raven.html" %}
   {% include "_styles.html" %}
   <style>
@@ -19,6 +18,8 @@
     .p-marque { display: flex; align-items: center; gap: 10px; padding: 0; }
     .p-marque small { display: block; margin-top: 4px; font: 400 var(--t-sm)/1 var(--font-sans); letter-spacing: 0; color: var(--mut); }
   </style>
+  {# Tailwind en dernier, là où le script du CDN posait ses styles avant l'étape 7-2 : mêmes priorités qu'avant. #}
+  <link href="{{ crate::ressources::adresse("raven.css") }}" rel="stylesheet">
 </head>
 <body>
 <main class="p-page">

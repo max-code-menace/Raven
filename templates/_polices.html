@@ -1,4 +1,12 @@
-{# Polices du design de Raven : Archivo pour le texte, IBM Plex Mono pour les nombres et les intitulés en capitales. #}
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+{# Polices du design de Raven : Archivo pour le texte, IBM Plex Mono pour les nombres et les intitulés en capitales.
+   Servies par Raven lui-même (les mêmes fichiers que les PDF, assets/polices), plus par Google (étape 7-2) ; mêmes
+   graisses qu'avant (Archivo 400 à 700, Plex Mono 400 à 600), sans italique (le navigateur la dessine, comme avant). #}
+  <style>
+    @font-face { font-family: "Archivo"; font-style: normal; font-weight: 400; font-display: swap; src: url("{{ crate::ressources::adresse("Archivo-Regular.ttf") }}") format("truetype"); }
+    @font-face { font-family: "Archivo"; font-style: normal; font-weight: 500; font-display: swap; src: url("{{ crate::ressources::adresse("Archivo-Medium.ttf") }}") format("truetype"); }
+    @font-face { font-family: "Archivo"; font-style: normal; font-weight: 600; font-display: swap; src: url("{{ crate::ressources::adresse("Archivo-SemiBold.ttf") }}") format("truetype"); }
+    @font-face { font-family: "Archivo"; font-style: normal; font-weight: 700; font-display: swap; src: url("{{ crate::ressources::adresse("Archivo-Bold.ttf") }}") format("truetype"); }
+    @font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("{{ crate::ressources::adresse("IBMPlexMono-Regular.ttf") }}") format("truetype"); }
+    @font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("{{ crate::ressources::adresse("IBMPlexMono-Medium.ttf") }}") format("truetype"); }
+    @font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap; src: url("{{ crate::ressources::adresse("IBMPlexMono-SemiBold.ttf") }}") format("truetype"); }
+  </style>

@@ -206,7 +206,8 @@ fn publique(chemin: &str) -> bool {
     // `/peppol/webhook` : les notifications de Recommand, signées (voir `factures_recues::webhook`).
     ["/connexion", "/sante", "/inscription", "/mot-de-passe-oublie", "/admin", "/peppol/webhook"].contains(&chemin)
         || chemin.starts_with("/admin/")
-        || ["/client/", "/inscription/", "/mot-de-passe/", "/invitation/"].iter().any(|debut| chemin.starts_with(debut))
+        // `/ressources/` : le CSS, htmx et les polices, dont les pages publiques ont aussi besoin.
+        || ["/client/", "/inscription/", "/mot-de-passe/", "/invitation/", "/ressources/"].iter().any(|debut| chemin.starts_with(debut))
 }
 
 /// Ce qui reste ouvert tant que l'assistant de démarrage n'est pas fait.
