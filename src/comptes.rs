@@ -9,8 +9,9 @@
 //! - **Sécurité** : les réponses ne disent jamais si une adresse a déjà un compte (même page dans tous les cas ; une
 //!   adresse déjà inscrite reçoit un e-mail qui le lui dit). Les liens sont des jetons de 256 bits dont la base ne garde
 //!   que l'empreinte, à usage unique. Un lien s'ouvre sur une page avec un bouton (les logiciels qui ouvrent les liens
-//!   des e-mails pour les vérifier ne le consomment pas). 3 e-mails au plus par heure et par adresse ; 30 inscriptions
-//!   au plus par heure sur tout le site ; un champ invisible piège les robots.
+//!   des e-mails pour les vérifier ne le consomment pas). 3 e-mails au plus par heure et par adresse ; 10 inscriptions
+//!   et 10 demandes de mot de passe au plus par heure et par adresse IP (`securite`) ; 30 inscriptions au plus par heure
+//!   sur tout le site ; un champ invisible piège les robots.
 
 use askama::Template;
 use axum::{
@@ -26,6 +27,7 @@ use sqlx::{Connection as _, PgConnection, PgPool};
 
 use crate::connexion::{self, LONGUEUR_MIN, assez_long, empreinte, hacher};
 use crate::emails_systeme::{self, Genre};
+use crate::securite::{self, Essai, Ip};
 use crate::{AppState, Erreur, commun::email_valide, organisations};
 
 const VALIDITE_VERIFICATION_MINUTES: i32 = 48 * 60;
@@ -164,7 +166,7 @@ async fn inscription(cookies: CookieJar) -> Result<Response, Erreur> {
     Ok(Html(PageInscription { entreprise: String::new(), email: String::new(), erreurs: Vec::new() }.render()?).into_response())
 }
 
-async fn inscrire(State(state): State<AppState>, Form(f): Form<Inscription>) -> Result<Response, Erreur> {
+async fn inscrire(State(state): State<AppState>, ip: Ip, Form(f): Form<Inscription>) -> Result<Response, Erreur> {
     let db = &state.db;
     let entreprise = f.entreprise.trim().to_string();
     let email = f.email.trim().to_string();
@@ -183,6 +185,11 @@ async fn inscrire(State(state): State<AppState>, Form(f): Form<Inscription>) -> 
     if !f.site.is_empty() {
         return lien_envoye(&email);
     }
+    if securite::trop_d_essais(db, &ip, Essai::Inscription).await? {
+        let page = PageInscription { entreprise, email, erreurs: vec![Essai::Inscription.message().to_string()] };
+        return Ok((StatusCode::TOO_MANY_REQUESTS, Html(page.render()?)).into_response());
+    }
+    securite::noter(db, &ip, Essai::Inscription).await?;
     let recentes: i64 =
         sqlx::query_scalar("SELECT count(*) FROM organisations WHERE created_at > now() - interval '1 hour'").fetch_one(db).await?;
     if recentes >= INSCRIPTIONS_MAX_PAR_HEURE {
@@ -296,9 +303,14 @@ async fn page_oubli() -> Result<Html<String>, Erreur> {
     Ok(Html(PageMotDePasse { jeton: String::new(), erreur: String::new() }.render()?))
 }
 
-async fn demander_lien(State(state): State<AppState>, Form(a): Form<Adresse>) -> Result<Response, Erreur> {
+async fn demander_lien(State(state): State<AppState>, ip: Ip, Form(a): Form<Adresse>) -> Result<Response, Erreur> {
     let db = &state.db;
     let email = a.email.trim().to_string();
+    if securite::trop_d_essais(db, &ip, Essai::MotDePasse).await? {
+        let page = PageMessage::texte("Mot de passe oublié", Essai::MotDePasse.message().to_string());
+        return Ok((StatusCode::TOO_MANY_REQUESTS, Html(page.render()?)).into_response());
+    }
+    securite::noter(db, &ip, Essai::MotDePasse).await?;
     let compte: Option<(i64, String)> =
         sqlx::query_as("SELECT id, email FROM utilisateurs WHERE lower(email) = lower($1)").bind(&email).fetch_optional(db).await?;
     if let Some((utilisateur, email_du_compte)) = compte

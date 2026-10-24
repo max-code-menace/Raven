@@ -1,0 +1,41 @@
+# Tests automatiques (mise en ligne, étape 7-1) : à chaque demande de fusion et à chaque changement de main, GitHub
+# compile Raven et lance tous les tests sur une base PostgreSQL neuve. Une demande de fusion dont les tests échouent se
+# voit tout de suite sur GitHub (croix rouge), avant de la fusionner.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Un utilisateur ordinaire, comme chez Mahx et en production : ni super-utilisateur, ni BYPASSRLS.
+      DATABASE_URL: postgres://ubifacture:essai-ci@localhost:5432/ubifacture
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Utilisateur et base (scripts/creer-base.sql)
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -v ON_ERROR_STOP=1 -v mdp=essai-ci -f scripts/creer-base.sql
+      - name: Compilation
+        run: cargo build --locked
+      - name: Tests
+        run: cargo test --locked

@@ -4,9 +4,12 @@
 
 mod commun;
 
+use std::net::SocketAddr;
+
 use axum::{
     Router,
     body::Body,
+    extract::ConnectInfo,
     http::{Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
@@ -34,10 +37,14 @@ async fn lire(site: &Router, uri: &str) -> (StatusCode, Vec<u8>) {
     (s, o)
 }
 
+/// `entetes` : des en-têtes, et « connexion » pour l'adresse qui ouvre la connexion (comme le fait `main.rs`).
 async fn poster(site: &Router, uri: &str, corps: &str, entetes: &[(&str, &str)]) -> (StatusCode, Option<String>) {
     let mut requete = Request::builder().method("POST").uri(uri).header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
     for (nom, valeur) in entetes {
-        requete = requete.header(*nom, *valeur);
+        requete = match *nom {
+            "connexion" => requete.extension(ConnectInfo(valeur.parse::<SocketAddr>().unwrap())),
+            _ => requete.header(*nom, *valeur),
+        };
     }
     let (s, lieu, _) = envoyer(site, requete.body(Body::from(corps.to_string())).unwrap()).await;
     (s, lieu)
@@ -85,8 +92,10 @@ async fn la_signature_cree_un_dossier_de_preuve_complet(options: PgPoolOptions, 
     let page = String::from_utf8_lossy(&page).to_string();
     assert!(page.contains("je reconnais avoir lu le devis n°") && page.contains("l&#39;empreinte numérique du document") || page.contains("l'empreinte numérique du document"), "{page}");
 
-    let (statut, lieu) =
-        poster(&s, &chemin, "nom=Anne+Claes&accord=oui", &[("x-forwarded-for", "203.0.113.7, 10.0.0.1"), ("user-agent", "Mozilla/5.0 (essai)")]).await;
+    // Sans serveur frontal (tests), l'adresse est celle de la connexion ; X-Forwarded-For, que le client peut écrire
+    // lui-même, est ignoré (`securite::ip_de`).
+    let entetes = [("connexion", "203.0.113.7:51000"), ("x-forwarded-for", "198.51.100.66"), ("user-agent", "Mozilla/5.0 (essai)")];
+    let (statut, lieu) = poster(&s, &chemin, "nom=Anne+Claes&accord=oui", &entetes).await;
     assert!(statut.is_redirection());
     assert_eq!(lieu, Some(format!("{chemin}?ok=signe")));
 

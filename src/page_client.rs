@@ -27,6 +27,7 @@ use crate::base::Base;
 use crate::commun::{encoder_url, format_euros};
 use crate::emails::{self, Message};
 use crate::journal::{self, Genre};
+use crate::securite::Ip;
 use crate::signature::{self, Preuve, Verification};
 use crate::{AppState, Erreur, factures, paiements};
 
@@ -370,7 +371,13 @@ async fn envoyer_code(State(state): State<AppState>, Path(jeton): Path<String>, 
     Ok(Redirect::to(&format!("/client/devis/{jeton}?code=envoye&nom={}#signer", encoder_url(&nom))))
 }
 
-async fn signer(State(state): State<AppState>, Path(jeton): Path<String>, entetes: HeaderMap, Form(s): Form<Signature>) -> Result<Redirect, Erreur> {
+async fn signer(
+    State(state): State<AppState>,
+    Path(jeton): Path<String>,
+    ip: Ip,
+    entetes: HeaderMap,
+    Form(s): Form<Signature>,
+) -> Result<Redirect, Erreur> {
     let mut db = base_du_jeton(&state, Lien::Devis, &jeton).await?;
     let d = devis_du_jeton(&mut *db, &jeton).await?;
     let nom = match verifier_saisie(&s) {
@@ -389,7 +396,7 @@ async fn signer(State(state): State<AppState>, Path(jeton): Path<String>, entete
         nom: nom.clone(),
         email: d.email.clone(),
         verification,
-        ip: signature::ip_du_client(&entetes),
+        ip: ip.0,
         navigateur: signature::navigateur(&entetes),
         texte_accepte: signature::texte_accord(&designation(&d.titre), &date_belge(d.date), &format_euros(d.ttc), &entreprise.nom, entreprise.conditions_generales, verification),
         montant_ttc_cents: d.ttc,
