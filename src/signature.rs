@@ -130,21 +130,6 @@ pub async fn verifier_code(db: &mut PgConnection, devis_id: i64, email: &str, co
     Ok(bon)
 }
 
-/// L'adresse IP vue par le serveur. Derrière un serveur frontal (hébergeur), c'est le premier élément de
-/// `X-Forwarded-For` ; à contrôler à la mise en ligne, car un client peut écrire cet en-tête lui-même s'il atteint
-/// l'application sans passer par le frontal.
-pub fn ip_du_client(entetes: &HeaderMap) -> String {
-    let brute = entetes
-        .get("x-forwarded-for")
-        .or_else(|| entetes.get("x-real-ip"))
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .unwrap_or("")
-        .trim();
-    // Une adresse IPv4 ou IPv6 : chiffres hexadécimaux, points et deux-points, 45 caractères au plus.
-    if !brute.is_empty() && brute.len() <= 45 && brute.chars().all(|c| c.is_ascii_hexdigit() || c == '.' || c == ':') { brute.to_string() } else { String::new() }
-}
-
 /// Le navigateur déclaré, nettoyé et raccourci.
 pub fn navigateur(entetes: &HeaderMap) -> String {
     entetes.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).unwrap_or("").chars().filter(|c| !c.is_control()).take(300).collect()
@@ -301,15 +286,8 @@ mod tests {
     }
 
     #[test]
-    fn l_adresse_ip_vient_du_serveur_frontal_et_reste_propre() {
-        let mut h = HeaderMap::new();
-        assert_eq!(ip_du_client(&h), "");
-        h.insert("x-forwarded-for", HeaderValue::from_static("203.0.113.7, 10.0.0.1"));
-        assert_eq!(ip_du_client(&h), "203.0.113.7");
-        h.insert("x-forwarded-for", HeaderValue::from_static("2001:db8::1"));
-        assert_eq!(ip_du_client(&h), "2001:db8::1");
-        h.insert("x-forwarded-for", HeaderValue::from_static("<script>alert(1)</script>"));
-        assert_eq!(ip_du_client(&h), "", "une valeur qui n'est pas une adresse est ignorée");
+    fn le_navigateur_est_garde_tel_quel() {
+        // L'adresse IP, elle, vient de `securite::Ip` (testée là).
         let mut h = HeaderMap::new();
         h.insert(header::USER_AGENT, HeaderValue::from_static("Mozilla/5.0 (test)"));
         assert_eq!(navigateur(&h), "Mozilla/5.0 (test)");

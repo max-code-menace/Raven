@@ -1,4 +1,7 @@
-use ubifacture::{AppState, application, connexion, db, emails};
+use std::net::SocketAddr;
+use std::time::Duration;
+
+use ubifacture::{AppState, application, connexion, db, emails, securite};
 
 #[tokio::main]
 async fn main() {
@@ -116,13 +119,84 @@ async fn main() {
     // arrivent alors par la relève (bouton « Relever » et ouverture de la boîte de réception).
     ubifacture::peppol::configurer_webhook(std::env::var("RECOMMAND_WEBHOOK_SECRET").ok());
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3001")
-        .await
-        .expect("impossible d'ouvrir le port 3001");
-    println!("Raven tourne sur http://127.0.0.1:3001");
-    axum::serve(listener, application(AppState { db: pool }))
-        .await
-        .expect("le serveur s'est arrêté");
+    // Mise en ligne : PRODUCTION=1 sur le serveur de l'hébergeur. Raven refuse alors de démarrer tant qu'il manque un
+    // réglage indispensable (https, e-mails, serveurs frontaux, utilisateur de la base soumis aux règles par organisation).
+    let production = matches!(std::env::var("PRODUCTION").as_deref().map(str::trim), Ok("1" | "oui" | "true"));
+    let proxies = match std::env::var("PROXIES_DE_CONFIANCE") {
+        Err(_) => 0,
+        Ok(v) => match v.trim().parse::<usize>() {
+            Ok(n) if n <= 5 => n,
+            _ => {
+                eprintln!("PROXIES_DE_CONFIANCE doit être un nombre de 0 à 5.");
+                std::process::exit(1);
+            }
+        },
+    };
+    if production {
+        match securite::problemes_de_production(&pool, |nom| std::env::var(nom).ok()).await {
+            Ok(problemes) if problemes.is_empty() => println!("Production : tous les réglages indispensables sont là."),
+            Ok(problemes) => {
+                eprintln!("Raven ne démarre pas en production, il manque :");
+                for probleme in problemes {
+                    eprintln!("  - {probleme}");
+                }
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("Vérification des réglages de production impossible : {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    securite::configurer(production, proxies);
+
+    // L'adresse d'écoute : ADRESSE_ECOUTE (« 0.0.0.0:8080 »), sinon PORT (donné par l'hébergeur : toutes les adresses
+    // de la machine), sinon 127.0.0.1:3001 (ce PC seulement).
+    let ecoute = match (std::env::var("ADRESSE_ECOUTE"), std::env::var("PORT")) {
+        (Ok(adresse), _) if !adresse.trim().is_empty() => adresse.trim().to_string(),
+        (_, Ok(port)) if !port.trim().is_empty() => format!("0.0.0.0:{}", port.trim()),
+        _ => "127.0.0.1:3001".to_string(),
+    };
+    let listener = match tokio::net::TcpListener::bind(&ecoute).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            eprintln!("Impossible d'écouter sur {ecoute} : {e}");
+            std::process::exit(1);
+        }
+    };
+    println!("Raven tourne sur http://{ecoute}");
+    // L'adresse de la connexion accompagne chaque demande : c'est l'adresse IP du client quand aucun serveur frontal
+    // n'est devant Raven (`securite::Ip`).
+    let site = application(AppState { db: pool }).into_make_service_with_connect_info::<SocketAddr>();
+    if let Err(e) = axum::serve(listener, site).with_graceful_shutdown(arret_demande()).await {
+        eprintln!("Le serveur s'est arrêté : {e}");
+    }
+    ubifacture::finir_les_enregistrements(Duration::from_secs(30)).await;
+    println!("Raven est arrêté.");
+}
+
+/// L'arrêt demandé : Ctrl+C, ou le signal d'arrêt de l'hébergeur (SIGTERM, à chaque mise à jour du site). Le serveur
+/// n'accepte plus de nouvelles demandes et finit celles en cours.
+async fn arret_demande() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminer = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminer = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminer => {}
+    }
+    println!("Arrêt demandé : Raven finit les demandes en cours.");
 }
 
 /// L'organisation choisie (`--organisation <n°>`, obligatoire s'il y en a plusieurs) et les autres mots (le nom d'un

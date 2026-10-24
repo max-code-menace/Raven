@@ -55,6 +55,7 @@ pub mod archive;
 pub mod mentions_tva;
 pub mod reprise;
 pub mod retard;
+pub mod securite;
 pub mod signature;
 pub mod reprise_devis;
 pub mod societe;
@@ -71,6 +72,8 @@ use axum::{
     routing::get,
 };
 use sqlx::PgPool;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 /// Ce que tous les écrans partagent : la connexion à la base.
 #[derive(Clone)]
@@ -192,12 +195,46 @@ async fn jusqu_au_bout(requete: axum::extract::Request, suite: axum::middleware:
     if requete.method() != axum::http::Method::POST {
         return suite.run(requete).await;
     }
-    match tokio::spawn(suite.run(requete)).await {
+    let en_cours = EnCours::commencer();
+    let tache = async move {
+        let reponse = suite.run(requete).await;
+        drop(en_cours);
+        reponse
+    };
+    match tokio::spawn(tache).await {
         Ok(reponse) => reponse,
         Err(e) => {
             eprintln!("Demande interrompue : {e}");
             Erreur::interne().into_response()
         }
+    }
+}
+
+/// Le nombre de modifications (POST) en cours, pour que l'arrêt du serveur les laisse finir (`finir_les_enregistrements`).
+static ENREGISTREMENTS_EN_COURS: AtomicUsize = AtomicUsize::new(0);
+
+/// Une modification en cours ; elle est décomptée quand sa tâche se termine, même sur une erreur.
+struct EnCours;
+
+impl EnCours {
+    fn commencer() -> EnCours {
+        ENREGISTREMENTS_EN_COURS.fetch_add(1, Ordering::SeqCst);
+        EnCours
+    }
+}
+
+impl Drop for EnCours {
+    fn drop(&mut self) {
+        ENREGISTREMENTS_EN_COURS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// À l'arrêt du serveur (mise à jour chez l'hébergeur), attend que les modifications en cours soient enregistrées, même
+/// celles dont le navigateur est déjà parti (`jusqu_au_bout`), `delai` au plus.
+pub async fn finir_les_enregistrements(delai: Duration) {
+    let debut = Instant::now();
+    while ENREGISTREMENTS_EN_COURS.load(Ordering::SeqCst) > 0 && debut.elapsed() < delai {
+        tokio::time::sleep(Duration::from_millis(50)).await;
     }
 }
 
@@ -216,6 +253,8 @@ pub fn app(state: AppState) -> Router {
                 profil::avec(profil, suite.run(requete)).await
             },
         ))
+        .layer(axum::middleware::from_fn(securite::poser_ip))
+        .layer(axum::middleware::from_fn(securite::entetes))
         .layer(axum::middleware::from_fn(jusqu_au_bout))
         .with_state(state)
 }
@@ -228,6 +267,8 @@ pub fn application(state: AppState) -> Router {
         // Le back office de Raven (étape 4-3) : sa propre connexion (`administration::Admin`), aucune organisation.
         .merge(administration::routes())
         .layer(axum::middleware::from_fn_with_state(state.clone(), connexion::exiger_connexion))
+        .layer(axum::middleware::from_fn(securite::poser_ip))
+        .layer(axum::middleware::from_fn(securite::entetes))
         .layer(axum::middleware::from_fn(jusqu_au_bout))
         .with_state(state)
 }

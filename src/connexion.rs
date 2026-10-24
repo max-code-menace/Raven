@@ -4,7 +4,8 @@
 //!   (`/client/…`, ouverte par les clients avec leur lien secret) et `/sante`.
 //! - Le cookie contient un jeton aléatoire ; la base n'en garde que l'empreinte SHA-256 (une copie de la base ne
 //!   permet pas de se faire passer pour quelqu'un). Session de 30 jours.
-//! - 5 essais ratés par quart d'heure et par e-mail, ensuite on attend.
+//! - 5 essais ratés par quart d'heure et par e-mail, 20 par quart d'heure et par adresse IP (`securite`), ensuite on
+//!   attend.
 //! - Les comptes se créent sur le site (`comptes` : inscription, puis lien de vérification envoyé par e-mail ; ou
 //!   invitation dans une équipe) ou en ligne de commande (`cargo run -- utilisateur ajouter <e-mail>`). Un compte
 //!   inscrit sur le site ne se connecte qu'après avoir confirmé son adresse e-mail.
@@ -36,6 +37,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, PgPool};
 
+use crate::securite::{self, Essai, Ip};
 use crate::{AppState, Erreur};
 
 pub(crate) const COOKIE: &str = "ubifacture_session";
@@ -299,9 +301,12 @@ fn refus(s: Saisie, erreur: &'static str) -> Result<Response, Erreur> {
     Ok((StatusCode::UNAUTHORIZED, Html(page.render()?)).into_response())
 }
 
-async fn envoyer(State(state): State<AppState>, cookies: CookieJar, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
+async fn envoyer(State(state): State<AppState>, cookies: CookieJar, ip: Ip, Form(s): Form<Saisie>) -> Result<Response, Erreur> {
     let db = &state.db;
     let email = s.email.trim().to_string();
+    if securite::trop_d_essais(db, &ip, Essai::Connexion).await? {
+        return refus(s, Essai::Connexion.message());
+    }
     let essais: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM connexions_ratees WHERE lower(email) = lower($1) AND created_at > now() - interval '15 minutes'",
     )
@@ -323,6 +328,7 @@ async fn envoyer(State(state): State<AppState>, cookies: CookieJar, Form(s): For
                 perdre_le_meme_temps(&s.mot_de_passe);
             }
             sqlx::query("INSERT INTO connexions_ratees (email) VALUES ($1)").bind(&email).execute(db).await?;
+            securite::noter(db, &ip, Essai::Connexion).await?;
             return refus(s, "E-mail ou mot de passe incorrect.");
         }
     };

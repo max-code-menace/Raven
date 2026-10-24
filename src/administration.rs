@@ -5,7 +5,7 @@
 //!   <e-mail>`) ; un administrateur n'est membre d'aucune organisation.
 //! - **Connexion séparée** : page `/admin/connexion`, cookie `raven_admin` limité à `/admin` (HttpOnly, Secure,
 //!   SameSite=Strict : jamais envoyé depuis un autre site), session de 12 heures, 5 essais ratés par quart d'heure et
-//!   par e-mail. La session d'une organisation n'ouvre pas le back office, et celle du back office n'ouvre aucune page
+//!   par e-mail, 10 par adresse IP (`securite`). La session d'une organisation n'ouvre pas le back office, et celle du back office n'ouvre aucune page
 //!   d'organisation.
 //! - **Ce qu'il montre** : le catalogue commun (ajouter, corriger, retirer des ouvrages et des bibliothèques, puis
 //!   publier la mise à jour) et la liste des organisations (nom, inscription, métier, nombre d'utilisateurs). Il ne lit
@@ -34,6 +34,7 @@ use sqlx::PgPool;
 
 use crate::commun::Choix;
 use crate::connexion::{correct, empreinte, hacher, jeton_aleatoire};
+use crate::securite::{self, Essai, Ip};
 use crate::{AppState, Erreur};
 
 pub(crate) const COOKIE: &str = "raven_admin";
@@ -168,9 +169,12 @@ fn refus(email: &str, erreur: &'static str) -> Result<Response, Erreur> {
     Ok((StatusCode::UNAUTHORIZED, Html(PageConnexion { email: email.to_string(), erreur }.render()?)).into_response())
 }
 
-async fn se_connecter(State(state): State<AppState>, cookies: CookieJar, Form(s): Form<SaisieConnexion>) -> Result<Response, Erreur> {
+async fn se_connecter(State(state): State<AppState>, cookies: CookieJar, ip: Ip, Form(s): Form<SaisieConnexion>) -> Result<Response, Erreur> {
     let db = &state.db;
     let email = s.email.trim().to_string();
+    if securite::trop_d_essais(db, &ip, Essai::ConnexionAdmin).await? {
+        return refus(&email, Essai::ConnexionAdmin.message());
+    }
     let essais: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM connexions_admin_ratees WHERE lower(email) = lower($1) AND created_at > now() - interval '15 minutes'",
     )
@@ -193,6 +197,7 @@ async fn se_connecter(State(state): State<AppState>, cookies: CookieJar, Form(s)
                 correct(&s.mot_de_passe, &FAUSSE);
             }
             sqlx::query("INSERT INTO connexions_admin_ratees (email) VALUES ($1)").bind(&email).execute(db).await?;
+            securite::noter(db, &ip, Essai::ConnexionAdmin).await?;
             return refus(&email, "E-mail ou mot de passe incorrect.");
         }
     };
